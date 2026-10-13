@@ -17,6 +17,8 @@ let package = Package(
         .executableTarget(name: "SwitchInspect", dependencies: ["SwitchCore", "SwitchStorage", "SwitchMac"]),
         .testTarget(name: "SwitchCoreTests", dependencies: ["SwitchCore", "SwitchStorage"]),
         .testTarget(name: "SwitchMacTests", dependencies: ["SwitchMac", "SwitchCore", "SwitchStorage"]),
+        // Renders the README images from demo data; skipped unless CLAUDE_SWITCH_SCREENSHOTS is set.
+        .testTarget(name: "ScreenshotTests", dependencies: ["ClaudeSwitch", "SwitchCore"]),
     ],
     swiftLanguageModes: [.v5]
 )
