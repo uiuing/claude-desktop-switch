@@ -13,6 +13,8 @@ let package = Package(
         .target(name: "SwitchStorage", dependencies: ["SwitchCore"]),
         .target(name: "SwitchMac", dependencies: ["SwitchCore", "SwitchStorage"]),
         .executableTarget(name: "SwitchInspect", dependencies: ["SwitchCore", "SwitchStorage", "SwitchMac"]),
+        .testTarget(name: "SwitchCoreTests", dependencies: ["SwitchCore", "SwitchStorage"]),
+        .testTarget(name: "SwitchMacTests", dependencies: ["SwitchMac", "SwitchCore", "SwitchStorage"]),
     ],
     swiftLanguageModes: [.v5]
 )
