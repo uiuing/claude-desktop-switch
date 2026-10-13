@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(swift build:*)",
+      "Bash(swift test:*)",
+      "Bash(python3 scripts/check-localization.py)",
+      "Bash(zsh scripts/build.sh:*)",
+      "Bash(zsh scripts/package.sh)",
+      "Bash(zsh scripts/release-notes.sh:*)",
+      "Bash(zsh scripts/screenshots.sh)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Read(~/Library/Application Support/Claude/**)",
+      "Read(~/Library/Application Support/Claude Desktop Switch/**)",
+      "Read(~/.claude.json)",
+      "Edit(~/Library/Application Support/Claude/**)",
+      "Edit(~/Library/Application Support/Claude Desktop Switch/**)",
+      "Bash(security:*)",
+      "Bash(kill:*)",
+      "Bash(pkill:*)",
+      "Bash(killall:*)"
+    ]
+  }
+}
