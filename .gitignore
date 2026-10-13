@@ -1,0 +1,19 @@
+# Build output
+.build/
+.swiftpm/
+dist/
+Resources/AppIcon.iconset/
+
+# Personal AI assistant settings
+.claude/settings.local.json
+CLAUDE.local.md
+
+# macOS and Xcode
+.DS_Store
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# Claude Switch data that must never be committed
+*.switchvault
+*.switchbackup
