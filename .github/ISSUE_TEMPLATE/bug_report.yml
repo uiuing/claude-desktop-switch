@@ -1,0 +1,64 @@
+name: Bug report
+description: Something does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem.
+        **Do not paste tokens, cookies or account IDs, and mask email addresses** (for example `ab•••yz@gmail.com`).
+        Turning on Settings → Menu bar → Mask email addresses does this in screenshots for you.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the menu bar panel
+        2. Click "Switch" on a saved account
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: Claude Switch version
+      description: Settings → About → Version
+    validations:
+      required: true
+  - type: input
+    id: claude-version
+    attributes:
+      label: Claude Desktop version
+      description: Claude → About Claude
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      description: Apple menu → About This Mac. Please include the chip (Apple silicon or Intel).
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics (optional)
+      description: |
+        Output of the read-only diagnostic tool, which prints counts only:
+        `swift run switch-inspect` from a source checkout.
+        Screenshots are welcome; please blur emails first.
+      render: json
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: I removed tokens, account IDs and email addresses from everything I pasted or attached.
+          required: true
