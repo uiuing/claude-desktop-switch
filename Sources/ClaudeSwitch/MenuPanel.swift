@@ -1,0 +1,260 @@
+import AppKit
+import SwiftUI
+import SwitchCore
+
+struct MenuPanel: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.openWindow) private var openWindow
+    private var others: [Account] { state.accounts.filter { $0.id != state.activeID } }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            separator
+            if state.activeUnsaved { LoginSaveStatus(compact: true).padding(.horizontal, 14).padding(.vertical, 6) }
+            if state.accounts.isEmpty {
+                if !state.activeUnsaved {
+                    VStack(spacing: 6) {
+                        Image(systemName: "person.crop.circle.badge.plus").font(.system(size: 26)).foregroundStyle(.secondary)
+                        Text(L10n.tr("No accounts yet")).font(.system(size: 13, weight: .medium))
+                        Text(L10n.tr("Saved automatically after signing in to Claude Desktop")).font(.system(size: 11)).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity).padding(.vertical, 22)
+                }
+            } else {
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    let suggestion = state.switchAdvice(now: context.date)
+                    let ordered = suggestion.map { pick in [pick.account] + others.filter { $0.id != pick.account.id } } ?? others
+                    VStack(spacing: 0) {
+                        HStack(spacing: 8) {
+                            Text(L10n.tr("Accounts"))
+                            Spacer()
+                            ForEach(["five_hour", "seven_day"], id: \.self) { id in
+                                Text(L10n.quotaShortTitle(id) ?? id).lineLimit(1).minimumScaleFactor(0.75)
+                                    .frame(width: MenuQuotaColumn.width, alignment: .trailing)
+                            }
+                        }
+                        .font(.system(size: 10, weight: .medium)).foregroundStyle(.tertiary)
+                        .padding(.horizontal, 14).padding(.bottom, 4)
+                        ScrollView {
+                            VStack(spacing: 0) {
+                                if let active = state.activeAccount {
+                                    Divider().padding(.horizontal, 14)
+                                    MenuAccountRow(account: active, now: context.date, active: true, advice: suggestion?.advice)
+                                }
+                                ForEach(ordered) { account in
+                                    Divider().padding(.horizontal, 14)
+                                    MenuAccountRow(account: account, now: context.date,
+                                                   advice: account.id == suggestion?.account.id ? suggestion?.advice : nil) {
+                                        show(.accounts)
+                                        Task { await state.prepare(.switchAccount, target: account) }
+                                    }
+                                }
+                            }
+                        }.frame(maxHeight: 460).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            if let message = state.message {
+                Text(message).font(.footnote).foregroundStyle(.secondary)
+                    .padding(.horizontal, 14).padding(.top, 4).fixedSize(horizontal: false, vertical: true)
+            }
+            separator
+            VStack(spacing: 0) {
+                MenuAction(title: L10n.tr("Add account…"), symbol: "plus.circle") { show(.accounts); state.showAddAccount = true }
+                MenuAction(title: L10n.tr("Conversations"), symbol: NavigationPage.conversations.symbol) { show(.conversations) }
+                MenuAction(title: L10n.tr("Usage statistics"), symbol: NavigationPage.usage.symbol) { show(.usage) }
+            }.padding(.horizontal, 6)
+            separator
+            VStack(spacing: 0) {
+                MenuAction(title: L10n.tr("Open Claude Switch"), symbol: "macwindow") { show(state.page == .settings ? .accounts : state.page) }
+                MenuAction(title: "GitHub", symbol: ProjectLink.symbol, external: true) {
+                    MenuPanelWindowReader.panel?.close()
+                    ProjectLink.open()
+                }.hint(L10n.tr("Open the project page on GitHub"))
+                MenuAction(title: L10n.tr("Settings…"), symbol: "gearshape", detail: "⌘,") { show(.settings) }
+                MenuAction(title: L10n.tr("Quit"), symbol: "power", detail: "⌘Q") { NSApplication.shared.terminate(nil) }
+            }.padding(.horizontal, 6)
+        }
+        .padding(.bottom, 6)
+        .frame(width: 330)
+        .tint(Palette.brand)
+        .background(MenuPanelWindowReader())
+    }
+    private var header: some View {
+        HStack(spacing: 8) {
+            Image(nsImage: NSApplication.shared.applicationIconImage).resizable().frame(width: 20, height: 20)
+            Text("Claude Switch").font(.headline)
+            Spacer()
+            let busy = state.refreshing
+            Button { Task { await state.refresh() } } label: {
+                Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .medium))
+                    .rotationEffect(.degrees(busy ? 360 : 0))
+                    .animation(busy ? .linear(duration: 0.9).repeatForever(autoreverses: false) : .default, value: busy)
+                    .frame(width: 20, height: 20).contentShape(Rectangle())
+            }.buttonStyle(HoverRowStyle()).disabled(busy)
+                .hint(L10n.tr("Rereads local records without asking Anthropic for quota. Quota is read once automatically after switching or adding an account."))
+        }.padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
+    }
+    private var separator: some View { Divider().padding(.horizontal, 14).padding(.vertical, 6) }
+    private func show(_ page: NavigationPage) {
+        // The status-item panel floats above every window; it would cover the sheet opened next.
+        MenuPanelWindowReader.panel?.close()
+        WorkbenchLifecycle.shared.prepareToOpen()
+        state.page = page; openWindow(id: "library"); NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+}
+
+/// The MenuBarExtra panel has no dismiss API; keep its window so actions can close it.
+private struct MenuPanelWindowReader: NSViewRepresentable {
+    @MainActor static weak var panel: NSWindow?
+    final class Attachment: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window { MenuPanelWindowReader.panel = window }
+        }
+    }
+    func makeNSView(context: Context) -> Attachment { Attachment() }
+    func updateNSView(_ view: Attachment, context: Context) {}
+}
+
+/// One table row per saved account: status dot, identity over a status line, then a column per quota window.
+/// Other accounts switch on click; the suggested one is listed first and tinted. Each status line describes
+/// its own account: a shortage on the signed-in row, unspent quota about to reset on the suggested row.
+/// Full reset dates and the reasons in full live in the tooltip.
+private struct MenuAccountRow: View {
+    @AppStorage(Format.showResetTimeKey) private var showResetTime = true
+    @EnvironmentObject var state: AppState
+    let account: Account
+    let now: Date
+    var active = false
+    var advice: SwitchAdvice?
+    var action: (() -> Void)?
+    private var suggested: Bool { !active && advice != nil }
+    var body: some View {
+        if let action {
+            Button(action: action) { content }.buttonStyle(MenuTableRowStyle(tint: suggested ? Palette.brand : nil)).hint(hint)
+        } else {
+            content.hint(hint)
+        }
+    }
+    private var content: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Circle().fill(active ? Palette.green : suggested ? Palette.brand : Color.primary.opacity(0.15)).frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state.identity(account)).font(.system(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                Text(subtitle.text).font(.system(size: 11)).foregroundStyle(subtitle.color).lineLimit(1).truncationMode(.tail)
+            }
+            Spacer(minLength: 6)
+            ForEach(state.quotaRows(for: account.id, now: now)) { MenuQuotaColumn(row: $0, now: now) }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+    private var shortage: (status: String, message: String)? {
+        guard active, let advice else { return nil }
+        switch advice.reason {
+        case .fiveHourLow:
+            return (L10n.tr("Active · session limit low"),
+                    L10n.tr("Session limit almost used up; switch to the suggested account below"))
+        case .sevenDayLow:
+            return (L10n.tr("Active · weekly limit low"),
+                    L10n.tr("Weekly limit almost used up; switch to the suggested account below"))
+        case .expiring: return nil
+        }
+    }
+    private var expiring: QuotaReadout? {
+        guard suggested, case .expiring(let row) = advice?.reason else { return nil }
+        return row
+    }
+    private var subtitle: (text: String, color: Color) {
+        if let error = state.usageErrors[account.id] { return (error, .orange) }
+        if active {
+            if let shortage { return (shortage.status, Color(nsColor: .systemOrange)) }
+            return (L10n.tr("Active"), Palette.green)
+        }
+        if account.loginInvalidAt != nil { return (L10n.tr("Expired · click to sign in again"), Color(nsColor: .systemOrange)) }
+        if let expiring {
+            let status = expiring.id == "five_hour" ? L10n.tr("Suggested · session limit resets soon")
+                : L10n.tr("Suggested · weekly limit resets soon")
+            return (status, Palette.brand)
+        }
+        if suggested { return (L10n.tr("Switch here"), Palette.brand) }
+        return ([account.plan, L10n.tr("Click to switch")].compactMap { $0 }.joined(separator: " · "), .secondary)
+    }
+    private var hint: String {
+        var lines: [String] = []
+        if let shortage { lines.append(shortage.message) }
+        if let expiring {
+            let reset = Format.compactReset(expiring, now: now, showResetTime: showResetTime)
+            lines.append(expiring.id == "five_hour"
+                ? L10n.tr("Session limit: {0}, {1} still unused", reset, expiring.percentageText)
+                : L10n.tr("Weekly limit: {0}, {1} still unused", reset, expiring.percentageText))
+        }
+        if !active { lines.append(L10n.tr("Switch to {0}", L10n.argument(state.identity(account)))) }
+        if let error = state.usageErrors[account.id] { lines.append(error) }
+        for row in state.quotaRows(for: account.id, now: now) + state.extraQuotaRows(for: account.id, now: now) {
+            lines.append([row.title + " " + row.percentageText, Format.resetDetail(row)].compactMap { $0 }.joined(separator: " · "))
+        }
+        lines.append(state.quotaUpdated(for: account.id, now: now))
+        if active, let notice = state.usageNotices[account.id] { lines.append(notice) }
+        return lines.joined(separator: "\n")
+    }
+}
+
+/// Full-width table row that highlights on hover and press, over the suggested row's tint.
+private struct MenuTableRowStyle: ButtonStyle {
+    var tint: Color?
+    func makeBody(configuration: Configuration) -> some View { Row(configuration: configuration, tint: tint) }
+    private struct Row: View {
+        let configuration: ButtonStyleConfiguration
+        let tint: Color?
+        @State private var hovering = false
+        var body: some View {
+            let emphasis = configuration.isPressed ? 0.08 : hovering ? 0.045 : 0
+            configuration.label
+                .background((tint ?? .primary).opacity((tint == nil ? 0 : 0.07) + emphasis))
+                .onHover { hovering = $0 }
+                .animation(.easeOut(duration: 0.12), value: hovering)
+        }
+    }
+}
+
+/// One quota window as a table column: what is left, a short bar, then when it resets.
+private struct MenuQuotaColumn: View {
+    static let width: CGFloat = 56
+    @AppStorage(Format.showResetTimeKey) private var showResetTime = true
+    let row: QuotaReadout
+    let now: Date
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            Text(row.percentageText).font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                .foregroundStyle(row.remainingPercent.map { $0 <= 10 ? Palette.quota($0) : .primary } ?? .secondary)
+            QuotaBar(row: row, height: 3).frame(width: 46)
+            Text(Format.tinyReset(row, now: now, showResetTime: showResetTime))
+                .font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+        }
+        .frame(width: Self.width, alignment: .trailing)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Format.quotaAccessibility(row, now: now, showResetTime: showResetTime))
+    }
+}
+
+/// A menu-style row; `detail` is right-aligned secondary text such as a shortcut, `external` marks a web link.
+private struct MenuAction: View {
+    let title: String
+    let symbol: String
+    var detail: String?
+    var external = false
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol).font(.system(size: 12)).frame(width: 16).foregroundStyle(.secondary)
+                Text(title).font(.body)
+                Spacer()
+                if let detail { Text(detail).font(.body).foregroundStyle(.tertiary) }
+                if external { Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary) }
+            }.padding(.horizontal, 8).padding(.vertical, 4).contentShape(Rectangle())
+        }.buttonStyle(HoverRowStyle())
+    }
+}
