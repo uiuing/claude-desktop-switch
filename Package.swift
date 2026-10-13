@@ -10,6 +10,7 @@ let package = Package(
     targets: [
         .target(name: "SwitchCore", resources: [.copy("Localizations")]),
         .target(name: "SwitchStorage", dependencies: ["SwitchCore"]),
+        .target(name: "SwitchMac", dependencies: ["SwitchCore", "SwitchStorage"]),
     ],
     swiftLanguageModes: [.v5]
 )
