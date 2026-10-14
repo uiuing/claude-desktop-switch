@@ -2,7 +2,7 @@ import SwiftUI
 import SwitchCore
 
 struct AccountsView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     @State private var discarding: String?
     var body: some View {
         Group {
@@ -61,7 +61,7 @@ struct AccountsView: View {
 
 /// Progress or failure of saving the signed-in Claude Desktop login into Switch.
 struct LoginSaveStatus: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     var compact = false
     var body: some View {
         HStack(spacing: 10) {
@@ -81,7 +81,7 @@ struct LoginSaveStatus: View {
 
 struct AccountCard: View {
     @AppStorage(Format.showResetTimeKey) private var showResetTime = true
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     let account: Account
     @State private var removing = false
     private var active: Bool { account.id == state.activeID }
@@ -180,7 +180,7 @@ struct AccountCard: View {
 }
 
 private struct UsageErrorLine: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     let accountID: String
     var body: some View {
         SecondsTimeline(running: state.usageCooldowns[accountID] != nil) {

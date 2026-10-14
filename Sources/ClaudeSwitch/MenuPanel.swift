@@ -3,7 +3,7 @@ import SwiftUI
 import SwitchCore
 
 struct MenuPanel: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     @Environment(\.openWindow) private var openWindow
     private var others: [Account] { state.accounts.filter { $0.id != state.activeID } }
     var body: some View {
@@ -122,7 +122,7 @@ private struct MenuPanelWindowReader: NSViewRepresentable {
 /// Full reset dates and the reasons in full live in the tooltip.
 private struct MenuAccountRow: View {
     @AppStorage(Format.showResetTimeKey) private var showResetTime = true
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     let account: Account
     let now: Date
     var active = false

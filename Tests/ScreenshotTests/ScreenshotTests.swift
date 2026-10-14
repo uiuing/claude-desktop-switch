@@ -60,7 +60,7 @@ final class ScreenshotTests: XCTestCase {
     // MARK: Capture
 
     private func captureWorkbench(_ state: AppState, dark: Bool, size: NSSize = windowSize, settle: TimeInterval = 1.2) throws -> NSImage {
-        let controller = NSHostingController(rootView: MainWindow().environmentObject(state).environment(\.locale, L10n.locale)
+        let controller = NSHostingController(rootView: MainWindow().environment(state).environment(\.locale, L10n.locale)
             .environment(\.controlActiveState, .key))
         controller.sceneBridgingOptions = [.toolbars, .title]
         let frame = NSRect(origin: NSPoint(x: -6000, y: 200), size: size)
@@ -78,7 +78,7 @@ final class ScreenshotTests: XCTestCase {
     }
 
     private func captureMenu(_ state: AppState, dark: Bool) throws -> NSImage {
-        let content = MenuPanel().environmentObject(state).environment(\.locale, L10n.locale)
+        let content = MenuPanel().environment(state).environment(\.locale, L10n.locale)
             .background(VisualEffect()).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         let view = NSHostingView(rootView: content)
         let window = NSWindow(contentRect: NSRect(x: -6000, y: 200, width: 400, height: 400), styleMask: [.borderless],

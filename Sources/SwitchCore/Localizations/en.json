@@ -59,7 +59,6 @@
   "in {0}m": "in {0}m",
   "in {0}h": "in {0}h",
   "in {0}d": "in {0}d",
-  "Estimated from local changes · Excludes other devices": "Estimated from local changes · Excludes other devices",
   "Save": "Save",
   "Save login for {0}": "Save login for {0}",
   "Keep originals and existing target conversations": "Keep originals and existing target conversations",
@@ -205,7 +204,7 @@
   "View conversations for this account": "View conversations for this account",
   "Verify the target snapshot and current Claude version": "Verify the target snapshot and current Claude version",
   "The file exceeds the read limit and was skipped.": "The file exceeds the read limit and was skipped.",
-  "Claude Code workers were detected. Finish your work before switching or migrating.": "Claude Code workers were detected. Finish your work before switching or migrating.",
+  "Claude Code sessions started by Claude Desktop are still running. Wait for them to finish, then try again.": "Claude Code sessions started by Claude Desktop are still running. Wait for them to finish, then try again.",
   "Model": "Model",
   "Saving the signed-in account…": "Saving the signed-in account…",
   "Updating statistics in the background…": "Updating statistics in the background…",
@@ -244,7 +243,7 @@
   "Could not persist the directory. Recovery data is preserved.": "Could not persist the directory. Recovery data is preserved.",
   "Could not persist the directory. Check the disk.": "Could not persist the directory. Check the disk.",
   "The target record points to a different conversation and cannot be replaced.": "The target record points to a different conversation and cannot be replaced.",
-  "The target snapshot is from a different Claude version. Save that account again before switching.": "The target snapshot is from a different Claude version. Save that account again before switching.",
+  "The saved login of the target account comes from Claude {0} and can't be restored into the installed Claude {1}. Update Claude Desktop, then try again.": "The saved login of the target account comes from Claude {0} and can't be restored into the installed Claude {1}. Update Claude Desktop, then try again.",
   "The target already has this conversation. Both records are preserved; nothing will be overwritten.": "The target already has this conversation. Both records are preserved; nothing will be overwritten.",
   "The target account has multiple local organizations. A migration destination cannot be selected safely.": "The target account has multiple local organizations. A migration destination cannot be selected safely.",
   "The target account has no organization information. Sign in to Desktop and scan it first.": "The target account has no organization information. Sign in to Desktop and scan it first.",
@@ -270,7 +269,6 @@
   "Cache read": "Cache read",
   "Range": "Range",
   "Menu bar": "Menu bar",
-  "To add another account, enter `/login` in Claude Desktop, press Return, and sign in to the new account.": "To add another account, enter `/login` in Claude Desktop, press Return, and sign in to the new account.",
   "Replaces": "Replaces",
   "Settings": "Settings",
   "Settings…": "Settings…",
@@ -398,5 +396,7 @@
   "demo.apiMigration": "API client migration plan",
   "Source code": "Source code",
   "Open the project page on GitHub": "Open the project page on GitHub",
-  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases."
+  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.",
+  "The organization of the target account is uncertain. Switch to it once and refresh its quota, then try again.": "The organization of the target account is uncertain. Switch to it once and refresh its quota, then try again.",
+  "Claude kept writing its data while the login was being copied. Try again in a moment.": "Claude kept writing its data while the login was being copied. Try again in a moment."
 }

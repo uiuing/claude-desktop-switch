@@ -7,12 +7,12 @@ struct ClaudeSwitchApp: App {
     @NSApplicationDelegateAdaptor(SwitchAppDelegate.self) private var delegate
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.system.rawValue
     @State private var localeRevision = 0
-    @StateObject private var state = AppState()
+    @State private var state = AppState.shared
     @AppStorage(WorkbenchLifecycle.showInMenuBarKey) private var showInMenuBar = true
     var body: some Scene {
         // Keep the workbench first for macOS 14's default scene selection.
         Window("Claude Switch", id: "library") {
-            MainWindow().environmentObject(state)
+            MainWindow().environment(state)
                 .appTheme()
                 .environment(\.locale, L10n.locale)
                 .id(language + String(localeRevision))
@@ -38,23 +38,30 @@ struct ClaudeSwitchApp: App {
         }
 
         MenuBarExtra(isInserted: $showInMenuBar) {
-            MenuPanel().environmentObject(state)
+            MenuPanel().environment(state)
                 .appTheme()
                 .environment(\.locale, L10n.locale)
                 .id(language + String(localeRevision))
                 .task { await state.start() }
         } label: {
-            HStack(spacing: 4) {
-                Image(nsImage: StatusIcon.image)
-                // A scheduled view inside the status item's rendered label can keep
-                // invalidating MenuBarExtra during launch. The local refresh already
-                // updates this value once a minute without a separate rendering clock.
-                Text(menuQuotaText).monospacedDigit()
-            }.accessibilityLabel(L10n.tr("Claude Switch, current account session limit remaining: {0}", L10n.argument(menuQuotaText)))
+            MenuBarLabel(state: state)
         }.menuBarExtraStyle(.window)
     }
+}
 
-    private var menuQuotaText: String { state.fiveHourQuota?.percentageText ?? "—" }
+/// Reads only what the status item shows, so other state changes leave it alone.
+private struct MenuBarLabel: View {
+    let state: AppState
+    var body: some View {
+        let quota = state.fiveHourQuota?.percentageText ?? "—"
+        HStack(spacing: 4) {
+            Image(nsImage: StatusIcon.image)
+            // A scheduled view inside the status item's rendered label can keep
+            // invalidating MenuBarExtra during launch. The local refresh already
+            // updates this value once a minute without a separate rendering clock.
+            Text(quota).monospacedDigit()
+        }.accessibilityLabel(L10n.tr("Claude Switch, current account session limit remaining: {0}", L10n.argument(quota)))
+    }
 }
 
 final class SwitchAppDelegate: NSObject, NSApplicationDelegate {

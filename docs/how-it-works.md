@@ -17,9 +17,9 @@ That set is the **identity allow-list**. Switching accounts means replacing exac
 When Claude Desktop is signed in to an account that Claude Switch has not saved yet, or whose credentials changed, the app saves it automatically while Claude keeps running:
 
 1. It reads the allow-listed files. Nothing in Claude's folder is modified.
-2. It checks the credential fingerprint and the signed-in account before and after reading, and discards the copy if anything changed in between.
+2. It checks the credential fingerprint and the signed-in account before and after reading, and discards the copy if anything changed in between. Claude writes its data while it runs, so a discarded copy is taken again after 5, 15 and 45 seconds before the problem is shown.
 3. It encrypts the copy with **AES-256-GCM**. The authenticated data binds each snapshot to its account, and every file also carries a SHA-256 digest.
-4. The encryption key is stored in the macOS Keychain as a `ThisDeviceOnly`, non-synchronizing item that belongs to Claude Switch. Saved logins therefore cannot be moved to another Mac.
+4. The encryption key is stored in your login Keychain as a non-synchronizing item that belongs to Claude Switch. It never goes to iCloud, and a copy of the saved logins cannot be read without it. The login Keychain does move with a full migration of your macOS user account (Migration Assistant or a restored backup), and the saved logins with it.
 
 The previous snapshot of an account is kept for one generation, so a bad save can be rolled back.
 Because Claude is running while this happens, a snapshot taken this way may not be perfectly consistent across files; the switch itself saves the current account again after Claude has quit.
@@ -30,14 +30,15 @@ Every switch is planned first and executed only after you confirm it.
 
 1. **Preview.** The plan records the current identity, a fingerprint of `config.json`, the target account and organization, the selected Claude Code sessions and a SHA-256 of every file involved. A plan expires after 120 seconds and is re-checked before execution.
 2. **Locking.** An in-process actor and a file lock shared between app instances prevent two operations from running at once. An unfinished transaction blocks new ones.
-3. **Decrypt first.** The target snapshot is decrypted and verified before Claude is touched.
-4. **Quit Claude normally.** Claude is asked to quit the usual way. If it does not quit, if several instances are running, or if helper or Claude Code processes are still busy, the switch stops. Claude Switch never force-kills a process.
-5. **Save the current account** again, now that Claude is closed. If the Claude version differs from the one the target snapshot was taken with, the switch stops.
+3. **Decrypt first.** The target snapshot is decrypted and verified before Claude is touched. A login saved by an older Claude is restored, because Claude upgrades its own data after an update; one saved by a newer Claude than the installed one stops the switch.
+4. **Quit Claude normally.** Claude is asked to quit the usual way. If it does not quit, if several instances are running, or if Claude's helper processes or the Claude Code sessions it started are still running, the switch stops. Claude Code started in a terminal or an editor has its own login and never touches Claude Desktop's files, so it keeps running. Claude Switch never force-kills a process.
+5. **Save the current account** again, now that Claude is closed.
 6. **Replace with a journal.** Each replacement is written to a write-ahead journal first; the original file is moved into the transaction folder before the new one is put in place. The journal and folders are synced to disk. A multi-file change is not atomic, which is why the journal exists.
 7. **Roll back on failure.** If any step fails, the transaction is reversed while Claude is still closed. If a safe rollback cannot be confirmed, all data is kept and Settings shows a recovery entry; Claude is not reopened in a mixed state.
 8. **Commit and reopen.** Only after a successful commit is Claude reopened. Whether the login is still valid is decided by Claude itself: for 36 seconds after the switch, Claude Switch watches whether Claude stays signed in.
 
 After a commit, the recovery copies are archived in encrypted form and read back for verification before the temporary folder is removed.
+Finished operations are kept while they are useful: the two newest switches that moved each account's login out of Claude, and everything else for a week. Unfinished operations are always kept.
 
 ### Recovering an unfinished operation
 
@@ -63,6 +64,7 @@ Claude Desktop keeps a small index file per local Claude Code session under `cla
 - **Move** (default) writes the index into the target account, then moves the source index into the protected transaction folder, so the source account no longer lists it.
 - **Copy** writes the index into the target account and keeps the source.
 - If the target already has the same session (same `sessionId` and `cliSessionId`), it is updated with the current version. A different session with the same name stops the operation instead of being overwritten.
+- The index goes into the organization Claude Desktop uses for the target account. Claude Code can be signed in to another organization of the same account, so when that organization is only a guess and the target's sessions are elsewhere, the transfer stops; switching to the account once and refreshing its quota confirms it.
 
 Writes, the backup of the replaced target and the removal of the source are part of one file transaction, with the same journal and rollback as a switch. The transcript in `~/.claude/projects` is never moved or deleted.
 

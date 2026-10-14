@@ -2,7 +2,7 @@ import SwiftUI
 import SwitchCore
 
 struct OperationSheet: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     @Environment(\.dismiss) var dismiss
     let operation: PendingOperation
     private var current: PendingOperation { state.pending ?? operation }
@@ -191,7 +191,7 @@ struct SessionTransferModePicker: View {
 }
 
 struct AddAccountSheet: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     @Environment(\.dismiss) var dismiss
     var body: some View {
         VStack(spacing: 20) {

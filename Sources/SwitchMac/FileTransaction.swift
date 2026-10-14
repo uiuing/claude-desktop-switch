@@ -18,6 +18,8 @@ struct TransactionJournal: Codable {
     var targetAccountID: String
     var createdAt: Date
     var entries: [TransactionEntry]
+    /// The Claude version whose files the originals are; absent in journals written before it was recorded.
+    var claudeVersion: String?
 }
 
 final class OperationLock {
@@ -40,11 +42,12 @@ final class FileTransaction {
     var journal: TransactionJournal
     private let fm = FileManager.default
     private var journalURL: URL { root.appendingPathComponent("journal.json") }
-    init(parent: URL, live: URL, plan: OperationPlan) throws {
+    init(parent: URL, live: URL, plan: OperationPlan, claudeVersion: String? = nil) throws {
         root = parent.appendingPathComponent(plan.id.uuidString)
         self.live = live
         journal = TransactionJournal(id: plan.id.uuidString, phase: "preparing", sourceAccountID: plan.sourceAccountID,
-                                     targetAccountID: plan.targetAccountID, createdAt: Date(), entries: [])
+                                     targetAccountID: plan.targetAccountID, createdAt: Date(), entries: [],
+                                     claudeVersion: claudeVersion)
         try SafeFiles.privateDirectory(root)
         for child in ["staged", "originals", "quarantine"] { try SafeFiles.privateDirectory(root.appendingPathComponent(child)) }
         try persist()
@@ -147,6 +150,14 @@ final class FileTransaction {
 
     /// Set once the swapped-out login was purged; the transaction no longer holds a copy of its source account.
     var sourcePurged: Bool { fm.fileExists(atPath: root.appendingPathComponent("source-purged").path) }
+    /// A switch or sign-out: `originals` hold the login that was swapped out, not just session records.
+    var holdsLogin: Bool { journal.entries.contains { $0.relative == "config.json" } }
+    /// Deletes a finished transaction with everything it kept.
+    func discard() throws {
+        guard ["committed", "recovered"].contains(journal.phase) else { throw SwitchError.blocked(L10n.tr("Unfinished transactions must retain their recovery originals.")) }
+        try SafeFiles.validateAncestors(root)
+        try fm.removeItem(at: root)
+    }
     /// Deletes one account's share of a finished transaction, on disk and inside the sealed archive:
     /// `staged` and `quarantine` hold the login swapped in, `originals` the one swapped out.
     /// The whole transaction goes once nothing else is left in it.

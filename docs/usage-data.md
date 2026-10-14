@@ -73,11 +73,11 @@ These numbers describe local activity only. They are not subscription limits and
 
 ### Scanning and cache
 
-The first scan reads all local records and shows its progress; you can use other pages meanwhile. After that, a cache (`usage-cache.json`) stores per-file positions, head-and-tail fingerprints, daily totals and token counts. It never contains message text, tool output or credentials.
+The first scan reads all local records and shows its progress; you can use other pages meanwhile. After that, a cache (`usage-cache.json`) stores per-file positions, head-and-tail fingerprints, daily totals and token counts. It never contains message text, tool output or credentials. The cache is written at most every five minutes; after a restart, lines added since then are simply read again. Records are rescanned every minute while the Usage page is on screen, and every ten minutes otherwise.
 
-- Unchanged files are checked by metadata and a fingerprint of their first and last 4 KB. Appended files are read from where the last scan stopped.
+- Unchanged files are recognized by their inode, size and modification time. A file whose metadata changed is checked with a fingerprint of its first and last 4 KB, then read from where the last scan stopped.
 - Truncated, replaced or rewritten files are recounted; deleted files are removed from the totals.
 - The cache is rebuilt if its version, the folder or the time zone changes, or if it is damaged.
 - Files over 1 GB and lines over 16 MB are skipped and reported as partial coverage.
 
-A rewrite in the middle of a file that also grows it while keeping the same head and tail is outside what append-only detection can notice.
+A rewrite in the middle of a file that also grows it while keeping the same head and tail, or one that keeps its size and modification time, is outside what append-only detection can notice.

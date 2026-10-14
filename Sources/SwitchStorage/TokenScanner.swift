@@ -10,12 +10,13 @@ public actor TokenScanner: TranscriptReader {
         var anchor = ""
         var firstTimestamp: Date?
         var days: [Date: ActivityDay] = [:]
-        // Kept separate from activity totals: subscription calibration needs deduplication.
+        // Deduplicated per request, unlike activity totals. Only kept on request and never cached: it grows with every reply.
         var ledger: [String: TokenEvent] = [:]
         var skippedLines = 0
         var subagent = false
         var tail: Row?
         var droppingTail = false
+        private enum CodingKeys: String, CodingKey { case stamp, offset, anchor, firstTimestamp, days, skippedLines, subagent, tail, droppingTail }
     }
     private struct Cache: Codable {
         var version = 1
@@ -67,6 +68,11 @@ public actor TokenScanner: TranscriptReader {
     private let projects: URL
     private let cacheURL: URL?
     private let calendar: Calendar
+    private let keepsRequestLedger: Bool
+    /// An active Claude Code session appends to its transcript all the time; rewriting the whole cache for each
+    /// append costs more than re-reading a few minutes of new lines after a restart.
+    private let cacheWriteInterval: TimeInterval
+    private var lastCacheWrite: Date?
     private let decoder = JSONDecoder()
     private let fractional = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
     private let whole = Date.ISO8601FormatStyle()
@@ -77,8 +83,10 @@ public actor TokenScanner: TranscriptReader {
     private let chunkSize = 1024 * 1024
     private let lineLimit = 16 * 1024 * 1024
 
-    public init(projects: URL, cacheURL: URL? = nil, calendar: Calendar = .current) {
+    public init(projects: URL, cacheURL: URL? = nil, calendar: Calendar = .current,
+                keepsRequestLedger: Bool = false, cacheWriteInterval: TimeInterval = 300) {
         self.projects = projects; self.cacheURL = cacheURL; self.calendar = calendar
+        self.keepsRequestLedger = keepsRequestLedger; self.cacheWriteInterval = cacheWriteInterval
     }
 
     public func cachedAnalytics() -> UsageAnalytics? {
@@ -130,7 +138,7 @@ public actor TokenScanner: TranscriptReader {
         return report
     }
 
-    /// Runs to completion, yielding progressive totals. Unchanged files only require metadata and a small anchor read.
+    /// Runs to completion, yielding progressive totals. Unchanged files only require their metadata.
     public func scanAnalytics(progress: (@Sendable (UsageAnalytics) async -> Void)? = nil) async throws -> UsageAnalytics {
         guard !running else { throw SwitchError.busy }
         running = true; defer { running = false }
@@ -157,7 +165,7 @@ public actor TokenScanner: TranscriptReader {
             }
         }
         let visible = Set(files.map(\.path))
-        var changed = cacheDirty || !Set(cursors.keys).subtracting(visible).isEmpty
+        var changed = !Set(cursors.keys).subtracting(visible).isEmpty
         cursors = cursors.filter { visible.contains($0.key) }
         last = UsageAnalytics(); last.totalFiles = files.count; last.skippedFiles = discoveryErrors
         last.totalBytes = files.reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
@@ -177,15 +185,16 @@ public actor TokenScanner: TranscriptReader {
                     cursors.removeValue(forKey: file.path); last.skippedFiles += 1; changed = true; continue
                 }
                 var cursor = cursors[file.path] ?? Cursor(stamp: stamp)
+                // Same inode, size and modification time to the nanosecond: nothing new to read, not even the anchor.
+                if stamp == cursor.stamp && (cursor.offset == UInt64(stamp.size) || cursor.tail != nil) {
+                    last.scannedFiles += 1; last.processedBytes += stamp.size; continue
+                }
                 let anchorMatches = try cursor.offset <= UInt64(max(0, stamp.size)) &&
                     anchor(handle, offset: cursor.offset) == cursor.anchor
                 if stamp.inode != cursor.stamp.inode || stamp.size < cursor.stamp.size ||
                     (stamp.size == cursor.stamp.size && stamp != cursor.stamp) || !anchorMatches {
                     cursor = Cursor(stamp: stamp)
-                    cursors.removeValue(forKey: file.path); changed = true
-                }
-                if stamp == cursor.stamp && (cursor.offset == UInt64(stamp.size) || cursor.tail != nil) {
-                    last.scannedFiles += 1; last.processedBytes += stamp.size; continue
+                    cursors.removeValue(forKey: file.path)
                 }
                 changed = true
                 cursor.tail = nil
@@ -247,8 +256,9 @@ public actor TokenScanner: TranscriptReader {
         }
         last.partial = changedDuringScan || last.skippedFiles > 0 || cursors.values.contains { ($0.offset < UInt64($0.stamp.size) && $0.tail == nil) || $0.skippedLines > 0 }
         // Persist removals too; file discovery may return fewer files without reading any changed file.
-        if changed {
-            do { try saveCache(); cacheDirty = false } catch { last.cacheWriteFailed = true; cacheDirty = true }
+        if changed { cacheDirty = true }
+        if cacheDirty, lastCacheWrite.map({ Date().timeIntervalSince($0) >= cacheWriteInterval }) ?? true {
+            do { try saveCache(); cacheDirty = false; lastCacheWrite = Date() } catch { last.cacheWriteFailed = true }
         }
         let result = snapshot(); await progress?(result); return result
     }
@@ -289,7 +299,7 @@ public actor TokenScanner: TranscriptReader {
             let name = message.model ?? "unknown", counts = usage.counts
             var model = day.models[name] ?? ActivityModel(model: name)
             model.counts = model.counts + counts; model.messages += 1; day.models[name] = model
-            if let session = row.sessionId, let id = message.id {
+            if keepsRequestLedger, let session = row.sessionId, let id = message.id {
                 let incomplete = counts.input > 0 && counts.output == 0 && counts.cacheRead == 0 && counts.cacheWrite == 0 && message.stop_reason == nil
                 let event = TokenEvent(requestID: row.requestId ?? session, messageID: id, sessionID: session,
                     accountID: row.accountUuid.flatMap { UUID(uuidString: $0)?.uuidString.lowercased() },

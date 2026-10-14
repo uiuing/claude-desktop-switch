@@ -59,7 +59,6 @@
   "in {0}m": "em {0} min",
   "in {0}h": "em {0} h",
   "in {0}d": "em {0} d",
-  "Estimated from local changes · Excludes other devices": "Estimativa por mudanças locais · Exclui outros dispositivos",
   "Save": "Salvar",
   "Save login for {0}": "Salvar login de {0}",
   "Keep originals and existing target conversations": "Preservar originais e conversas existentes no destino",
@@ -205,7 +204,7 @@
   "View conversations for this account": "Ver conversas desta conta",
   "Verify the target snapshot and current Claude version": "Verificar o snapshot e a versão atual do Claude",
   "The file exceeds the read limit and was skipped.": "O arquivo excede o limite de leitura e foi ignorado.",
-  "Claude Code workers were detected. Finish your work before switching or migrating.": "Processos do Claude Code detectados. Termine o trabalho antes de alternar ou migrar.",
+  "Claude Code sessions started by Claude Desktop are still running. Wait for them to finish, then try again.": "Sessões do Claude Code iniciadas pelo Claude Desktop ainda estão em execução. Aguarde até que terminem e tente novamente.",
   "Model": "Modelo",
   "Saving the signed-in account…": "Salvando a conta conectada…",
   "Updating statistics in the background…": "Atualizando estatísticas em segundo plano…",
@@ -244,7 +243,7 @@
   "Could not persist the directory. Recovery data is preserved.": "Não foi possível persistir o diretório. Dados de recuperação preservados.",
   "Could not persist the directory. Check the disk.": "Não foi possível persistir o diretório. Verifique o disco.",
   "The target record points to a different conversation and cannot be replaced.": "O registro de destino aponta para outra conversa e não pode ser substituído.",
-  "The target snapshot is from a different Claude version. Save that account again before switching.": "O snapshot é de outra versão do Claude. Salve a conta novamente antes de alternar.",
+  "The saved login of the target account comes from Claude {0} and can't be restored into the installed Claude {1}. Update Claude Desktop, then try again.": "O login salvo da conta de destino é do Claude {0} e não pode ser restaurado no Claude {1} instalado. Atualize o Claude Desktop e tente novamente.",
   "The target already has this conversation. Both records are preserved; nothing will be overwritten.": "O destino já tem esta conversa. Ambos os registros serão preservados, sem sobrescrever.",
   "The target account has multiple local organizations. A migration destination cannot be selected safely.": "A conta de destino tem várias organizações locais. Não é possível escolher um destino seguro automaticamente.",
   "The target account has no organization information. Sign in to Desktop and scan it first.": "Faltam dados da organização de destino. Entre no Desktop e faça a leitura primeiro.",
@@ -270,7 +269,6 @@
   "Cache read": "Leitura de cache",
   "Range": "Período",
   "Menu bar": "Barra de menus",
-  "To add another account, enter `/login` in Claude Desktop, press Return, and sign in to the new account.": "Para adicionar outra conta, digite `/login` no Claude Desktop, pressione Return e entre na nova conta.",
   "Replaces": "Substitui",
   "Settings": "Configurações",
   "Settings…": "Configurações…",
@@ -398,5 +396,7 @@
   "demo.apiMigration": "Plano de migração do cliente de API",
   "Source code": "Código-fonte",
   "Open the project page on GitHub": "Abrir a página do projeto no GitHub",
-  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Por enquanto, o Claude Switch não tem atualizações remotas nem automáticas. Acompanhe o projeto no GitHub para ver as novas versões."
+  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Por enquanto, o Claude Switch não tem atualizações remotas nem automáticas. Acompanhe o projeto no GitHub para ver as novas versões.",
+  "The organization of the target account is uncertain. Switch to it once and refresh its quota, then try again.": "Não foi possível determinar a organização da conta de destino. Alterne para ela uma vez, atualize a cota e tente novamente.",
+  "Claude kept writing its data while the login was being copied. Try again in a moment.": "O Claude continuou gravando dados enquanto o login era copiado. Tente novamente em instantes."
 }

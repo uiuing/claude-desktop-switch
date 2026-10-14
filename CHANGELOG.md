@@ -6,9 +6,20 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Claude Code running in a terminal or an editor no longer blocks switching. Only Claude Desktop's helpers and the Claude Code sessions it started are waited for.
+- Old recovery copies are cleaned up: the two newest switches of each account and a week of other finished operations are kept. Unfinished operations are always kept.
+- Less background work: the usage cache no longer stores every reply and is written at most every five minutes, unchanged transcripts are not read again, statistics are rescanned every ten minutes while the Usage page is not on screen, waiting for a sign-in checks only the login itself, and a statistics scan no longer redraws the menu bar.
+
 ### Fixed
 
 - The "Quota was just read" notice no longer stays on an account card forever: it counts down and disappears when the wait is over. Quota notices can be dismissed, and they are cleared when another account is signed in.
+- Saved accounts can be switched to again after Claude Desktop updates itself. Only a login saved by a newer Claude than the one installed is refused.
+- An account that uses one organization in Claude Desktop and another in Claude Code keeps its organization, plan and quota steady, and a conversation moved to it no longer lands in an organization Claude Desktop doesn't show.
+- Saving the signed-in login tries again by itself when Claude was writing its data at that moment, and the message no longer mentions a preview.
+- Simplified Chinese uses mainland wording throughout, for example 数据, 文件 and 操作 instead of 资料, 档案 and 交易.
+- The documentation no longer says saved logins only work on this Mac: the Keychain item never syncs to iCloud, but it moves with a full migration of your macOS user account.
 
 ## [0.1.0] - 2026-10-14
 

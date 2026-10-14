@@ -63,6 +63,9 @@ public struct Account: Codable, Identifiable, Hashable, Sendable {
     /// Only set from a source that reported it for this exact account UUID; never derived or guessed.
     public var email: String?
     public var organizationID: String?
+    /// When the server confirmed `organizationID` for this login's own token. Local files and Claude Code,
+    /// which can use another organization of the same account, then no longer decide it.
+    public var organizationVerifiedAt: Date?
     /// Plan of the account's organization as Claude cached it, e.g. "Pro" or "Max 20x".
     public var plan: String?
     /// When `plan` was observed. Sources disagree after a plan change; the newest reading wins, even a nil one.
@@ -90,7 +93,10 @@ public struct Account: Codable, Identifiable, Hashable, Sendable {
     /// A plan is per organization, so it does not survive a change of organization.
     public mutating func setOrganization(_ organizationID: String) {
         guard organizationID != self.organizationID else { return }
-        self.organizationID = organizationID; plan = nil; planObservedAt = nil
+        self.organizationID = organizationID; plan = nil; planObservedAt = nil; organizationVerifiedAt = nil
+    }
+    public mutating func confirmOrganization(_ organizationID: String, at date: Date) {
+        setOrganization(organizationID); organizationVerifiedAt = date
     }
     /// Keeps whichever plan reading is newest; one for another organization is ignored.
     public mutating func observePlan(_ plan: String?, organizationID: String, at date: Date) {

@@ -102,7 +102,7 @@ Handy shortcuts in the main window: `⌘1` `⌘2` `⌘3` switch pages, `⌘K` se
 
 ## Privacy and security
 
-- **Everything stays on your Mac.** Saved logins are encrypted with AES-256-GCM. The key lives in your Keychain, is never synced, and only works on this Mac.
+- **Everything stays on your Mac.** Saved logins are encrypted with AES-256-GCM. The key lives in your login Keychain and is never synced to iCloud, so a copy of the saved logins alone can't be read.
 - **No telemetry, no analytics, no servers of our own.**
 - **Network access only when you ask.** Refreshing the signed-in account's limits sends the same read-only request Claude Code's `/usage` command sends, directly to Anthropic. Other accounts are never contacted. Reading the local records needs no network at all.
 - **A narrow footprint.** Only Claude Desktop's login files are swapped. Claude Code's own login, your projects, MCP servers, skills and settings are left alone.
@@ -133,7 +133,7 @@ Limits come from records Claude Desktop keeps on your Mac. An account you have n
 <details>
 <summary><b>Can I move my saved accounts to another Mac?</b></summary>
 
-No. The encryption key is bound to this Mac's Keychain on purpose. On a new Mac, sign in to each account once and it is saved again.
+Not by copying files: the saved logins can only be read with the key in this Mac's login Keychain. Migration Assistant, or restoring a backup of your whole user account, brings that Keychain along, so saved accounts may keep working. Otherwise, sign in to each account once on the new Mac and it is saved again.
 </details>
 
 <details>

@@ -2,7 +2,7 @@ import SwiftUI
 import SwitchCore
 
 struct ConversationsView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     private var groups: [(account: String, sessions: [Conversation])] {
         var result: [(account: String, sessions: [Conversation])] = []
         for session in state.sessions {
@@ -21,7 +21,7 @@ struct ConversationsView: View {
                     ContentUnavailableView.search(text: state.search)
                 }
             } else {
-                List(selection: $state.selectedSessionIDs) {
+                List(selection: Bindable(state).selectedSessionIDs) {
                     if state.library.preferences.sessionSort == .account {
                         ForEach(groups, id: \.account) { group in
                             Section(state.identity(id: group.account)) {
@@ -38,7 +38,7 @@ struct ConversationsView: View {
         .safeAreaInset(edge: .top, spacing: 0) { filterBar }
         .navigationTitle(L10n.tr("Conversations"))
         .navigationSubtitle(subtitle)
-        .searchable(text: $state.search, placement: .toolbar, prompt: L10n.tr("Search conversations, projects or accounts"))
+        .searchable(text: Bindable(state).search, placement: .toolbar, prompt: L10n.tr("Search conversations, projects or accounts"))
         .toolbar {
             InventoryToolbar(state: state)
             ToolbarItem(placement: .primaryAction) {
@@ -49,7 +49,7 @@ struct ConversationsView: View {
     }
     private var filterBar: some View {
         HStack(spacing: 10) {
-            Picker(L10n.tr("Type"), selection: $state.sessionFilter) {
+            Picker(L10n.tr("Type"), selection: Bindable(state).sessionFilter) {
                 Text(L10n.tr("All")).tag(SessionKind?.none)
                 Text("Code").tag(SessionKind?.some(.code))
                 Text("Cowork").tag(SessionKind?.some(.cowork))
@@ -57,11 +57,11 @@ struct ConversationsView: View {
             .pickerStyle(.segmented).labelsHidden().fixedSize()
             Spacer(minLength: 8)
             Menu {
-                Picker(L10n.tr("Accounts"), selection: $state.selectedAccountID) {
+                Picker(L10n.tr("Accounts"), selection: Bindable(state).selectedAccountID) {
                     Text(L10n.tr("All accounts")).tag(String?.none)
                     ForEach(sessionAccounts) { Text(state.identity($0)).tag(String?.some($0.id)) }
                 }.pickerStyle(.inline)
-                Picker(L10n.tr("Sort"), selection: $state.library.preferences.sessionSort) {
+                Picker(L10n.tr("Sort"), selection: Bindable(state).library.preferences.sessionSort) {
                     Text(L10n.tr("By time")).tag(SessionSort.time)
                     Text(L10n.tr("Group by account")).tag(SessionSort.account)
                 }.pickerStyle(.inline)
@@ -97,7 +97,7 @@ struct ConversationsView: View {
 }
 
 private struct SessionRow: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     var session: Conversation
     var showAccount: Bool
     var body: some View {
@@ -141,7 +141,7 @@ private struct SessionRow: View {
 }
 
 struct SessionInspector: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     var body: some View {
         let selected = state.selectedSessions
         Group {

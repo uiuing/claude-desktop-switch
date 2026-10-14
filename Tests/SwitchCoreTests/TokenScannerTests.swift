@@ -25,7 +25,8 @@ final class TokenScannerTests: XCTestCase {
         try h.seekToEnd(); try h.write(contentsOf: Data(text.utf8))
     }
     private func scanner(_ root: URL) -> TokenScanner {
-        TokenScanner(projects: root.appendingPathComponent("projects"), cacheURL: root.appendingPathComponent("cache/stats.json"), calendar: calendar)
+        TokenScanner(projects: root.appendingPathComponent("projects"), cacheURL: root.appendingPathComponent("cache/stats.json"), calendar: calendar,
+                     keepsRequestLedger: true, cacheWriteInterval: 0)
     }
 
     func testClaudeSemanticsAndSeparateLedger() async throws {
@@ -136,6 +137,26 @@ final class TokenScannerTests: XCTestCase {
         try append("\n" + line(), to: file)
         let appended = try await reader.scanAnalytics()
         XCTAssertEqual(appended.skippedLines, 1); XCTAssertEqual(appended.totals.total, 106)
+    }
+
+    func testCacheLeavesOutRequestsAndIsRewrittenAtMostOncePerInterval() async throws {
+        let root = try workspace(), file = root.appendingPathComponent("projects/p/main.jsonl")
+        let cache = root.appendingPathComponent("cache/stats.json")
+        func reader() -> TokenScanner { TokenScanner(projects: root.appendingPathComponent("projects"), cacheURL: cache, calendar: calendar) }
+        try write(line(), to: file)
+        let first = reader()
+        _ = try await first.scanAnalytics()
+        let written = try Data(contentsOf: cache)
+        XCTAssertNil(String(decoding: written, as: UTF8.self).range(of: "ledger"))
+        let requests = await first.ledger()
+        XCTAssertTrue(requests.events.isEmpty)
+        try append(line(id: "next", tokens: 200), to: file)
+        let appended = try await first.scanAnalytics()
+        XCTAssertEqual(appended.totals.total, 312)
+        XCTAssertEqual(try Data(contentsOf: cache), written)
+        // A restart from the older cache reads the appended line once.
+        let restarted = try await reader().scanAnalytics()
+        XCTAssertEqual(restarted.totals.total, 312); XCTAssertEqual(restarted.messages, 2)
     }
 
     func testAutomaticallyScansBeyondFormerPerFileLimit() async throws {

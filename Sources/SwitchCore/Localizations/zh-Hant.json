@@ -59,7 +59,6 @@
   "in {0}m": "{0} 分後",
   "in {0}h": "{0} 小時後",
   "in {0}d": "{0} 天後",
-  "Estimated from local changes · Excludes other devices": "依本機增量估算 · 不含其他設備",
   "Save": "儲存",
   "Save login for {0}": "儲存 {0} 的登入",
   "Keep originals and existing target conversations": "保留原檔與目標既有對話",
@@ -205,7 +204,7 @@
   "View conversations for this account": "檢視這個帳號的對話",
   "Verify the target snapshot and current Claude version": "校驗目標快照與目前 Claude 版本",
   "The file exceeds the read limit and was skipped.": "檔案超過讀取上限，已跳過。",
-  "Claude Code workers were detected. Finish your work before switching or migrating.": "檢測到 Claude Code 工作程序。請先結束工作，再進行切換或遷移。",
+  "Claude Code sessions started by Claude Desktop are still running. Wait for them to finish, then try again.": "Claude Desktop 啟動的 Claude Code 對話仍在執行，請等它們結束後再試。",
   "Model": "模型",
   "Saving the signed-in account…": "正在儲存目前登入的帳號…",
   "Updating statistics in the background…": "正在背景更新統計…",
@@ -244,7 +243,7 @@
   "Could not persist the directory. Recovery data is preserved.": "目錄持久化失敗，復原資料已保留。",
   "Could not persist the directory. Check the disk.": "目錄持久化失敗，請檢查磁碟。",
   "The target record points to a different conversation and cannot be replaced.": "目標同名記錄指向不同會話，無法覆蓋。",
-  "The target snapshot is from a different Claude version. Save that account again before switching.": "目標快照來自不同 Claude 版本，請先重新儲存該帳號後再切換。",
+  "The saved login of the target account comes from Claude {0} and can't be restored into the installed Claude {1}. Update Claude Desktop, then try again.": "目標帳號儲存的登入來自 Claude {0}，無法還原到已安裝的 Claude {1}。請先更新 Claude Desktop 再試。",
   "The target already has this conversation. Both records are preserved; nothing will be overwritten.": "目標帳號已存在同一對話；保留兩側記錄，不會覆蓋。",
   "The target account has multiple local organizations. A migration destination cannot be selected safely.": "目標帳號有多個本機組織，目前無法安全自動選擇遷移目的地。",
   "The target account has no organization information. Sign in to Desktop and scan it first.": "目標帳號缺少組織資訊，請先在 Desktop 登入並讀取一次。",
@@ -270,7 +269,6 @@
   "Cache read": "快取讀取",
   "Range": "範圍",
   "Menu bar": "選單列",
-  "To add another account, enter `/login` in Claude Desktop, press Return, and sign in to the new account.": "要新增另一個帳號，在 Claude Desktop 的對話框輸入 `/login`，按Return後登入新帳號即可。",
   "Replaces": "覆蓋",
   "Settings": "設定",
   "Settings…": "設定…",
@@ -398,5 +396,7 @@
   "demo.apiMigration": "API 用戶端遷移方案",
   "Source code": "原始碼",
   "Open the project page on GitHub": "在 GitHub 上開啟專案頁面",
-  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Claude Switch 目前還沒有遠端更新或自動更新，最新動態請關注 GitHub。"
+  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Claude Switch 目前還沒有遠端更新或自動更新，最新動態請關注 GitHub。",
+  "The organization of the target account is uncertain. Switch to it once and refresh its quota, then try again.": "無法確定目標帳號所在的組織。請先切換到這個帳號並重新整理一次額度，再重試。",
+  "Claude kept writing its data while the login was being copied. Try again in a moment.": "複製登入時 Claude 一直在寫入資料，請稍後再試。"
 }

@@ -3,7 +3,7 @@ import Charts
 import SwitchCore
 
 struct AnalyticsView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     private var report: UsageAnalytics { state.analytics.filtered(days: state.tokenDays) }
     var body: some View {
         Group {
@@ -23,7 +23,7 @@ struct AnalyticsView: View {
         .navigationSubtitle(L10n.tr("Local Claude Code"))
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Picker(L10n.tr("Range"), selection: $state.tokenDays) {
+                Picker(L10n.tr("Range"), selection: Bindable(state).tokenDays) {
                     Text(L10n.tr("All")).tag(0); Text(L10n.tr("Today")).tag(1); Text(L10n.tr("7 days")).tag(7); Text(L10n.tr("30 days")).tag(30)
                 }.pickerStyle(.segmented).fixedSize()
             }
@@ -33,7 +33,7 @@ struct AnalyticsView: View {
                 }.disabled(state.scanningTokens).help(L10n.tr("Recalculate"))
             }
         }
-        .onAppear { if !state.tokenScanDone { Task { await state.scanTokens() } } }
+        .onAppear { Task { await state.scanTokensIfStale() } }
     }
     private func content(_ report: UsageAnalytics) -> some View {
         ScrollView { cards(report) }

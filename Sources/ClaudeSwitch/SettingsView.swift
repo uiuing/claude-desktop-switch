@@ -3,7 +3,7 @@ import SwiftUI
 import SwitchCore
 
 struct SettingsView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.system.rawValue
     @AppStorage(AppTheme.preferenceKey) private var theme = AppTheme.system.rawValue
     @AppStorage(Format.showResetTimeKey) private var showResetTime = true

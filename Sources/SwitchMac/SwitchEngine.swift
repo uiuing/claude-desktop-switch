@@ -66,7 +66,12 @@ public actor SwitchEngine: SwitchService {
         guard !busy else { throw SwitchError.busy }
         busy = true; defer { busy = false }
         guard let version = environment.version else { throw SwitchError.missing(L10n.tr("Claude Desktop was not found.")) }
-        guard environment.signedIn() == true else { throw SwitchError.blocked(L10n.tr("Claude is signed out; nothing was saved.")) }
+        switch environment.signedIn() {
+        case true?: break
+        case false?: throw SwitchError.blocked(L10n.tr("Claude is signed out; nothing was saved."))
+        // Claude was writing its cookie store; nothing says it signed out.
+        case nil: throw SwitchError.changed
+        }
         let before = try currentLoginFingerprint()
         let snapshot = try capture(version: version)
         // A token refresh or account change during the read leaves a mixed snapshot; skip and retry later.
@@ -115,11 +120,8 @@ public actor SwitchEngine: SwitchService {
     }
     private func purgeTransactions(accountID id: String, before cutoff: Date?) async throws {
         var failure: Error?
-        for directory in (try? SafeFiles.children(transactions)) ?? [] {
-            guard UUID(uuidString: directory.lastPathComponent) != nil,
-                  let transaction = try? FileTransaction(existing: directory, live: environment.desktop),
-                  ["committed", "recovered"].contains(transaction.journal.phase),
-                  cutoff.map({ transaction.journal.createdAt < $0 }) ?? true else { continue }
+        for transaction in finishedTransactions() {
+            guard cutoff.map({ transaction.journal.createdAt < $0 }) ?? true else { continue }
             var parts = Set<String>()
             if transaction.journal.targetAccountID == id { parts.formUnion(["staged", "quarantine"]) }
             if transaction.journal.sourceAccountID == id { parts.insert("originals") }
@@ -129,6 +131,38 @@ public actor SwitchEngine: SwitchService {
         if let failure {
             let reason = (failure as? SwitchError)?.localizedDescription ?? failure.localizedDescription
             throw SwitchError.blocked(L10n.tr("The saved login was deleted, but not every backup copy could be deleted: {0}", L10n.argument(reason)))
+        }
+    }
+    /// Committed or rolled-back transactions. Folders that are not a readable transaction are left alone.
+    private func finishedTransactions() -> [FileTransaction] {
+        ((try? SafeFiles.children(transactions)) ?? []).compactMap { directory in
+            guard UUID(uuidString: directory.lastPathComponent) != nil,
+                  let transaction = try? FileTransaction(existing: directory, live: environment.desktop),
+                  ["committed", "recovered"].contains(transaction.journal.phase) else { return nil }
+            return transaction
+        }
+    }
+
+    static let keptLoginSwaps = 2, finishedRetention: TimeInterval = 7 * 86400
+    /// A finished transaction only backs `restoreLogin`, which needs the newest login an account swapped out:
+    /// that many stay per account, anything else finished goes after a week. Unfinished transactions are the
+    /// way back from an interruption and are never pruned.
+    public func pruneTransactions(now: Date = Date()) throws {
+        guard !busy else { return }
+        busy = true; defer { busy = false }
+        let operationLock = try OperationLock(root: environment.root)
+        defer { withExtendedLifetime(operationLock) {} }
+        prune(now: now)
+    }
+    private func prune(now: Date) {
+        var swaps: [String: Int] = [:]
+        for transaction in finishedTransactions().sorted(by: { $0.journal.createdAt > $1.journal.createdAt }) {
+            if transaction.journal.phase == "committed", transaction.holdsLogin, !transaction.sourcePurged,
+               let source = transaction.journal.sourceAccountID {
+                swaps[source, default: 0] += 1
+                if swaps[source, default: 0] <= Self.keptLoginSwaps { continue }
+            } else if now.timeIntervalSince(transaction.journal.createdAt) < Self.finishedRetention { continue }
+            try? transaction.discard()
         }
     }
 
@@ -143,13 +177,10 @@ public actor SwitchEngine: SwitchService {
         return missing
     }
     private func archivedLogins() -> [(TransactionJournal, URL)] {
-        let directories = (try? SafeFiles.children(transactions)) ?? []
-        return directories.compactMap { directory -> (TransactionJournal, URL)? in
-            guard UUID(uuidString: directory.lastPathComponent) != nil,
-                  let transaction = try? FileTransaction(existing: directory, live: environment.desktop),
-                  transaction.journal.phase == "committed", transaction.journal.sourceAccountID != nil,
-                  !transaction.sourcePurged else { return nil }
-            let archive = directory.appendingPathComponent("recovery.switchbackup")
+        finishedTransactions().compactMap { transaction -> (TransactionJournal, URL)? in
+            guard transaction.journal.phase == "committed", transaction.journal.sourceAccountID != nil,
+                  transaction.holdsLogin, !transaction.sourcePurged else { return nil }
+            let archive = transaction.root.appendingPathComponent("recovery.switchbackup")
             return FileManager.default.fileExists(atPath: archive.path) ? (transaction.journal, archive) : nil
         }.sorted { $0.0.createdAt > $1.0.createdAt }
     }
@@ -181,7 +212,7 @@ public actor SwitchEngine: SwitchService {
                 for depth in parts.indices { directories.insert(parts[...depth].joined(separator: "/")) }
             }
             guard directories.contains("Local Storage") else { continue }
-            try await vault.save(LoginSnapshot(accountID: id, version: version, createdAt: journal.createdAt,
+            try await vault.save(LoginSnapshot(accountID: id, version: journal.claudeVersion ?? version, createdAt: journal.createdAt,
                 auth: (config.object ?? [:]).filter { IdentitySchema.configKeys.contains($0.key) },
                 files: files, directories: directories.sorted()))
             return
@@ -219,12 +250,13 @@ public actor SwitchEngine: SwitchService {
         guard try environment.lastKnownAccount() == plan.sourceAccountID,
               let application = environment.application, let version = environment.version else { throw SwitchError.changed }
         let targetSnapshot = plan.kind == .switchAccount ? try await vault.load(accountID: target.id) : nil
-        if let targetSnapshot, targetSnapshot.version != version {
-            throw SwitchError.blocked(L10n.tr("The target snapshot is from a different Claude version. Save that account again before switching."))
+        if let targetSnapshot, !DesktopVersion.canRestore(saved: targetSnapshot.version, installed: version) {
+            throw SwitchError.blocked(L10n.tr("The saved login of the target account comes from Claude {0} and can't be restored into the installed Claude {1}. Update Claude Desktop, then try again.",
+                                              targetSnapshot.version, version))
         }
         let changes = try MigrationBuilder.changes(sessions: sessions, target: target, environment: environment,
             expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations, modes: plan.transferModes)
-        let desktop = await DesktopController()
+        let desktop = await DesktopController(environment: environment)
         let wasRunning = try await desktop.quitGracefully()
         // Exiting writes some config fields. Revalidate identity, not the pre-quit whole-file hash.
         guard try environment.lastKnownAccount() == plan.sourceAccountID else { throw SwitchError.changed }
@@ -245,7 +277,7 @@ public actor SwitchEngine: SwitchService {
             do { try await vault.save(capture(version: version)) }
             catch { if wasRunning { try? await desktop.launch(application) }; throw error }
         }
-        let transaction = try FileTransaction(parent: transactions, live: environment.desktop, plan: plan)
+        let transaction = try FileTransaction(parent: transactions, live: environment.desktop, plan: plan, claudeVersion: version)
         do {
             if swapsLogin {
                 // Signing out installs an empty identity: Claude's login moves into the vault, nothing else is touched.
@@ -292,6 +324,7 @@ public actor SwitchEngine: SwitchService {
         var archiveNotice = ""
         do { try await transaction.archive(vault: vault) }
         catch { archiveNotice = L10n.tr(" Recovery copies remain in the protected local transaction folder; encrypted archiving is not yet complete.") }
+        prune(now: Date())
         if wasRunning || swapsLogin {
             do { try await desktop.launch(application) }
             catch { return L10n.tr("Data was applied, but Claude could not reopen automatically. Recovery data is preserved. Open Claude manually and verify the login.") + archiveNotice }
@@ -309,7 +342,7 @@ public actor SwitchEngine: SwitchService {
         busy = true; defer { busy = false }
         let operationLock = try OperationLock(root: environment.root)
         defer { withExtendedLifetime(operationLock) {} }
-        let desktop = await DesktopController()
+        let desktop = await DesktopController(environment: environment)
         try await desktop.assertStopped()
         let transaction = try FileTransaction(existing: transactions.appendingPathComponent(transactionID), live: environment.desktop)
         guard !["committed", "recovered"].contains(transaction.journal.phase) else {
@@ -317,6 +350,7 @@ public actor SwitchEngine: SwitchService {
         }
         try await transaction.rollback { try await desktop.assertStopped() }
         try await transaction.archive(vault: vault)
+        prune(now: Date())
     }
 
     private func capture(version: String) throws -> LoginSnapshot {
@@ -350,8 +384,11 @@ public actor SwitchEngine: SwitchService {
         guard let cookies = files.first(where: { $0.path == "Cookies" }), directories.contains("Local Storage") else {
             throw SwitchError.blocked(L10n.tr("The login container does not match the current adapter. A recoverable snapshot cannot be created."))
         }
-        guard LoginProbe.signedIn(cookieData: cookies.data) == true else {
-            throw SwitchError.blocked(L10n.tr("Claude is signed out; nothing was saved."))
+        switch LoginProbe.signedIn(cookieData: cookies.data) {
+        case true?: break
+        case false?: throw SwitchError.blocked(L10n.tr("Claude is signed out; nothing was saved."))
+        // The copy caught the cookie store mid-write.
+        case nil: throw SwitchError.changed
         }
         return LoginSnapshot(accountID: account, version: version, createdAt: Date(),
                              auth: (config.object ?? [:]).filter { IdentitySchema.configKeys.contains($0.key) },

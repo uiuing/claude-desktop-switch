@@ -59,7 +59,6 @@
   "in {0}m": "{0} 分後",
   "in {0}h": "{0} 時間後",
   "in {0}d": "{0} 日後",
-  "Estimated from local changes · Excludes other devices": "ローカルの増分から推定 · 他の端末を除く",
   "Save": "保存",
   "Save login for {0}": "{0} のログインを保存",
   "Keep originals and existing target conversations": "原本とコピー先の既存会話を保持",
@@ -205,7 +204,7 @@
   "View conversations for this account": "このアカウントの会話を表示",
   "Verify the target snapshot and current Claude version": "対象のスナップショットと Claude のバージョンを確認",
   "The file exceeds the read limit and was skipped.": "ファイルが読み取り上限を超えたためスキップしました。",
-  "Claude Code workers were detected. Finish your work before switching or migrating.": "Claude Code の作業プロセスが見つかりました。切り替えや移行の前に作業を終了してください。",
+  "Claude Code sessions started by Claude Desktop are still running. Wait for them to finish, then try again.": "Claude Desktop が起動した Claude Code のセッションがまだ実行中です。終了するまで待ってから再試行してください。",
   "Model": "モデル",
   "Saving the signed-in account…": "ログイン中のアカウントを保存中…",
   "Updating statistics in the background…": "バックグラウンドで統計を更新中…",
@@ -244,7 +243,7 @@
   "Could not persist the directory. Recovery data is preserved.": "ディレクトリを永続化できません。復元データは保持されています。",
   "Could not persist the directory. Check the disk.": "ディレクトリを永続化できません。ディスクを確認してください。",
   "The target record points to a different conversation and cannot be replaced.": "移行先の同名記録は別の会話を指すため、上書きできません。",
-  "The target snapshot is from a different Claude version. Save that account again before switching.": "対象のスナップショットは別の Claude バージョンで作成されています。切り替える前に保存し直してください。",
+  "The saved login of the target account comes from Claude {0} and can't be restored into the installed Claude {1}. Update Claude Desktop, then try again.": "切り替え先アカウントの保存済みログインは Claude {0} で作成されたため、インストール済みの Claude {1} には復元できません。Claude Desktop をアップデートしてから再試行してください。",
   "The target already has this conversation. Both records are preserved; nothing will be overwritten.": "コピー先に同じ会話があります。両方を保持し、上書きしません。",
   "The target account has multiple local organizations. A migration destination cannot be selected safely.": "対象のアカウントには複数のローカル組織があり、移行先を安全に自動選択できません。",
   "The target account has no organization information. Sign in to Desktop and scan it first.": "対象アカウントの組織情報がありません。先に Desktop へログインして読み取ってください。",
@@ -270,7 +269,6 @@
   "Cache read": "キャッシュ読み取り",
   "Range": "期間",
   "Menu bar": "メニューバー",
-  "To add another account, enter `/login` in Claude Desktop, press Return, and sign in to the new account.": "別のアカウントを追加するには、Claude Desktop で `/login` と入力して Return を押し、新しいアカウントでログインしてください。",
   "Replaces": "上書き",
   "Settings": "設定",
   "Settings…": "設定…",
@@ -398,5 +396,7 @@
   "demo.apiMigration": "API クライアント移行計画",
   "Source code": "ソースコード",
   "Open the project page on GitHub": "GitHub でプロジェクトページを開く",
-  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Claude Switch には現在、リモート更新や自動アップデートはありません。最新情報は GitHub をご覧ください。"
+  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Claude Switch には現在、リモート更新や自動アップデートはありません。最新情報は GitHub をご覧ください。",
+  "The organization of the target account is uncertain. Switch to it once and refresh its quota, then try again.": "切り替え先アカウントの組織を特定できません。一度そのアカウントに切り替えて使用枠を更新してから、再試行してください。",
+  "Claude kept writing its data while the login was being copied. Try again in a moment.": "ログインのコピー中も Claude がデータを書き込み続けていました。少し待ってから再試行してください。"
 }

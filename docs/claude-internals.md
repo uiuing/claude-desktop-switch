@@ -50,7 +50,7 @@ The plaintext is a JSON object. Keys look like `<client>:<org>:https://api.anthr
 ## Accounts, emails and plans
 
 - Desktop stores no account name or avatar locally; the UUID is the identity.
-- `~/.claude.json` → `oauthAccount.accountUuid`, `emailAddress`, `organizationUuid` (the Claude Code login, which may differ from Desktop's). [`LocalReader`]
+- `~/.claude.json` → `oauthAccount.accountUuid`, `emailAddress`, `organizationUuid` (the Claude Code login, which may differ from Desktop's: another account, or another organization of the same account, so its organization only fills a gap). Only `oauthAccount` is decoded; the file also holds project history. [`LocalReader`]
 - `IndexedDB/https_claude.ai_0.indexeddb.blob/…`: claude.ai's persisted query cache. Values are V8-serialized and usually Snappy-compressed (`FF 11 02` header). From it Claude Switch reads `account { uuid, email_address }`, each organization's `rate_limit_tier` and `capabilities`, and `current_account.messageLimits[<org>]`. Values are paired only with the `uuid` of the object that holds them, and parsing stops at unknown tags. [`DesktopProfile`]
 - Plan names come from `rate_limit_tier` (words `max` with an optional `5x`/`20x`, `pro`, `team`, `enterprise`), falling back to capabilities `claude_max` / `claude_pro`.
 
@@ -90,6 +90,7 @@ Headers match Claude Code's `/usage`: `Authorization: Bearer <token>`, `anthropi
 
 ## Process behavior
 
-- Claude must be quit through a normal quit request; helper processes and Claude Code workers can keep files open. Claude Switch never sends `kill`. [`DesktopController`]
+- Claude must be quit through a normal quit request; its helper processes and the Claude Code sessions it runs (builds in `claude-code/<version>/`) can keep files open after it exits. Claude Code started from a terminal or an editor has its own login and never touches Desktop's files, so it is not waited for. Claude Switch never sends `kill`. [`DesktopController`]
+- The bundle version (`CFBundleShortVersionString`) is a dotted number. Claude upgrades data left by an older version; data from a newer version may not be readable. [`DesktopVersion`]
 - Signing out in Claude, or `/login` in Claude Code, revokes the login on the server; restoring a saved copy afterwards fails and Claude shows its sign-in screen within seconds.
 - Claude's updater can restart the app at any time; operations re-check state at each step instead of assuming it.

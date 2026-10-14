@@ -7,7 +7,6 @@ enum DemoData {
     struct Content {
         var library: LibraryState
         var inventory: LocalInventory
-        var tokens: TokenReport
         var analytics: UsageAnalytics
     }
 
@@ -62,14 +61,9 @@ enum DemoData {
         library.usage = Dictionary(uniqueKeysWithValues: usage.map { ($0.accountID, $0) })
         library.follows = [FollowRule(conversationID: conversations[1].id, sessionID: conversations[1].sessionID),
                            FollowRule(conversationID: conversations[2].id, sessionID: conversations[2].sessionID)]
-        let events = (0..<42).map { i in
-            TokenEvent(requestID: "demo-\(i)", messageID: "message-\(i)", sessionID: "demo", accountID: personal.id,
-                       timestamp: now.addingTimeInterval(-Double(i * 12_000)), model: i % 3 == 0 ? "claude-opus" : "claude-sonnet",
-                       counts: TokenCounts(input: 1100 + i * 210, output: 500 + i * 60, cacheRead: 5300 + i * 580, cacheWrite: 1600), incomplete: false)
-        }
         let inventory = LocalInventory(activeAccountID: personal.id, accounts: library.accounts, conversations: conversations,
                                        usage: usage[0], warnings: [L10n.tr("demo.sampleNotice")], signedIn: true)
-        return Content(library: library, inventory: inventory, tokens: TokenReport.aggregate(events), analytics: analytics(now: now))
+        return Content(library: library, inventory: inventory, analytics: analytics(now: now))
     }
 
     /// Almost a year of steadily growing activity from a fixed seed, so every launch and screenshot looks the same.

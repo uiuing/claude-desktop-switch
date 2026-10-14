@@ -59,7 +59,6 @@
   "in {0}m": "через {0} мин",
   "in {0}h": "через {0} ч",
   "in {0}d": "через {0} дн.",
-  "Estimated from local changes · Excludes other devices": "Оценка по локальным изменениям · Без других устройств",
   "Save": "Сохранить",
   "Save login for {0}": "Сохранить вход для {0}",
   "Keep originals and existing target conversations": "Сохранить оригиналы и существующие беседы целевого аккаунта",
@@ -205,7 +204,7 @@
   "View conversations for this account": "Показать беседы аккаунта",
   "Verify the target snapshot and current Claude version": "Проверить целевой снимок и текущую версию Claude",
   "The file exceeds the read limit and was skipped.": "Файл превышает лимит чтения и пропущен.",
-  "Claude Code workers were detected. Finish your work before switching or migrating.": "Обнаружены рабочие процессы Claude Code. Завершите работу перед переключением или переносом.",
+  "Claude Code sessions started by Claude Desktop are still running. Wait for them to finish, then try again.": "Сеансы Claude Code, запущенные Claude Desktop, ещё работают. Дождитесь их завершения и повторите попытку.",
   "Model": "Модель",
   "Saving the signed-in account…": "Сохранение текущего аккаунта…",
   "Updating statistics in the background…": "Обновление статистики в фоне…",
@@ -244,7 +243,7 @@
   "Could not persist the directory. Recovery data is preserved.": "Не удалось сохранить каталог на диск. Данные восстановления сохранены.",
   "Could not persist the directory. Check the disk.": "Не удалось сохранить каталог на диск. Проверьте диск.",
   "The target record points to a different conversation and cannot be replaced.": "Запись назначения указывает на другой разговор и не может быть заменена.",
-  "The target snapshot is from a different Claude version. Save that account again before switching.": "Снимок создан в другой версии Claude. Сохраните аккаунт заново перед переключением.",
+  "The saved login of the target account comes from Claude {0} and can't be restored into the installed Claude {1}. Update Claude Desktop, then try again.": "Сохранённый вход целевого аккаунта создан в Claude {0} и не может быть восстановлен в установленной версии Claude {1}. Обновите Claude Desktop и повторите попытку.",
   "The target already has this conversation. Both records are preserved; nothing will be overwritten.": "В целевом аккаунте уже есть эта беседа. Обе записи сохранятся без перезаписи.",
   "The target account has multiple local organizations. A migration destination cannot be selected safely.": "У целевого аккаунта несколько локальных организаций. Безопасно выбрать место переноса автоматически нельзя.",
   "The target account has no organization information. Sign in to Desktop and scan it first.": "Нет данных организации целевого аккаунта. Сначала войдите в Desktop и выполните чтение.",
@@ -270,7 +269,6 @@
   "Cache read": "Чтение кэша",
   "Range": "Период",
   "Menu bar": "Строка меню",
-  "To add another account, enter `/login` in Claude Desktop, press Return, and sign in to the new account.": "Чтобы добавить аккаунт, введите `/login` в Claude Desktop, нажмите Return и войдите в новый аккаунт.",
   "Replaces": "Заменит",
   "Settings": "Настройки",
   "Settings…": "Настройки…",
@@ -398,5 +396,7 @@
   "demo.apiMigration": "План миграции API-клиента",
   "Source code": "Исходный код",
   "Open the project page on GitHub": "Открыть страницу проекта на GitHub",
-  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Пока у Claude Switch нет удалённых и автоматических обновлений. Следите за новыми версиями на GitHub."
+  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Пока у Claude Switch нет удалённых и автоматических обновлений. Следите за новыми версиями на GitHub.",
+  "The organization of the target account is uncertain. Switch to it once and refresh its quota, then try again.": "Не удалось определить организацию целевого аккаунта. Один раз переключитесь на него, обновите лимит и повторите попытку.",
+  "Claude kept writing its data while the login was being copied. Try again in a moment.": "Claude продолжал записывать данные, пока копировался вход. Повторите попытку чуть позже."
 }

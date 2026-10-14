@@ -174,6 +174,23 @@ final class SessionTransferTests: XCTestCase {
         XCTAssertThrowsError(try f.changes())
     }
 
+    func testGuessedOrganizationMustMatchWhereTheTargetsSessionsAre() throws {
+        let f = try fixture()
+        try FileManager.default.removeItem(at: f.destination)
+        let elsewhere = f.env.desktop.appendingPathComponent(
+            "claude-code-sessions/\(f.target.id)/\(UUID().uuidString.lowercased())/\(UUID().uuidString.lowercased()).json")
+        try SafeFiles.privateDirectory(elsewhere.deletingLastPathComponent())
+        try SafeFiles.atomicWrite(Data("{}".utf8), to: elsewhere)
+        func changes(_ target: Account) throws -> [MigrationChange] {
+            try MigrationBuilder.changes(sessions: [f.session], target: target, environment: f.env,
+                expectedDigests: [f.session.id: digest(f.sourceData)], destinations: [f.destinationRelative: .absent], modes: [:])
+        }
+        XCTAssertThrowsError(try changes(f.target))
+        var confirmed = f.target
+        confirmed.organizationVerifiedAt = Date()
+        XCTAssertNoThrow(try changes(confirmed))
+    }
+
     func testNewDestinationAndMissingTranscript() throws {
         let f = try fixture()
         try FileManager.default.removeItem(at: f.destination)

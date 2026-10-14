@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Observation
 import SwiftUI
 import SwitchCore
 import SwitchStorage
@@ -26,39 +27,45 @@ struct PendingOperation: Identifiable {
     var sessions: [Conversation]
 }
 
+/// Views redraw only for the properties they read, so a statistics scan does not redraw the menu bar.
 @MainActor
-final class AppState: ObservableObject {
-    @Published var page: NavigationPage = .accounts
-    @Published var library = LibraryState()
-    @Published var inventory: LocalInventory?
-    @Published var tokenReport = TokenReport()
-    @Published var tokenDays = 0
-    @Published var analytics = UsageAnalytics()
-    @Published var tokenScanError: String?
-    @Published var tokenInitialScan = true
-    @Published var refreshing = false
-    @Published var usageRefreshingAccountID: String?
-    @Published var usageErrors: [String: String] = [:]
+@Observable
+final class AppState {
+    /// The app's one instance. A second one would run its own refresh, save and recovery loop.
+    static let shared = AppState()
+    var page: NavigationPage = .accounts
+    var library = LibraryState()
+    var inventory: LocalInventory?
+    var tokenDays = 0
+    var analytics = UsageAnalytics()
+    var tokenScanError: String?
+    var tokenInitialScan = true
+    var refreshing = false
+    var usageRefreshingAccountID: String?
+    var usageErrors: [String: String] = [:]
     /// A manual read that came within the per-login back-off; its notice counts down and clears itself.
-    @Published private(set) var usageCooldowns: [String: UsageCoolingDown] = [:]
+    private(set) var usageCooldowns: [String: UsageCoolingDown] = [:]
     /// Why the last live read was skipped while the login is merely not readable yet; shown only on hover.
-    @Published var usageNotices: [String: String] = [:]
-    @Published var scanningTokens = false
-    @Published var working = false
-    @Published var message: String?
-    @Published var pending: PendingOperation?
-    @Published var search = ""
-    @Published var selectedSessionIDs = Set<String>()
-    @Published var sessionFilter: SessionKind?
-    @Published var selectedAccountID: String?
-    @Published var showSessionInspector = true
-    @Published var showAddAccount = false
-    @Published var showQuickFind = false
-    @Published var recoveryIDs: [String] = []
-    @Published var tokenScanDone = false
-    @Published var savingLogin = false
-    @Published var loginSaveError: String?
-    private var failedLoginFingerprint: String?
+    var usageNotices: [String: String] = [:]
+    var scanningTokens = false
+    var working = false
+    var message: String?
+    var pending: PendingOperation?
+    var search = ""
+    var selectedSessionIDs = Set<String>()
+    var sessionFilter: SessionKind?
+    var selectedAccountID: String?
+    var showSessionInspector = true
+    var showAddAccount = false
+    var showQuickFind = false
+    var recoveryIDs: [String] = []
+    var tokenScanDone = false
+    var savingLogin = false
+    var loginSaveError: String?
+    @ObservationIgnored private var failedLoginFingerprint: String?
+    @ObservationIgnored private var loginSaveAttempts = 0
+    @ObservationIgnored private var loginSaveRetryAt: Date?
+    @ObservationIgnored private var loginSaveRetry: Task<Void, Never>?
     let demo: Bool
     let environment = MacEnvironment()
     private let store: LibraryStore
@@ -67,14 +74,12 @@ final class AppState: ObservableObject {
     private let vault: CredentialVault
     private let engine: SwitchEngine
     private let usageClient: ActiveUsageClient
-    private var started = false
+    @ObservationIgnored private var started = false
     private var libraryReadable = true
-    private var polling: Task<Void, Never>?
-    private var profileLookups = Set<String>()
-    private var lastSignedInID: String?
-    @Published private var quotaProjections: [String: QuotaProjection] = [:]
-    @Published private var transferChoices: [String: SessionTransferMode] = [:]
-    private var projectionGeneration = UUID()
+    @ObservationIgnored private var polling: Task<Void, Never>?
+    @ObservationIgnored private var profileLookups = Set<String>()
+    @ObservationIgnored private var lastSignedInID: String?
+    private var transferChoices: [String: SessionTransferMode] = [:]
 
     init(demo: Bool = ProcessInfo.processInfo.arguments.contains("--demo")) {
         self.demo = demo
@@ -88,7 +93,7 @@ final class AppState: ObservableObject {
         usageClient = ActiveUsageClient(environment: env)
         if demo {
             let data = DemoData.make()
-            library = data.library; inventory = data.inventory; tokenReport = data.tokens; analytics = data.analytics
+            library = data.library; inventory = data.inventory; analytics = data.analytics
             tokenScanDone = true
         }
         Task { [weak self] in await self?.start() }
@@ -107,7 +112,7 @@ final class AppState: ObservableObject {
             if var stored = merged[discovered.id] {
                 stored.email = discovered.email ?? stored.email
                 if let organization = discovered.organizationID {
-                    stored.setOrganization(organization)
+                    if stored.organizationVerifiedAt == nil { stored.setOrganization(organization) }
                     if let seen = discovered.planObservedAt {
                         stored.observePlan(discovered.plan, organizationID: organization, at: seen)
                     }
@@ -137,13 +142,7 @@ final class AppState: ObservableObject {
     var canExecute: Bool { BuildAccess.allowsClaudeWrites && !demo && !working && libraryReadable }
     var currentUsage: UsageSnapshot? { activeID.flatMap { library.usage[$0] } }
     func quotaRows(for accountID: String, now: Date = Date()) -> [QuotaReadout] {
-        let snapshot = library.usage[accountID]
-        var projections: [String: QuotaProjection] = [:]
-        for window in snapshot?.windows ?? [] {
-            projections[window.id] = quotaProjections[accountID + ":" + window.id]
-        }
-        return AccountQuotaPresentation.rows(accountID: accountID, snapshot: snapshot,
-            active: accountID == activeID, projections: projections, now: now)
+        AccountQuotaPresentation.rows(accountID: accountID, snapshot: library.usage[accountID], active: accountID == activeID, now: now)
     }
     func quotaUpdated(for accountID: String, now: Date = Date()) -> String {
         guard let snapshot = library.usage[accountID], snapshot.accountID == accountID else { return L10n.tr("No quota data yet") }
@@ -166,31 +165,12 @@ final class AppState: ObservableObject {
         guard let snapshot = library.usage[accountID], snapshot.accountID == accountID else { return [] }
         return snapshot.windows.filter { !["five_hour", "seven_day"].contains($0.id) }.map { window in
             QuotaReadout.make(id: window.id, title: L10n.quotaTitle(window.id, fallback: window.title), window: window, snapshot: snapshot,
-                active: accountID == activeID, projection: quotaProjections[accountID + ":" + window.id], now: now)
+                active: accountID == activeID, now: now)
         }
-    }
-    func projection(_ window: QuotaWindow, snapshot: UsageSnapshot, active: Bool) -> QuotaProjection {
-        quotaProjections[snapshot.accountID + ":" + window.id] ?? QuotaEstimator.project(window, snapshot: snapshot, active: active)
-    }
-    private func updateProjections() async {
-        let generation = UUID(); projectionGeneration = generation
-        let snapshots = library.usage, histories = library.usageHistory, report = tokenReport, active = activeID
-        let result = await Task.detached(priority: .utility) {
-            var values: [String: QuotaProjection] = [:]
-            for snapshot in snapshots.values {
-                for window in snapshot.windows {
-                    values[snapshot.accountID + ":" + window.id] = QuotaCalibrator.projection(window: window,
-                        snapshot: snapshot, history: histories[snapshot.accountID] ?? [], report: report, active: snapshot.accountID == active)
-                }
-            }
-            return values
-        }.value
-        if generation == projectionGeneration { quotaProjections = result }
     }
     private func acceptUsage(_ incoming: UsageSnapshot) {
         let snapshot = incoming.retainingKnownResets(from: library.usage[incoming.accountID])
         library.usage[snapshot.accountID] = snapshot
-        quotaProjections = quotaProjections.filter { !$0.key.hasPrefix(snapshot.accountID + ":") }
         var history = library.usageHistory[snapshot.accountID] ?? []
         if history.last?.observedAt != snapshot.observedAt { history.append(snapshot) }
         library.usageHistory[snapshot.accountID] = Array(history.suffix(128))
@@ -235,24 +215,39 @@ final class AppState: ObservableObject {
         guard !demo else { return }
         do { library = try await store.load() }
         catch { libraryReadable = false; message = L10n.tr("Could not read the Switch library. Settings changed in this session will not be saved.") }
-        Task { [weak self] in await self?.scanTokens() }
+        Task(priority: .utility) { [weak self] in await self?.scanTokens() }
         do { try await engine.purgeMovedAsideLogins() } catch { message = display(error) }
+        try? await engine.pruneTransactions()
         await refresh()
-        polling = Task { [weak self] in
+        polling = Task(priority: .utility) { [weak self] in
             while !Task.isCancelled {
                 do { try await Task.sleep(nanoseconds: 60_000_000_000) } catch { return }
                 guard let self else { return }
                 await self.refresh()
-                await self.scanTokens()
+                if self.usageOnScreen || Date().timeIntervalSince(self.lastTokenScan) >= Self.backgroundScanInterval {
+                    await self.scanTokens()
+                }
             }
         }
+    }
+    /// Statistics only show on the Usage page; while it is off screen the cache is kept current far less often.
+    private static let backgroundScanInterval: TimeInterval = 600
+    @ObservationIgnored private var lastTokenScan = Date.distantPast
+    private var usageOnScreen: Bool { page == .usage && WorkbenchLifecycle.shared.workbenchOnScreen }
+    /// Opening the Usage page catches up at once instead of waiting for the next scan.
+    func scanTokensIfStale() async {
+        guard Date().timeIntervalSince(lastTokenScan) >= 60 else { return }
+        await scanTokens()
     }
     func refresh() async {
         guard !refreshing, !working else { return }
         if demo { return }
         refreshing = true; defer { refreshing = false }
         do {
-            let result = try await reader.scan()
+            let verified = Dictionary(library.accounts.compactMap { account in
+                account.organizationVerifiedAt == nil ? nil : account.organizationID.map { (account.id, $0) }
+            }, uniquingKeysWith: { first, _ in first })
+            let result = try await reader.scan(verifiedOrganizations: verified)
             var changed = false
             inventory = result
             selectedSessionIDs.formIntersection(unarchivedSessions.map(\.id))
@@ -303,18 +298,22 @@ final class AppState: ObservableObject {
             recoverableLogins = await engine.recoverableLogins()
                 .filter { id in !updated.contains { $0.id == id && $0.hasSnapshot } }.sorted()
             if changed { persist() }
-            await updateProjections()
         } catch is CancellationError {
         } catch { message = display(error) }
         await saveCurrentLogin()
     }
     /// Keeps the signed-in account's saved login current. Only Switch's own vault is written.
+    /// `retry` is the user asking again; a failed save is otherwise only retried on its own schedule.
     func saveCurrentLogin(retry: Bool = false) async {
         guard !demo, libraryReadable, !savingLogin, !working, let activeID else { return }
         guard let fingerprint = try? await engine.currentLoginFingerprint() else { return }
         let stored = knownAccounts.first { $0.id == activeID }
         if stored?.hasSnapshot == true && stored?.snapshotFingerprint == fingerprint { loginSaveError = nil; return }
-        if !retry && failedLoginFingerprint == fingerprint { return }
+        if retry || failedLoginFingerprint != fingerprint {
+            loginSaveAttempts = 0; loginSaveRetryAt = nil
+        } else if loginSaveRetryAt.map({ $0 > Date() }) ?? true {
+            return
+        }
         savingLogin = true; defer { savingLogin = false }
         do {
             let saved = try await engine.saveCurrentLogin()
@@ -324,12 +323,41 @@ final class AppState: ObservableObject {
             all[index].hasSnapshot = true; all[index].lastSavedAt = Date(); all[index].snapshotFingerprint = saved.fingerprint
             all[index].loginInvalidAt = nil
             library.accounts = all; loginSaveError = nil; failedLoginFingerprint = nil
+            loginSaveAttempts = 0; loginSaveRetryAt = nil; loginSaveRetry?.cancel()
             persist()
             if added { Task { await refreshLive(trigger: .accountChanged(saved.accountID)) } }
         } catch {
             failedLoginFingerprint = fingerprint
-            loginSaveError = display(error)
+            if Self.retriesLoginSave(after: error), loginSaveAttempts < Self.loginSaveRetryDelays.count {
+                let delay = Self.loginSaveRetryDelays[loginSaveAttempts]
+                loginSaveAttempts += 1; loginSaveRetryAt = Date().addingTimeInterval(delay); loginSaveError = nil
+                loginSaveRetry?.cancel()
+                loginSaveRetry = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    guard !Task.isCancelled else { return }
+                    await self?.saveCurrentLogin()
+                }
+            } else {
+                loginSaveRetryAt = nil
+                loginSaveError = loginSaveMessage(error)
+            }
         }
+    }
+    /// Copying a login while Claude writes to it can catch a file mid-change. Such a save is tried again after these
+    /// delays; a format or Keychain problem is not, as waiting does not change it.
+    private static let loginSaveRetryDelays: [TimeInterval] = [5, 15, 45]
+    private static func retriesLoginSave(after error: Error) -> Bool {
+        guard let error = error as? SwitchError else { return true }
+        switch error {
+        case .changed, .busy, .missing: return true
+        case .blocked, .malformed, .unsafePath: return false
+        }
+    }
+    private func loginSaveMessage(_ error: Error) -> String {
+        if case .changed? = error as? SwitchError {
+            return L10n.tr("Claude kept writing its data while the login was being copied. Try again in a moment.")
+        }
+        return display(error)
     }
     func canRemove(_ account: Account) -> Bool { account.id != activeID && !working }
     /// Forgets an account in Switch only: its saved login and quota history. Claude is not touched.
@@ -379,14 +407,13 @@ final class AppState: ObservableObject {
                 dismissUsageError(accountID); usageNotices[accountID] = nil
                 if let identity = await usageClient.identity(), let index = library.accounts.firstIndex(where: { $0.id == identity.id }) {
                     library.accounts[index].email = identity.email ?? library.accounts[index].email
-                    if let organization = identity.organizationID { library.accounts[index].setOrganization(organization) }
+                    if let organization = identity.organizationID { library.accounts[index].confirmOrganization(organization, at: Date()) }
                 }
                 if let verified = await usageClient.takeVerifiedPlan(),
                    let index = library.accounts.firstIndex(where: { $0.id == verified.accountID }) {
                     library.accounts[index].observePlan(verified.plan, organizationID: verified.organizationID, at: verified.observedAt)
                 }
                 persist()
-                await updateProjections()
                 return
             } catch is UsageNotReady where Date() < deadline {
                 do { try await Task.sleep(nanoseconds: 10_000_000_000) } catch { return }
@@ -423,6 +450,7 @@ final class AppState: ObservableObject {
     }
     func scanTokens() async {
         guard !demo, !scanningTokens else { return }
+        lastTokenScan = Date()
         tokenInitialScan = !tokenScanDone
         scanningTokens = true; tokenScanError = nil
         defer { scanningTokens = false; tokenInitialScan = false }
@@ -433,9 +461,7 @@ final class AppState: ObservableObject {
             analytics = try await tokens.scanAnalytics { [weak self] report in
                 await self?.acceptAnalytics(report)
             }
-            tokenReport = await tokens.ledger()
             tokenScanDone = true
-            await updateProjections()
         } catch is CancellationError {
         } catch { tokenScanError = display(error); tokenScanDone = true }
     }
@@ -523,10 +549,10 @@ final class AppState: ObservableObject {
         }
     }
 
-    @Published var awaitingNewLogin = false
-    private var loginWatch: Task<Void, Never>?
+    var awaitingNewLogin = false
+    @ObservationIgnored private var loginWatch: Task<Void, Never>?
     /// Accounts whose saved login is gone from the vault but that Switch still holds a copy of.
-    @Published var recoverableLogins: [String] = []
+    var recoverableLogins: [String] = []
     func restoreLogin(_ accountID: String) async {
         guard !demo, !working else { return }
         working = true
@@ -574,10 +600,11 @@ final class AppState: ObservableObject {
         let started = Date()
         loginWatch?.cancel()
         loginWatch = Task { [weak self] in
+            var seen = await self?.loginSignature()
             for _ in 0..<300 {
                 do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
                 guard let self else { return }
-                await self.refresh()
+                await self.refreshOnLoginChange(since: &seen)
                 if let account = self.activeAccount, (account.lastSavedAt ?? .distantPast) > started {
                     self.awaitingNewLogin = false
                     self.message = L10n.tr("Saved {0}. You can now switch with one click.", L10n.argument(self.identity(account)))
@@ -587,14 +614,33 @@ final class AppState: ObservableObject {
             self?.awaitingNewLogin = false
         }
     }
+    /// What decides the signed-in login: the account and credentials in config.json and the session cookie.
+    /// Checking only these every few seconds costs a fraction of a full rescan.
+    private func loginSignature() async -> String {
+        let environment = environment
+        return await Task.detached(priority: .utility) {
+            let account = (try? environment.lastKnownAccount()) ?? nil
+            let credentials = try? environment.credentialDigest()
+            let signedIn = environment.signedIn().map { $0 ? "in" : "out" }
+            return [account, credentials, signedIn].map { $0 ?? "?" }.joined(separator: "|")
+        }.value
+    }
+    /// Rescans everything once the login changed. A rescan that cannot run yet is tried again on the next check.
+    private func refreshOnLoginChange(since seen: inout String?) async {
+        let current = await loginSignature()
+        guard current != seen, !refreshing, !working else { return }
+        await refresh()
+        seen = current
+    }
     /// Claude signs out within seconds when the server rejects a restored login; catch that while it happens.
     private func watchSwitchedLogin(_ accountID: String) {
         loginWatch?.cancel()
         loginWatch = Task { [weak self] in
+            var seen = await self?.loginSignature()
             for _ in 0..<12 {
                 do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
                 guard let self else { return }
-                await self.refresh()
+                await self.refreshOnLoginChange(since: &seen)
                 if let account = self.library.accounts.first(where: { $0.id == accountID }), account.loginInvalidAt != nil {
                     self.message = L10n.tr("The server voided the saved login of {0}; Claude shows its sign-in screen. Sign in to this account in Claude again and it will be saved.",
                                            L10n.argument(self.identity(account)))

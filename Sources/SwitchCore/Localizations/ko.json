@@ -59,7 +59,6 @@
   "in {0}m": "{0}분 후",
   "in {0}h": "{0}시간 후",
   "in {0}d": "{0}일 후",
-  "Estimated from local changes · Excludes other devices": "로컬 증가분으로 추정 · 다른 기기 제외",
   "Save": "저장",
   "Save login for {0}": "{0} 로그인 저장",
   "Keep originals and existing target conversations": "원본과 대상의 기존 대화 유지",
@@ -205,7 +204,7 @@
   "View conversations for this account": "이 계정의 대화 보기",
   "Verify the target snapshot and current Claude version": "대상 스냅샷과 현재 Claude 버전 검증",
   "The file exceeds the read limit and was skipped.": "파일이 읽기 제한을 초과하여 건너뛰었습니다.",
-  "Claude Code workers were detected. Finish your work before switching or migrating.": "Claude Code 작업 프로세스가 감지되었습니다. 전환 또는 이전 전에 작업을 마치세요.",
+  "Claude Code sessions started by Claude Desktop are still running. Wait for them to finish, then try again.": "Claude Desktop이 시작한 Claude Code 세션이 아직 실행 중입니다. 끝날 때까지 기다린 뒤 다시 시도하세요.",
   "Model": "모델",
   "Saving the signed-in account…": "로그인한 계정 저장 중…",
   "Updating statistics in the background…": "백그라운드에서 통계 업데이트 중…",
@@ -244,7 +243,7 @@
   "Could not persist the directory. Recovery data is preserved.": "디렉터리를 영구 저장할 수 없습니다. 복구 데이터는 보존되었습니다.",
   "Could not persist the directory. Check the disk.": "디렉터리를 영구 저장할 수 없습니다. 디스크를 확인하세요.",
   "The target record points to a different conversation and cannot be replaced.": "대상 기록이 다른 대화를 가리키므로 덮어쓸 수 없습니다.",
-  "The target snapshot is from a different Claude version. Save that account again before switching.": "대상 스냅샷의 Claude 버전이 다릅니다. 전환 전에 계정을 다시 저장하세요.",
+  "The saved login of the target account comes from Claude {0} and can't be restored into the installed Claude {1}. Update Claude Desktop, then try again.": "대상 계정의 저장된 로그인은 Claude {0}에서 만들어져 설치된 Claude {1}에 복원할 수 없습니다. Claude Desktop을 업데이트한 뒤 다시 시도하세요.",
   "The target already has this conversation. Both records are preserved; nothing will be overwritten.": "대상에 같은 대화가 이미 있습니다. 양쪽 기록을 보존하며 덮어쓰지 않습니다.",
   "The target account has multiple local organizations. A migration destination cannot be selected safely.": "대상 계정에 여러 로컬 조직이 있어 이전 대상을 안전하게 자동 선택할 수 없습니다.",
   "The target account has no organization information. Sign in to Desktop and scan it first.": "대상 계정의 조직 정보가 없습니다. 먼저 Desktop에 로그인하여 읽어 오세요.",
@@ -270,7 +269,6 @@
   "Cache read": "캐시 읽기",
   "Range": "기간",
   "Menu bar": "메뉴 막대",
-  "To add another account, enter `/login` in Claude Desktop, press Return, and sign in to the new account.": "다른 계정을 추가하려면 Claude Desktop에서 `/login`을 입력하고 Return을 누른 후 새 계정으로 로그인하세요.",
   "Replaces": "덮어쓰기",
   "Settings": "설정",
   "Settings…": "설정…",
@@ -398,5 +396,7 @@
   "demo.apiMigration": "API 클라이언트 마이그레이션 계획",
   "Source code": "소스 코드",
   "Open the project page on GitHub": "GitHub에서 프로젝트 페이지 열기",
-  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Claude Switch는 현재 원격 업데이트나 자동 업데이트를 지원하지 않습니다. 새 버전 소식은 GitHub에서 확인하세요."
+  "Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases.": "Claude Switch는 현재 원격 업데이트나 자동 업데이트를 지원하지 않습니다. 새 버전 소식은 GitHub에서 확인하세요.",
+  "The organization of the target account is uncertain. Switch to it once and refresh its quota, then try again.": "대상 계정의 조직을 확실히 알 수 없습니다. 이 계정으로 한 번 전환해 한도를 새로 고친 뒤 다시 시도하세요.",
+  "Claude kept writing its data while the login was being copied. Try again in a moment.": "로그인을 복사하는 동안 Claude가 계속 데이터를 쓰고 있었습니다. 잠시 후 다시 시도하세요."
 }

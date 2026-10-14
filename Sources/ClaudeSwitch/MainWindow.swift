@@ -3,7 +3,7 @@ import SwiftUI
 import SwitchCore
 
 struct MainWindow: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     var body: some View {
         NavigationSplitView {
             Sidebar().navigationSplitViewColumnWidth(min: 210, ideal: 228, max: 280)
@@ -27,9 +27,9 @@ struct MainWindow: View {
         // min frame here stops the detail from shrinking while the sidebar expands.
         .background(WorkbenchWindowObserver())
         .tint(Palette.brand)
-        .sheet(item: $state.pending) { OperationSheet(operation: $0).environmentObject(state) }
-        .sheet(isPresented: $state.showAddAccount) { AddAccountSheet().environmentObject(state) }
-        .sheet(isPresented: $state.showQuickFind) { QuickFind().environmentObject(state) }
+        .sheet(item: Bindable(state).pending) { OperationSheet(operation: $0).environment(state) }
+        .sheet(isPresented: Bindable(state).showAddAccount) { AddAccountSheet().environment(state) }
+        .sheet(isPresented: Bindable(state).showQuickFind) { QuickFind().environment(state) }
         .overlay(alignment: .bottom) {
             ZStack {
                 if let message = state.message { Toast(message: message) { state.message = nil }.padding(.bottom, 24) }
@@ -43,7 +43,7 @@ struct MainWindow: View {
 }
 
 private struct Sidebar: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     private var selection: Binding<NavigationPage?> {
         Binding(get: { state.page == .settings ? nil : state.page }, set: { if let page = $0 { state.page = page } })
     }
@@ -97,7 +97,7 @@ private struct Sidebar: View {
 }
 
 private struct CurrentAccountTile: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     let account: Account
     var body: some View {
         Button { state.page = .accounts } label: {
@@ -116,7 +116,7 @@ private struct CurrentAccountTile: View {
 }
 
 private struct RecoveryBanner: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -153,7 +153,7 @@ private struct Toast: View {
 
 /// Toolbar actions shared by pages that show live inventory.
 struct InventoryToolbar: ToolbarContent {
-    @ObservedObject var state: AppState
+    let state: AppState
     @State private var showWarnings = false
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
@@ -175,7 +175,7 @@ struct InventoryToolbar: ToolbarContent {
 }
 
 struct QuickFind: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) private var state
     @Environment(\.dismiss) var dismiss
     @State private var query = ""
     private var accounts: [Account] {

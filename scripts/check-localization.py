@@ -7,6 +7,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HAN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0003134f]")
 PLACEHOLDER = re.compile(r"\{\d+\}")
+# Simplified Chinese follows mainland usage. Escaped so this file holds no CJK text: Traditional "zhi" (log),
+# "trade" for transaction, Taiwanese "file", "original file", "support", "information", "sign out", "disk",
+# "interface" and "view".
+ZH_HANS_AVOID = ["\u8a8c", "\u4ea4\u6613", "\u6863\u6848", "\u539f\u6863", "\u652f\u63f4", "\u8d44\u8baf",
+                 "\u767b\u51fa", "\u78c1\u789f", "\u4ecb\u9762", "\u68c0\u89c6"]
 LOOKUP = re.compile(r'\b(?:L10n\.)?(?:tr|text)\("((?:[^"\\]|\\.)*)"')
 errors = []
 catalogs = {}
@@ -32,6 +37,8 @@ for language, catalog in catalogs.items():
             errors.append(f"{language}: empty or invalid value for {key!r}")
         elif sorted(PLACEHOLDER.findall(value)) != sorted(PLACEHOLDER.findall(english.get(key, ""))):
             errors.append(f"{language}: mismatched placeholders for {key!r}")
+        elif language == "zh-Hans" and any(term in value for term in ZH_HANS_AVOID):
+            errors.append(f"zh-Hans: Taiwanese or Traditional wording for {key!r}")
 count = 0
 for folder in ("Sources", "Tests", "scripts"):
     for path in (ROOT / folder).rglob("*"):

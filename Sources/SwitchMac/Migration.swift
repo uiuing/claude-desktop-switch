@@ -33,6 +33,12 @@ enum MigrationBuilder {
         if !sessions.isEmpty, organizations.count > 1 {
             throw SwitchError.blocked(L10n.tr("The target account has multiple local organizations. A migration destination cannot be selected safely."))
         }
+        // Desktop lists an account's sessions from the organization it is signed in to; a guessed one that differs
+        // from where the account's sessions already are would hide what is written.
+        if !sessions.isEmpty, target.organizationVerifiedAt == nil, let organization = target.organizationID,
+           let existing = organizations.first, existing.lastPathComponent.lowercased() != organization.lowercased() {
+            throw SwitchError.blocked(L10n.tr("The organization of the target account is uncertain. Switch to it once and refresh its quota, then try again."))
+        }
         for session in sessions {
             if let reason = SessionLibrary.migrationBlocker(session, target: target) { throw SwitchError.blocked(reason) }
             guard UUID(uuidString: session.accountID) != nil, UUID(uuidString: session.organizationID) != nil,

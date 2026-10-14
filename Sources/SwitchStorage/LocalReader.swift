@@ -7,12 +7,19 @@ public actor LocalReader: InventoryReader {
     public let projects: URL?
     private var recordCache: [String: (FileStamp, Conversation)] = [:]
     private var profileCache: (signature: [String], profile: DesktopProfile.Cache) = ([], DesktopProfile.Cache())
+    private var codeAccountCache: (stamp: FileStamp, account: CodeAccount?)?
+    /// The Claude Code login in `~/.claude.json`. Only these fields are decoded; the file also holds project history.
+    private struct CodeAccount: Decodable { var accountUuid: String?; var emailAddress: String?; var organizationUuid: String? }
+    private struct CodeConfig: Decodable { var oauthAccount: CodeAccount? }
     private var limitLog = LimitLogScanner()
     public init(desktop: URL, codeConfig: URL, projects: URL? = nil) {
         self.desktop = desktop; self.codeConfig = codeConfig; self.projects = projects
     }
 
-    public func scan() async throws -> LocalInventory {
+    public func scan() async throws -> LocalInventory { try await scan(verifiedOrganizations: [:]) }
+
+    /// `verifiedOrganizations`: account → organization the server confirmed for that login's own token.
+    public func scan(verifiedOrganizations: [String: String]) async throws -> LocalInventory {
         let config = try SafeFiles.json(desktop.appendingPathComponent("config.json"))
         let active = config["lastKnownAccountUuid"].string.flatMap { UUID(uuidString: $0)?.uuidString.lowercased() }
         var accounts: [String: Account] = [:], conversations: [Conversation] = [], warnings: [String] = []
@@ -67,11 +74,14 @@ public actor LocalReader: InventoryReader {
             let candidates = sessionOrganizations[id] ?? all
             if candidates.count == 1 { accounts[id]?.organizationID = candidates.first }
         }
+        for (id, org) in verifiedOrganizations where accounts[id] != nil && UUID(uuidString: org) != nil {
+            accounts[id]?.organizationID = org.lowercased()
+        }
         recordCache = recordCache.filter { seen.contains($0.key) }
-        if let cli = try? SafeFiles.json(codeConfig), let id = cli["oauthAccount"]["accountUuid"].string?.lowercased(),
-           accounts[id] != nil {
-            accounts[id]?.email = cli["oauthAccount"]["emailAddress"].string
-            if let org = cli["oauthAccount"]["organizationUuid"].string, UUID(uuidString: org) != nil {
+        if let cli = codeAccount(), let id = cli.accountUuid?.lowercased(), accounts[id] != nil {
+            accounts[id]?.email = cli.emailAddress
+            // Claude Code can be signed in to another organization of the same account, so it only fills a gap.
+            if accounts[id]?.organizationID == nil, let org = cli.organizationUuid, UUID(uuidString: org) != nil {
                 accounts[id]?.organizationID = org.lowercased()
             }
         }
@@ -108,6 +118,18 @@ public actor LocalReader: InventoryReader {
         return LocalInventory(activeAccountID: signedIn == false ? nil : active, accounts: accounts.values.sorted { $0.id < $1.id },
                               conversations: conversations, usage: usage, warnings: Array(Set(warnings)).sorted(), cachedUsage: cachedUsage,
                               lastKnownAccountID: active, signedIn: signedIn)
+    }
+
+    /// Re-read only when the file changed: Claude Code rewrites it often, and it can run to megabytes.
+    private func codeAccount() -> CodeAccount? {
+        guard let fd = try? SafeFiles.openRead(codeConfig) else { codeAccountCache = nil; return nil }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { try? handle.close() }
+        guard let stamp = try? SafeFiles.stamp(fd) else { return nil }
+        if let cached = codeAccountCache, cached.stamp == stamp { return cached.account }
+        let account = (try? SafeFiles.read(codeConfig)).flatMap { try? JSONDecoder().decode(CodeConfig.self, from: $0).oauthAccount }
+        codeAccountCache = (stamp, account)
+        return account
     }
 
     /// Claude rewrites the cookie store in place; a read caught mid-write can miss rows,

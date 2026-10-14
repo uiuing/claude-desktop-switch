@@ -14,6 +14,8 @@ final class WorkbenchLifecycle: NSObject {
     private var keepsRunningInMenuBar: Bool {
         UserDefaults.standard.object(forKey: Self.showInMenuBarKey) as? Bool ?? true
     }
+    /// Open and at least partly visible: not closed, minimized, on another Space or fully covered.
+    var workbenchOnScreen: Bool { workbench.map { $0.isVisible && $0.occlusionState.contains(.visible) } ?? false }
 
     func register(_ window: NSWindow) {
         guard workbench !== window else { return }

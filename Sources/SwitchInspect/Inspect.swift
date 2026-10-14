@@ -24,7 +24,7 @@ struct Inspect {
                 "writesToClaude": false, "keychainAccess": false, "networkRequests": 0,
             ]
             if CommandLine.arguments.contains("--tokens") {
-                let scanner = TokenScanner(projects: environment.projects)
+                let scanner = TokenScanner(projects: environment.projects, keepsRequestLedger: true)
                 let report = try await scanner.scan(since: Date().addingTimeInterval(-30 * 86400))
                 result["tokenScan"] = ["files": report.scannedFiles, "models": report.models.count,
                     "deduplicatedRequests": report.events.count, "incompleteRequests": report.incompleteRequests,

@@ -56,6 +56,30 @@ public struct MacEnvironment: Sendable {
 
 public func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
+/// Claude upgrades the data of an older version when it updates itself, so a login saved by an older Claude
+/// can be restored. One saved by a newer Claude may hold formats the installed app cannot read.
+public enum DesktopVersion {
+    public static func canRestore(saved: String, installed: String) -> Bool {
+        if saved == installed { return true }
+        guard let saved = parts(saved), let installed = parts(installed) else { return false }
+        for index in 0..<max(saved.count, installed.count) {
+            let a = index < saved.count ? saved[index] : 0, b = index < installed.count ? installed[index] : 0
+            if a != b { return a < b }
+        }
+        return true
+    }
+    private static func parts(_ version: String) -> [Int]? {
+        let fields = version.split(separator: ".", omittingEmptySubsequences: false)
+        guard (1...4).contains(fields.count) else { return nil }
+        var result: [Int] = []
+        for field in fields {
+            guard !field.isEmpty, field.allSatisfy({ $0.isASCII && $0.isNumber }), let value = Int(field) else { return nil }
+            result.append(value)
+        }
+        return result
+    }
+}
+
 public enum IdentitySchema {
     public static let configKeys: Set<String> = ["lastKnownAccountUuid", "oauth:tokenCache", "oauth:tokenCacheV2"]
     public static let containers = ["Cookies", "Cookies-journal", "Cookies-wal", "Cookies-shm",

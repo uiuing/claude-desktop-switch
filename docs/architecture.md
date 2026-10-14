@@ -43,7 +43,8 @@ Saving the signed-in login is not gated: it only reads Claude's files and writes
 ## Data flow
 
 1. `AppState.start()` loads `library.json`, starts the usage scan in the background and runs `refresh()`.
-2. `refresh()` scans Claude's local files through `LocalReader`, merges new quota samples, rolls quota windows past their reset times and saves the signed-in login if it changed. It runs every 60 seconds.
+2. `refresh()` scans Claude's local files through `LocalReader`, merges new quota samples, rolls quota windows past their reset times and saves the signed-in login if it changed. It runs every 60 seconds. While Claude shows its sign-in screen, or right after a switch, only the signed-in account, its credentials and the session cookie are checked every three seconds, and a change triggers `refresh()`. Usage statistics are rescanned every minute while the Usage page is on screen, otherwise every ten minutes.
+   `AppState` is `@Observable`, so a view redraws only for what it reads: a statistics scan does not redraw the menu bar.
 3. User actions call `SwitchEngine.prepare(...)`, which returns an `OperationPlan`. The confirmation sheet shows the plan; `execute(...)` re-validates it and runs it as a `FileTransaction`.
 4. Online quota reads go through `ActiveUsageClient` only on the triggers described in [usage-data.md](usage-data.md).
 
