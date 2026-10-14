@@ -39,6 +39,8 @@ final class AppState: ObservableObject {
     @Published var refreshing = false
     @Published var usageRefreshingAccountID: String?
     @Published var usageErrors: [String: String] = [:]
+    /// A manual read that came within the per-login back-off; its notice counts down and clears itself.
+    @Published private(set) var usageCooldowns: [String: UsageCoolingDown] = [:]
     /// Why the last live read was skipped while the login is merely not readable yet; shown only on hover.
     @Published var usageNotices: [String: String] = [:]
     @Published var scanningTokens = false
@@ -255,8 +257,12 @@ final class AppState: ObservableObject {
             inventory = result
             selectedSessionIDs.formIntersection(unarchivedSessions.map(\.id))
             if let id = result.activeAccountID {
-                // Claude Desktop now signs in another account, through Switch or not.
-                if let last = lastSignedInID, last != id { Task { await refreshLive(trigger: .accountChanged(id)) } }
+                // Claude Desktop now signs in another account, through Switch or not. Live reads only concern
+                // the signed-in login, so what the previous one's last read reported no longer applies.
+                if let last = lastSignedInID, last != id {
+                    dismissUsageError(last); usageNotices[last] = nil
+                    Task { await refreshLive(trigger: .accountChanged(id)) }
+                }
                 lastSignedInID = id
             }
             for usage in result.cachedUsage.values {
@@ -361,7 +367,7 @@ final class AppState: ObservableObject {
         }
         usageRefreshingAccountID = accountID
         defer { usageRefreshingAccountID = nil }
-        if trigger == .manual { usageErrors[accountID] = nil; usageNotices[accountID] = nil }
+        if trigger == .manual { dismissUsageError(accountID); usageNotices[accountID] = nil }
         // A switched-in login is renewed by Claude itself after it starts; wait locally rather than asking early.
         let deadline = Date().addingTimeInterval(trigger == .manual ? 0 : 120)
         while true {
@@ -370,7 +376,7 @@ final class AppState: ObservableObject {
                 let snapshot = try await usageClient.fetchCurrent(accountID: accountID, allowKeychainPrompt: trigger == .manual)
                 guard activeID == snapshot.accountID else { return }
                 acceptUsage(snapshot)
-                usageErrors[accountID] = nil; usageNotices[accountID] = nil
+                dismissUsageError(accountID); usageNotices[accountID] = nil
                 if let identity = await usageClient.identity(), let index = library.accounts.firstIndex(where: { $0.id == identity.id }) {
                     library.accounts[index].email = identity.email ?? library.accounts[index].email
                     if let organization = identity.organizationID { library.accounts[index].setOrganization(organization) }
@@ -387,12 +393,29 @@ final class AppState: ObservableObject {
             } catch let notReady as UsageNotReady {
                 usageNotices[accountID] = notReady.message
                 return
-            } catch is UsageCoolingDown where trigger != .manual {
+            } catch let cooling as UsageCoolingDown {
+                if trigger == .manual { showCooldown(cooling, for: accountID) }
                 return
             } catch {
-                usageErrors[accountID] = (error as? UsageCoolingDown)?.errorDescription ?? display(error)
+                usageCooldowns[accountID] = nil
+                usageErrors[accountID] = display(error)
                 return
             }
+        }
+    }
+    /// The problem with this account's last live read, while it still applies.
+    func usageError(for accountID: String) -> String? {
+        if let cooling = usageCooldowns[accountID], cooling.until > Date() { return cooling.errorDescription }
+        return usageErrors[accountID]
+    }
+    func dismissUsageError(_ accountID: String) {
+        usageErrors[accountID] = nil; usageCooldowns[accountID] = nil
+    }
+    private func showCooldown(_ cooling: UsageCoolingDown, for accountID: String) {
+        usageCooldowns[accountID] = cooling
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(max(0, cooling.until.timeIntervalSinceNow) * 1_000_000_000))
+            if self?.usageCooldowns[accountID]?.until == cooling.until { self?.usageCooldowns[accountID] = nil }
         }
     }
     private func acceptAnalytics(_ report: UsageAnalytics) {

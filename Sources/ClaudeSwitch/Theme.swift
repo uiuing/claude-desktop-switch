@@ -152,6 +152,15 @@ extension View {
     }
 }
 
+/// Redraws its content every second while `running`, for countdowns; otherwise only when its inputs change.
+struct SecondsTimeline<Content: View>: View {
+    let running: Bool
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        if running { TimelineView(.periodic(from: .now, by: 1)) { _ in content() } } else { content() }
+    }
+}
+
 private struct HoverSurface: ViewModifier {
     let radius: CGFloat
     @State private var hovering = false

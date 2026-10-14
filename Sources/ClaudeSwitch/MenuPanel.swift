@@ -141,7 +141,9 @@ private struct MenuAccountRow: View {
             Circle().fill(active ? Palette.green : suggested ? Palette.brand : Color.primary.opacity(0.15)).frame(width: 7, height: 7)
             VStack(alignment: .leading, spacing: 2) {
                 Text(state.identity(account)).font(.system(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.middle)
-                Text(subtitle.text).font(.system(size: 11)).foregroundStyle(subtitle.color).lineLimit(1).truncationMode(.tail)
+                SecondsTimeline(running: state.usageCooldowns[account.id] != nil) {
+                    Text(subtitle.text).font(.system(size: 11)).foregroundStyle(subtitle.color).lineLimit(1).truncationMode(.tail)
+                }
             }
             Spacer(minLength: 6)
             ForEach(state.quotaRows(for: account.id, now: now)) { MenuQuotaColumn(row: $0, now: now) }
@@ -167,7 +169,7 @@ private struct MenuAccountRow: View {
         return row
     }
     private var subtitle: (text: String, color: Color) {
-        if let error = state.usageErrors[account.id] { return (error, .orange) }
+        if let error = state.usageError(for: account.id) { return (error, .orange) }
         if active {
             if let shortage { return (shortage.status, Color(nsColor: .systemOrange)) }
             return (L10n.tr("Active"), Palette.green)
@@ -191,7 +193,7 @@ private struct MenuAccountRow: View {
                 : L10n.tr("Weekly limit: {0}, {1} still unused", reset, expiring.percentageText))
         }
         if !active { lines.append(L10n.tr("Switch to {0}", L10n.argument(state.identity(account)))) }
-        if let error = state.usageErrors[account.id] { lines.append(error) }
+        if let error = state.usageError(for: account.id) { lines.append(error) }
         for row in state.quotaRows(for: account.id, now: now) + state.extraQuotaRows(for: account.id, now: now) {
             lines.append([row.title + " " + row.percentageText, Format.resetDetail(row)].compactMap { $0 }.joined(separator: " · "))
         }

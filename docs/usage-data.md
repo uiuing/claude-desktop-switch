@@ -53,7 +53,7 @@ An online refresh:
 - `429` or `403`: wait for `Retry-After`, or 5 minutes, at most 1 hour;
 - `401`: no further requests until the credentials change.
 
-Requests use an ephemeral session without cookies or cache, refuse redirects, time out quickly and accept at most 1 MB. If anything is off (an unexpected format, an identity mismatch, missing permissions), the previous reading is kept and the problem is shown. Error messages never include the response body or the `Authorization` header.
+Requests use an ephemeral session without cookies or cache, refuse redirects, time out quickly and accept at most 1 MB. If anything is off (an unexpected format, an identity mismatch, missing permissions), the previous reading is kept and the problem is shown on the account's card until it is dismissed, the next read succeeds or another account is signed in. Pressing refresh during the back-off shows a countdown that disappears when the wait is over. Error messages never include the response body or the `Authorization` header.
 
 These endpoints are not a documented public API and may change.
 

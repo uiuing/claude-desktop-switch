@@ -107,9 +107,7 @@ struct AccountCard: View {
                         }
                     }
                 }
-                if let error = state.usageErrors[account.id] {
-                    Label(error, systemImage: "exclamationmark.circle").font(.system(size: 11)).foregroundStyle(.orange).hint(error)
-                }
+                if state.usageError(for: account.id) != nil { UsageErrorLine(accountID: account.id) }
             }
         }
         .padding(18)
@@ -178,5 +176,24 @@ struct AccountCard: View {
         Button(L10n.tr("Remove from Claude Switch…"), role: .destructive) { removing = true }
             .disabled(!state.canRemove(account))
             .help(active ? L10n.tr("Switch to another account before removing the signed-in account") : "")
+    }
+}
+
+private struct UsageErrorLine: View {
+    @EnvironmentObject var state: AppState
+    let accountID: String
+    var body: some View {
+        SecondsTimeline(running: state.usageCooldowns[accountID] != nil) {
+            if let error = state.usageError(for: accountID) {
+                HStack(spacing: 4) {
+                    Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.orange).hint(error)
+                    Button { state.dismissUsageError(accountID) } label: {
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                            .frame(width: 16, height: 16).contentShape(Rectangle())
+                    }
+                    .buttonStyle(HoverRowStyle()).foregroundStyle(.secondary).hint(L10n.tr("Dismiss"))
+                }.font(.system(size: 11))
+            }
+        }
     }
 }
