@@ -7,6 +7,12 @@ struct MenuPanel: View {
     @Environment(\.openWindow) private var openWindow
     private var others: [Account] { state.accounts.filter { $0.id != state.activeID } }
     var body: some View {
+        Group {
+            if state.startupAccess.isReady { authorizedContent }
+            else { StartupAccessView(compact: true).frame(width: 330).background(MenuPanelWindowReader()) }
+        }
+    }
+    private var authorizedContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             separator

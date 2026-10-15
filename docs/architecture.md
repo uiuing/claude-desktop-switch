@@ -30,6 +30,8 @@ flowchart TB
 
 The interface only reflects state and starts explicit user actions. Rules that decide what is safe to do live in `SwitchCore` and `SwitchMac`, so the UI is never the only safeguard.
 
+The workbench's minimum size belongs to its `NSWindow`. The split-view detail accepts a zero minimum width so page content can shrink while the conversation inspector closes, preserving the user's window width during navigation.
+
 ## The write gate
 
 Every action that changes Claude's files or processes (quitting or opening Claude, replacing the login, moving or copying sessions, recovering a transaction) first calls `BuildAccess.requireClaudeWrites()`. It is controlled by the `CLAUDE_WRITE_ENABLED` compilation condition:
@@ -38,11 +40,11 @@ Every action that changes Claude's files or processes (quitting or opening Claud
 - `scripts/build.sh --read-only` builds an app that can inspect everything and preview operations, but cannot execute them.
 - `swift build` and `swift test` without flags are read-only too. Tests that exercise write paths only run with `-Xswiftc -DCLAUDE_WRITE_ENABLED`, and they use temporary fixtures inside `.build/`.
 
-Saving the signed-in login is not gated: it only reads Claude's files and writes to the app's own vault.
+Saving the signed-in login does not require `BuildAccess`: it only reads Claude's files and writes to the app's own vault. It still waits for startup authorization.
 
 ## Data flow
 
-1. `AppState.start()` loads `library.json`, starts the usage scan in the background and runs `refresh()`.
+1. `AppState.start()` silently checks Claude Safe Storage access through `StartupAccess`. Missing permission blocks the workbench, menu and action shortcuts until explicit authorization succeeds. Only then are `library.json`, background scans, vault maintenance and `refresh()` started, once across both scenes. The check does not read tokens or contact quota endpoints.
 2. `refresh()` scans Claude's local files through `LocalReader`, marks elapsed reset times as awaiting confirmation and saves the signed-in login if it changed. A 60-second heartbeat checks whether Claude is running; local rescans and task-record metadata sampling pause when it is closed. While Claude shows its sign-in screen, or right after a switch, only the signed-in account, its credentials and the session cookie are checked every three seconds, and a change triggers `refresh()`. Usage statistics are rescanned every minute while the Usage page is on screen, otherwise every ten minutes.
    `AppState` is `@Observable`, so a view redraws only for what it reads: a statistics scan does not redraw the menu bar.
 3. User actions call `SwitchEngine.prepare(...)`, which returns an `OperationPlan`. The confirmation sheet shows the plan; `execute(...)` re-validates it and runs it as a `FileTransaction`.
@@ -60,7 +62,7 @@ Account emails, session titles and other user data are never translated.
 
 ## Demo mode
 
-Launching the app with `--demo` replaces all data with built-in sample accounts, sessions and statistics. In demo mode the app does not read Claude's files, touch the Keychain or use the network, and it does not save its library, which makes it safe for UI work and screenshots:
+Launching the app with `--demo` replaces all data with built-in sample accounts, sessions and statistics. Demo mode bypasses the authorization gate. In demo mode the app does not read Claude's files, touch the Keychain or use the network, and it does not save its library, which makes it safe for UI work and screenshots:
 
 ```sh
 zsh scripts/build.sh --read-only

@@ -432,5 +432,9 @@
   "Remaining quota": "剩餘額度",
   "Refresh accounts and conversations": "更新帳號與對話",
   "Allow Keychain access to update quota.": "允許存取鑰匙圈以更新額度。",
-  "Allow access": "允許存取"
+  "Allow access": "允許存取",
+  "Checking access…": "正在檢查存取權限…",
+  "Allow access to continue": "授權後繼續",
+  "Claude Switch needs access to Claude Safe Storage in Keychain.": "Claude Switch 需要存取鑰匙圈中的 Claude Safe Storage。",
+  "Access is still unavailable. Allow access in the macOS dialog, or sign in to Claude Desktop first.": "尚未取得存取權限。請在 macOS 對話框中允許存取；若尚未使用 Claude Desktop，請先登入。"
 }

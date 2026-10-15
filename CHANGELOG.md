@@ -8,6 +8,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Startup checks Keychain access before opening the workbench or starting background work. Missing permission shows an authorization screen with retry and quit actions.
+
 - Configurable automatic quota refresh: the current account follows conversation activity, other accounts default to 30 minutes, and queries are staggered. Automatic refresh pauses when Claude closes.
 
 - Manual quota refresh for each saved account without switching Claude Desktop.
@@ -26,6 +28,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Less background work: the usage cache no longer stores every reply and is written at most every five minutes, unchanged transcripts are not read again, statistics are rescanned every ten minutes while the Usage page is not on screen, waiting for a sign-in checks only the login itself, and a statistics scan no longer redraws the menu bar.
 
 ### Fixed
+
+- Opening Usage from Conversations preserves the window width while the conversation details panel closes.
 
 - General refresh and Command-R now update local records independently of quota. Quota cards show only the update time, with newly fetched values labeled “Just now”.
 - One Keychain approval is shared across accounts, and permission-blocked quota requests resume without refreshing each card. Credential blocks and server cooldowns remain intact.

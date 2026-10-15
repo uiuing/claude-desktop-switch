@@ -432,5 +432,9 @@
   "Remaining quota": "남은 사용량",
   "Refresh accounts and conversations": "계정 및 대화 새로고침",
   "Allow Keychain access to update quota.": "사용량을 업데이트하려면 키체인 접근을 허용하세요.",
-  "Allow access": "접근 허용"
+  "Allow access": "접근 허용",
+  "Checking access…": "접근 권한 확인 중…",
+  "Allow access to continue": "계속하려면 접근을 허용하세요",
+  "Claude Switch needs access to Claude Safe Storage in Keychain.": "Claude Switch에서 키체인의 Claude Safe Storage에 접근해야 합니다.",
+  "Access is still unavailable. Allow access in the macOS dialog, or sign in to Claude Desktop first.": "아직 접근할 수 없습니다. macOS 대화상자에서 접근을 허용하거나 먼저 Claude Desktop에 로그인하세요."
 }

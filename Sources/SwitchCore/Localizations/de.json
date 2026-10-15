@@ -432,5 +432,9 @@
   "Remaining quota": "Verbleibendes Kontingent",
   "Refresh accounts and conversations": "Konten und Gespräche aktualisieren",
   "Allow Keychain access to update quota.": "Erlaube den Schlüsselbundzugriff, um das Kontingent zu aktualisieren.",
-  "Allow access": "Zugriff erlauben"
+  "Allow access": "Zugriff erlauben",
+  "Checking access…": "Zugriff wird geprüft…",
+  "Allow access to continue": "Zugriff erlauben und fortfahren",
+  "Claude Switch needs access to Claude Safe Storage in Keychain.": "Claude Switch benötigt Zugriff auf Claude Safe Storage im Schlüsselbund.",
+  "Access is still unavailable. Allow access in the macOS dialog, or sign in to Claude Desktop first.": "Der Zugriff ist weiterhin nicht verfügbar. Erlaube ihn im macOS-Dialog oder melde dich zuerst bei Claude Desktop an."
 }

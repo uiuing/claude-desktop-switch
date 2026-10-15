@@ -12,6 +12,10 @@ Claude Desktop is an Electron app. Its login lives in `~/Library/Application Sup
 
 That set is the **identity allow-list**. Switching accounts means replacing exactly these items and nothing else.
 
+## Startup access
+
+Claude Switch checks access to Claude Safe Storage before opening its main interface. If permission is missing, choose **Allow access** and approve the macOS dialog. Canceling leaves the authorization screen open for retry; no account scans or background tasks start before access is granted. If Claude Desktop has never been used, sign in there first.
+
 ## Saving logins
 
 When Claude Desktop is signed in to an account that Claude Switch has not saved yet, or whose credentials changed, the app saves it automatically while Claude keeps running:

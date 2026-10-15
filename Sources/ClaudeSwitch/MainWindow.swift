@@ -5,6 +5,16 @@ import SwitchCore
 struct MainWindow: View {
     @Environment(AppState.self) private var state
     var body: some View {
+        Group {
+            if state.startupAccess.isReady { AuthorizedWorkbench() }
+            else { StartupAccessView() }
+        }.background(WorkbenchWindowObserver())
+    }
+}
+
+private struct AuthorizedWorkbench: View {
+    @Environment(AppState.self) private var state
+    var body: some View {
         NavigationSplitView {
             Sidebar().navigationSplitViewColumnWidth(min: 210, ideal: 228, max: 280)
         } detail: {
@@ -25,7 +35,6 @@ struct MainWindow: View {
         }
         // The minimum size lives on the NSWindow (see WorkbenchWindowObserver). A SwiftUI
         // min frame here stops the detail from shrinking while the sidebar expands.
-        .background(WorkbenchWindowObserver())
         .tint(Palette.brand)
         .sheet(item: Bindable(state).pending) { OperationSheet(operation: $0).environment(state) }
         .sheet(isPresented: Bindable(state).showAddAccount) { AddAccountSheet().environment(state) }

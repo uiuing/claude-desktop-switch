@@ -72,6 +72,7 @@ final class AppState {
     @ObservationIgnored private var loginSaveRetryAt: Date?
     @ObservationIgnored private var loginSaveRetry: Task<Void, Never>?
     let demo: Bool
+    let startupAccess: StartupAccess
     let environment = MacEnvironment()
     private let store: LibraryStore
     private let reader: LocalReader
@@ -99,8 +100,9 @@ final class AppState {
     }
     private var transferChoices: [String: SessionTransferMode] = [:]
 
-    init(demo: Bool = ProcessInfo.processInfo.arguments.contains("--demo")) {
+    init(demo: Bool = ProcessInfo.processInfo.arguments.contains("--demo"), startupAccess: StartupAccess? = nil) {
         self.demo = demo
+        self.startupAccess = startupAccess ?? StartupAccess(ready: demo)
         let env = MacEnvironment()
         store = LibraryStore(root: env.root)
         reader = LocalReader(desktop: env.desktop, codeConfig: env.codeConfig, projects: env.projects)
@@ -158,7 +160,7 @@ final class AppState {
         }
         return SessionLibrary.sorted(filtered, order: library.preferences.sessionSort, accounts: knownAccounts)
     }
-    var canExecute: Bool { BuildAccess.allowsClaudeWrites && !demo && !working && libraryReadable }
+    var canExecute: Bool { startupAccess.isReady && BuildAccess.allowsClaudeWrites && !demo && !working && libraryReadable }
     var currentUsage: UsageSnapshot? { activeID.flatMap { library.usage[$0] } }
     func quotaRows(for accountID: String, now: Date = Date()) -> [QuotaReadout] {
         AccountQuotaPresentation.rows(accountID: accountID, snapshot: library.usage[accountID], active: accountID == activeID,
@@ -234,6 +236,17 @@ final class AppState {
     }
 
     func start() async {
+        guard !demo else { return }
+        await startupAccess.check(using: { try await self.usageClient.authorizeQuotaAccess(allowPrompt: $0) },
+                                  start: { await self.startAuthorizedServices() })
+    }
+    func authorizeStartupAccess() async {
+        guard !demo else { return }
+        await startupAccess.authorize(using: { try await self.usageClient.authorizeQuotaAccess(allowPrompt: $0) },
+                                      start: { await self.startAuthorizedServices() })
+    }
+    private func startAuthorizedServices() async {
+        guard startupAccess.isReady else { return }
         guard !started else { return }; started = true
         guard !demo else { return }
         do { library = try await store.load() }
@@ -273,7 +286,7 @@ final class AppState {
         await scanTokens()
     }
     func refresh(triggerQuotaEvents: Bool = true) async {
-        guard !refreshing, !working else { return }
+        guard startupAccess.isReady, !refreshing, !working else { return }
         if demo { return }
         refreshing = true; defer { refreshing = false }
         do {
@@ -329,7 +342,7 @@ final class AppState {
     /// Keeps the signed-in account's saved login current. Only Switch's own vault is written.
     /// `retry` is the user asking again; a failed save is otherwise only retried on its own schedule.
     func saveCurrentLogin(retry: Bool = false, triggerQuotaEvents: Bool = true) async {
-        guard !demo, libraryReadable, !savingLogin, !working, let activeID else { return }
+        guard startupAccess.isReady, !demo, libraryReadable, !savingLogin, !working, let activeID else { return }
         guard let fingerprint = try? await engine.currentLoginFingerprint() else { return }
         let stored = knownAccounts.first { $0.id == activeID }
         if stored?.hasSnapshot == true && stored?.snapshotFingerprint == fingerprint { loginSaveError = nil; return }
@@ -383,7 +396,7 @@ final class AppState {
         }
         return display(error)
     }
-    func canRemove(_ account: Account) -> Bool { account.id != activeID && usageRefreshingAccountID != account.id && !working }
+    func canRemove(_ account: Account) -> Bool { startupAccess.isReady && account.id != activeID && usageRefreshingAccountID != account.id && !working }
     /// Forgets an account in Switch only: its saved login and quota history. Claude is not touched.
     func remove(_ account: Account) async {
         guard canRemove(account) else { return }
@@ -401,12 +414,12 @@ final class AppState {
         persist()
     }
     func persist() {
-        guard !demo, libraryReadable else { return }
+        guard startupAccess.isReady, !demo, libraryReadable else { return }
         let state = library
         Task { do { try await store.save(state) } catch { message = L10n.tr("Could not save settings.") } }
     }
     private func updateQuotaRefreshPause() {
-        quotaRefreshQueue.isPaused = demo || working || refreshing || preparingManualQuota || usageRefreshingAccountID != nil ||
+        quotaRefreshQueue.isPaused = !startupAccess.isReady || demo || working || refreshing || preparingManualQuota || usageRefreshingAccountID != nil ||
             !library.preferences.quotaRefresh.enabled || !quotaSchedule.activity.permitsAutomaticReads
     }
     private func synchronizeQuotaSchedule() {
@@ -480,13 +493,14 @@ final class AppState {
     }
     /// Toolbar and keyboard refresh update local inventory and statistics only.
     func refreshLocalRecords() async {
+        guard startupAccess.isReady else { return }
         await refresh(triggerQuotaEvents: false)
         if page == .usage { await scanTokens() }
     }
     func clearQuotaAccess() { usageClient.clearQuotaAccess() }
     /// One explicit approval retries all accounts held for the same shared permission.
     func authorizeQuotaAccess() async {
-        guard !demo, !working, !authorizingQuotaAccess, usageRefreshingAccountID == nil else { return }
+        guard startupAccess.isReady, !demo, !working, !authorizingQuotaAccess, usageRefreshingAccountID == nil else { return }
         authorizingQuotaAccess = true; preparingManualQuota = true; updateQuotaRefreshPause()
         defer { authorizingQuotaAccess = false; preparingManualQuota = false; updateQuotaRefreshPause() }
         do {
@@ -526,7 +540,7 @@ final class AppState {
     }
     /// Rescans local identity and reads the selected account without switching to it.
     func refreshNow(accountID: String) async {
-        guard !authorizingQuotaAccess else { return }
+        guard startupAccess.isReady, !authorizingQuotaAccess else { return }
         if quotaAccessRequired {
             let waiting = quotaSchedule.accountsAwaitingAccess.contains(accountID)
             await authorizeQuotaAccess()
@@ -536,7 +550,7 @@ final class AppState {
     }
     /// Returns a retry time for queued automatic reads; manual reads report their result immediately.
     private func refreshLive(accountID: String, automatic: QuotaRefreshQueue.Request? = nil, allowKeychainPrompt: Bool = true) async -> Date? {
-        guard !demo else { return nil }
+        guard startupAccess.isReady, !demo else { return nil }
         let manual = automatic == nil
         if !manual {
             sampleDesktopActivity()
@@ -662,7 +676,7 @@ final class AppState {
         analytics = report; tokenScanDone = true
     }
     func scanTokens() async {
-        guard !demo, !scanningTokens else { return }
+        guard startupAccess.isReady, !demo, !scanningTokens else { return }
         lastTokenScan = Date()
         tokenInitialScan = !tokenScanDone
         scanningTokens = true; tokenScanError = nil
@@ -771,7 +785,7 @@ final class AppState {
     /// Accounts whose saved login is gone from the vault but that Switch still holds a copy of.
     var recoverableLogins: [String] = []
     func restoreLogin(_ accountID: String) async {
-        guard !demo, !working else { return }
+        guard startupAccess.isReady, !demo, !working else { return }
         working = true
         do {
             try await engine.restoreLogin(accountID: accountID)

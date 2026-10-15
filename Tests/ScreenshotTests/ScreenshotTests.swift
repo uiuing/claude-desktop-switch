@@ -59,6 +59,55 @@ final class ScreenshotTests: XCTestCase {
 
     // MARK: Capture
 
+    func testRenderUsageLayout() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render usage layouts.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        for language in ["en", "de"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            state.page = .usage
+            let width: CGFloat = language == "de" ? 920 : 1080
+            for dark in [false, true] where language == "en" || !dark {
+                let name = language == "de" ? "usage-narrow-de" : "usage-\(dark ? "dark" : "light")"
+                try save(captureWorkbench(state, dark: dark, size: NSSize(width: width, height: 980), settle: 2),
+                         name, maxWidth: 1600)
+            }
+        }
+    }
+
+    func testRenderStartupAccess() async throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render startup authorization.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "zh-Hans", "de"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let access = StartupAccess()
+            let state = AppState(demo: true, startupAccess: access)
+            await access.check(using: { _ in throw CancellationError() }, start: { XCTFail("Startup must stay blocked") })
+            let window = try captureWorkbench(state, dark: false)
+            XCTAssertEqual(window.size.width, Self.windowSize.width, accuracy: 1)
+            XCTAssertEqual(window.size.height, Self.windowSize.height, accuracy: 1)
+            try save(window, "startup-access-\(language)", maxWidth: 1600)
+            try save(captureMenu(state, dark: false), "startup-access-menu-\(language)", maxWidth: 700)
+            await access.authorize(using: { _ in throw CancellationError() }, start: { XCTFail("Startup must stay blocked") })
+            let retry = try captureWorkbench(state, dark: false)
+            XCTAssertEqual(retry.size.width, Self.windowSize.width, accuracy: 1)
+            XCTAssertEqual(retry.size.height, Self.windowSize.height, accuracy: 1)
+            try save(retry, "startup-access-retry-\(language)", maxWidth: 1600)
+        }
+    }
+
     func testRenderQuotaSettings() throws {
         guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
             throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render quota settings.")

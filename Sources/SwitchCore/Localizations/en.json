@@ -432,5 +432,9 @@
   "Remaining quota": "Remaining quota",
   "Refresh accounts and conversations": "Refresh accounts and conversations",
   "Allow Keychain access to update quota.": "Allow Keychain access to update quota.",
-  "Allow access": "Allow access"
+  "Allow access": "Allow access",
+  "Checking access…": "Checking access…",
+  "Allow access to continue": "Allow access to continue",
+  "Claude Switch needs access to Claude Safe Storage in Keychain.": "Claude Switch needs access to Claude Safe Storage in Keychain.",
+  "Access is still unavailable. Allow access in the macOS dialog, or sign in to Claude Desktop first.": "Access is still unavailable. Allow access in the macOS dialog, or sign in to Claude Desktop first."
 }

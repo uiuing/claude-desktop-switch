@@ -27,13 +27,14 @@ struct ClaudeSwitchApp: App {
             CommandGroup(after: .sidebar) {
                 ForEach(Array(NavigationPage.primary.enumerated()), id: \.element) { index, page in
                     Button(page.title) { state.page = page }.keyboardShortcut(KeyEquivalent(Character("\(index + 1)")))
+                        .disabled(!state.startupAccess.isReady)
                 }
                 Divider()
-                Button(L10n.tr("Search…")) { state.showQuickFind = true }.keyboardShortcut("k")
-                Button(L10n.tr("Refresh")) { Task { await state.refreshLocalRecords() } }.keyboardShortcut("r")
+                Button(L10n.tr("Search…")) { state.showQuickFind = true }.keyboardShortcut("k").disabled(!state.startupAccess.isReady)
+                Button(L10n.tr("Refresh")) { Task { await state.refreshLocalRecords() } }.keyboardShortcut("r").disabled(!state.startupAccess.isReady)
             }
             CommandGroup(replacing: .appSettings) {
-                Button(L10n.tr("Settings…")) { state.page = .settings }.keyboardShortcut(",")
+                Button(L10n.tr("Settings…")) { state.page = .settings }.keyboardShortcut(",").disabled(!state.startupAccess.isReady)
             }
         }
 
@@ -53,8 +54,12 @@ struct ClaudeSwitchApp: App {
 private struct MenuBarLabel: View {
     let state: AppState
     var body: some View {
+        if state.startupAccess.isReady { quotaLabel }
+        else { Image(systemName: "lock").accessibilityLabel(L10n.tr("Allow access to continue")) }
+    }
+    private var quotaLabel: some View {
         let quota = state.fiveHourQuota?.percentageText ?? "—"
-        HStack(spacing: 4) {
+        return HStack(spacing: 4) {
             Image(nsImage: StatusIcon.image)
             // A scheduled view inside the status item's rendered label can keep
             // invalidating MenuBarExtra during launch. The local refresh already

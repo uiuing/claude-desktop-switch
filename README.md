@@ -90,7 +90,7 @@ Claude Switch **doesn't have remote or automatic updates yet**. To hear about ne
 
 ## Getting started
 
-1. **Sign in to Claude Desktop** as usual, then open Claude Switch. The signed-in account is saved automatically.
+1. **Sign in to Claude Desktop** as usual, then open Claude Switch and allow Keychain access when asked. The signed-in account is saved automatically.
 2. **Add another account** with **Add account…** in the menu bar. Claude restarts at its sign-in screen; sign in with the other account and it is saved too.
 3. **Switch** from the menu bar or the Accounts window whenever you like.
 
@@ -116,7 +116,7 @@ Details: [How it works](docs/how-it-works.md) · [Quota and usage data](docs/usa
 <details>
 <summary><b>Why does macOS ask to let Claude Switch use "Claude Safe Storage"?</b></summary>
 
-Claude encrypts its login tokens with a key stored in that Keychain item. Claude Switch only needs it to read the selected account's current limits online, and only asks when you choose **Allow access** or refresh quota yourself. One approval is shared across accounts; affected accounts retry automatically. Choose **Always Allow** to avoid prompts after restarting. Everything else works without it.
+Claude encrypts its login tokens with a key stored in that Keychain item. Claude Switch only needs it to read the selected account's current limits online, and only asks when you choose **Allow access** or refresh quota yourself. One approval is shared across accounts; affected accounts retry automatically. Access is checked at startup; the app opens after authorization. Choose **Always Allow** to avoid prompts after restarting.
 </details>
 
 <details>
