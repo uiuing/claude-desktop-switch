@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.0-2" width="112" alt="Claude Switch アイコン">
+<img src="docs/images/icon.png?v=0.2.2" width="112" alt="Claude Switch アイコン">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-ja-dark.jpg?v=0.2.0-2">
-  <img src="docs/images/hero-ja-light.jpg?v=0.2.0-2" alt="Claude Switch：アカウントウインドウとメニューバーのパネル">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-ja-dark.jpg?v=0.2.2">
+  <img src="docs/images/hero-ja-light.jpg?v=0.2.2" alt="Claude Switch：アカウントウインドウとメニューバーのパネル">
 </picture>
 
 </div>
@@ -41,8 +41,8 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 **会話の続きを別のアカウントで。**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-ja-dark.png?v=0.2.0-2">
-  <img src="docs/images/conversations-ja-light.png?v=0.2.0-2" alt="会話の続きを別のアカウントで。">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-ja-dark.png?v=0.2.2">
+  <img src="docs/images/conversations-ja-light.png?v=0.2.2" alt="会話の続きを別のアカウントで。">
 </picture>
 
 <table>
@@ -50,15 +50,15 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
     <td width="33%" valign="top">
       <p><b>残りが少なくなったらお知らせ。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-ja-dark.png?v=0.2.0-2">
-        <img src="docs/images/switch-reminder-menu-ja-light.png?v=0.2.0-2" alt="残りが少なくなったらお知らせ。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-ja-dark.png?v=0.2.2">
+        <img src="docs/images/switch-reminder-menu-ja-light.png?v=0.2.2" alt="残りが少なくなったらお知らせ。">
       </picture>
     </td>
     <td width="67%" valign="top">
       <p><b>自分の使い方を振り返る。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-ja-dark.png?v=0.2.0-2">
-        <img src="docs/images/usage-ja-light.png?v=0.2.0-2" alt="自分の使い方を振り返る。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-ja-dark.png?v=0.2.2">
+        <img src="docs/images/usage-ja-light.png?v=0.2.2" alt="自分の使い方を振り返る。">
       </picture>
     </td>
   </tr>

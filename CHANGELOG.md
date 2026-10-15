@@ -6,9 +6,31 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-16
+
+Clearer quota reminders, smoother conversation browsing and more reliable menu bar behavior.
+
+### Added
+
+- Optional Code task status and conversation shortcuts in the menu bar.
+- A setting to hide project links from the menu bar.
+
+### Improved
+
+- Clearer low-quota badges make it easier to see when a switch could help, including when your weekly quota runs out.
+- Faster conversation search and less background work in large libraries.
+- Fewer interruptions: low-quota reminders begin at 10% session quota or 5% weekly quota remaining.
+
+### Fixed
+
+- Quota and task counts display together correctly in the menu bar.
+- The menu reopens on the next click after opening a conversation or another destination.
+- Low-quota reminders no longer repeat as the percentage drops or the reset time is corrected.
+- More consistent backup recommendations, with better preference for accounts that have more weekly quota available.
+
 ### Documentation
 
-- Localized screenshots and a refreshed social preview highlight account switching, conversation continuity and everyday usage.
+- Refreshed screenshots and social preview, with guides in four languages.
 
 ## [0.2.0] - 2026-10-16
 
@@ -91,7 +113,8 @@ First public release.
 - Links to the project on GitHub from the sidebar, the menu bar panel and Settings. There are no remote or automatic updates yet; new versions are published as GitHub releases.
 - `switch-inspect`, a read-only command-line diagnostic that prints counts only.
 
-[Unreleased]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.0...v0.2.2
 [0.2.0]: https://github.com/uiuing/claude-desktop-switch/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/uiuing/claude-desktop-switch/compare/v0.1.0...v0.1.5
 [0.1.0]: https://github.com/uiuing/claude-desktop-switch/releases/tag/v0.1.0

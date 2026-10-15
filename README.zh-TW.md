@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.0-2" width="112" alt="Claude Switch 圖示">
+<img src="docs/images/icon.png?v=0.2.2" width="112" alt="Claude Switch 圖示">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hant-dark.jpg?v=0.2.0-2">
-  <img src="docs/images/hero-zh-Hant-light.jpg?v=0.2.0-2" alt="Claude Switch：帳號視窗與選單列面板">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hant-dark.jpg?v=0.2.2">
+  <img src="docs/images/hero-zh-Hant-light.jpg?v=0.2.2" alt="Claude Switch：帳號視窗與選單列面板">
 </picture>
 
 </div>
@@ -41,8 +41,8 @@
 **換帳號，對話跟著走。**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-zh-Hant-dark.png?v=0.2.0-2">
-  <img src="docs/images/conversations-zh-Hant-light.png?v=0.2.0-2" alt="換帳號，對話跟著走。">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-zh-Hant-dark.png?v=0.2.2">
+  <img src="docs/images/conversations-zh-Hant-light.png?v=0.2.2" alt="換帳號，對話跟著走。">
 </picture>
 
 <table>
@@ -50,15 +50,15 @@
     <td width="33%" valign="top">
       <p><b>額度不足，及時提醒。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hant-dark.png?v=0.2.0-2">
-        <img src="docs/images/switch-reminder-menu-zh-Hant-light.png?v=0.2.0-2" alt="額度不足，及時提醒。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hant-dark.png?v=0.2.2">
+        <img src="docs/images/switch-reminder-menu-zh-Hant-light.png?v=0.2.2" alt="額度不足，及時提醒。">
       </picture>
     </td>
     <td width="67%" valign="top">
       <p><b>看看自己的使用習慣。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hant-dark.png?v=0.2.0-2">
-        <img src="docs/images/usage-zh-Hant-light.png?v=0.2.0-2" alt="看看自己的使用習慣。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hant-dark.png?v=0.2.2">
+        <img src="docs/images/usage-zh-Hant-light.png?v=0.2.2" alt="看看自己的使用習慣。">
       </picture>
     </td>
   </tr>
