@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png" width="112" alt="Claude Switch アイコン">
+<img src="docs/images/icon.png?v=0.2.0" width="112" alt="Claude Switch アイコン">
 
 # Claude Switch
 
@@ -8,8 +8,7 @@
 
 ログインを保存し、残りの使用量を確認。アカウントを切り替えても、ローカルの Code セッションを引き継げます。
 
-[![最新リリース](https://img.shields.io/github/v/release/uiuing/claude-desktop-switch?style=flat-square&color=C9653F&label=release)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
-[![ダウンロード数](https://img.shields.io/github/downloads/uiuing/claude-desktop-switch/total?style=flat-square&color=C9653F)](https://github.com/uiuing/claude-desktop-switch/releases)
+[![最新リリース](https://img.shields.io/badge/Download-latest_release-C9653F?style=flat-square)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111?style=flat-square&logo=apple)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3B82F6?style=flat-square)](LICENSE)
@@ -19,8 +18,8 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-ja-dark.jpg">
-  <img src="docs/images/hero-ja-light.jpg" alt="Claude Switch：アカウントウインドウとメニューバーのパネル">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-ja-dark.jpg?v=0.2.0">
+  <img src="docs/images/hero-ja-light.jpg?v=0.2.0" alt="Claude Switch：アカウントウインドウとメニューバーのパネル">
 </picture>
 
 </div>
@@ -49,26 +48,26 @@ Claude Switch は、使っているログインを暗号化して Mac に保存�
   <tr>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png">
-        <img src="docs/images/conversations-light.png" alt="会話：Claude Code セッションの移動・コピー・追従">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png?v=0.2.0">
+        <img src="docs/images/conversations-light.png?v=0.2.0" alt="会話：Claude Code セッションの移動・コピー・追従">
       </picture>
       <p align="center"><b>会話</b> · アカウント間でセッションを移動・コピー・追従</p>
     </td>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png">
-        <img src="docs/images/usage-light.png" alt="使用量の統計：ヒートマップとモデル別の日別トークン">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png?v=0.2.0">
+        <img src="docs/images/usage-light.png?v=0.2.0" alt="使用量の統計：ヒートマップとモデル別の日別トークン">
       </picture>
       <p align="center"><b>使用量</b> · トークン、モデル、ヒートマップ、連続日数</p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="docs/images/switch-reminder-menu-ja.png" width="330" alt="切り替えのおすすめ">
+      <img src="docs/images/switch-reminder-menu-ja.png?v=0.2.0" width="330" alt="切り替えのおすすめ">
       <p><b>切り替えのおすすめ</b> · 残りの使用量を確認してから切り替え</p>
     </td>
     <td width="50%">
-      <img src="docs/images/new-account-follow-confirm-ja.png" alt="セッションを引き継ぐ">
+      <img src="docs/images/new-account-follow-confirm-ja.png?v=0.2.0" alt="セッションを引き継ぐ">
       <p><b>セッションを引き継ぐ</b> · アカウント追加後に移動・コピーを確認</p>
     </td>
   </tr>
