@@ -76,7 +76,7 @@ SwiftPM needs to run outside restrictive sandboxes (it uses `sandbox-exec` for t
 - Unstripped binaries embed absolute build paths (the build machine's user name and folders). `scripts/build.sh` strips debug symbols before signing; keep that step, and check `dist/` with `grep -a /Users/` before publishing.
 - A file named `main.swift` cannot also use `@main`; the universal (`--arch arm64 --arch x86_64`) build uses Xcode's build system and rejects it.
 - The packaged app loads catalogs from `Contents/Resources/ClaudeDesktopSwitch_SwitchCore.bundle`; SwiftPM runs and tests fall back to `Bundle.module`.
-- Ad-hoc signed builds change identity on every build, so macOS asks again for the "Claude Safe Storage" Keychain item. That prompt may appear only after a user-initiated refresh, never from automatic triggers.
+- Ad-hoc signed builds change identity on every build, so macOS asks again for the "Claude Safe Storage" Keychain item. That prompt may appear only after explicit quota-access authorization or a user-initiated quota refresh, never from general refresh or automatic triggers.
 - `lastKnownAccountUuid` survives a sign-out; use `LoginProbe` (the `sessionKey` cookie) to know whether Claude is actually signed in.
 - Claude Code transcripts are shared by all accounts and carry no account ID; never attribute usage to an account without explicit evidence.
 - Writing to a running script (`scripts/*.sh`) while it executes can break the run.

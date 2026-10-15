@@ -39,7 +39,7 @@ public enum UsageFailure: String, LocalizedError {
         case .offline: return L10n.tr("The quota service could not be reached. The last reading is retained.")
         case .server: return L10n.tr("The quota service is temporarily unavailable. The last reading is retained.")
         case .invalidResponse: return L10n.tr("The quota format has changed. The last reading is retained.")
-        case .keychain: return L10n.tr("Keychain access is unavailable. Click Refresh to authorize access; the login has not been marked expired.")
+        case .keychain: return L10n.tr("Allow Keychain access to update quota.")
         }
     }
 }

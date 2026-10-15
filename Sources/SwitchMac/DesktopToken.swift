@@ -15,12 +15,32 @@ struct DesktopAccessToken {
     var quotaScope: String { digest(Data((accountID + ":" + organizationID).utf8)) }
 }
 enum DesktopTokenReader {
+    static let access = QuotaKeyAccess()
+    private struct DecryptionFailure: Error {}
     static func read(environment: MacEnvironment, expectedAccount: String, allowPrompt: Bool) throws -> DesktopAccessToken {
         let config = try environment.liveConfig()
         return try read(config: config, expectedAccount: expectedAccount, allowPrompt: allowPrompt)
     }
     static func read(config: JSONValue, expectedAccount: String, allowPrompt: Bool) throws -> DesktopAccessToken {
-        try read(config: config, expectedAccount: expectedAccount) { try safeStorageKey(allowPrompt: allowPrompt) }
+        try read(config: config, expectedAccount: expectedAccount, allowPrompt: allowPrompt, access: access, load: safeStorageKey)
+    }
+    static func read(config: JSONValue, expectedAccount: String, allowPrompt: Bool,
+                     access: QuotaKeyAccess, load: (Bool) throws -> Data) throws -> DesktopAccessToken {
+        do {
+            return try read(config: config, expectedAccount: expectedAccount) { try access.read(allowPrompt: allowPrompt, load: load) }
+        } catch is DecryptionFailure {
+            access.clear()
+            // A rotated key gets one silent retry; malformed credentials never cause another prompt.
+            do {
+                return try read(config: config, expectedAccount: expectedAccount) { try access.read(allowPrompt: false, load: load) }
+            } catch is DecryptionFailure {
+                access.clear()
+                throw SwitchError.blocked(L10n.tr("Could not read the login cache. The adapter may need updating."))
+            }
+        }
+    }
+    static func authorize(allowPrompt: Bool) throws -> Data {
+        try access.read(allowPrompt: allowPrompt, load: safeStorageKey)
     }
     /// Saved logins use the same encrypted cache, without restoring anything into Claude's folder.
     static func read(config: JSONValue, expectedAccount: String, password: () throws -> Data) throws -> DesktopAccessToken {
@@ -48,6 +68,7 @@ enum DesktopTokenReader {
         defer { key.resetBytes(in: 0..<key.count) }
         let cipher = encrypted.dropFirst(3), iv = Data(repeating: 0x20, count: 16)
         var plain = Data(count: cipher.count + 16), written = 0
+        defer { plain.resetBytes(in: 0..<plain.count) }
         let capacity = plain.count
         let status = plain.withUnsafeMutableBytes { out in cipher.withUnsafeBytes { input in
             key.withUnsafeBytes { key in iv.withUnsafeBytes { iv in
@@ -56,10 +77,10 @@ enum DesktopTokenReader {
                         out.baseAddress, capacity, &written)
             } }
         } }
-        guard status == kCCSuccess else { throw SwitchError.blocked(L10n.tr("Could not read the login cache. The adapter may need updating.")) }
-        plain.count = written; defer { plain.resetBytes(in: 0..<plain.count) }
+        guard status == kCCSuccess else { throw DecryptionFailure() }
+        plain.count = written
         guard let cache = try? JSONDecoder().decode(JSONValue.self, from: plain), cache.object != nil else {
-            throw UsageFailure.invalidCredentials
+            throw DecryptionFailure()
         }
         let fingerprint = try IdentitySchema.fingerprint(config)
         let entries = (cache.object ?? [:]).compactMap { key, entry -> (key: String, org: String, entry: JSONValue)? in

@@ -99,7 +99,7 @@ Claude Switch **doesn't have remote or automatic updates yet**. To hear about ne
 > Signing out revokes that login on Anthropic's side, and the copy Claude Switch saved stops working.
 > If Claude cannot restore the login, sign in once more and it is saved again.
 
-Handy shortcuts in the main window: `⌘1` `⌘2` `⌘3` switch pages, `⌘K` searches accounts and sessions, `⌘R` refreshes the current account’s quota online.
+Handy shortcuts in the main window: `⌘1` `⌘2` `⌘3` switch pages, `⌘K` searches accounts and sessions, `⌘R` refreshes local accounts and conversations. Use each account’s refresh button for quota.
 
 ## Privacy and security
 
@@ -116,7 +116,7 @@ Details: [How it works](docs/how-it-works.md) · [Quota and usage data](docs/usa
 <details>
 <summary><b>Why does macOS ask to let Claude Switch use "Claude Safe Storage"?</b></summary>
 
-Claude encrypts its login tokens with a key stored in that Keychain item. Claude Switch only needs it to read the selected account's current limits online, and only asks when you press refresh yourself. Choose **Always Allow** to avoid repeated prompts. Everything else works without it.
+Claude encrypts its login tokens with a key stored in that Keychain item. Claude Switch only needs it to read the selected account's current limits online, and only asks when you choose **Allow access** or refresh quota yourself. One approval is shared across accounts; affected accounts retry automatically. Choose **Always Allow** to avoid prompts after restarting. Everything else works without it.
 </details>
 
 <details>

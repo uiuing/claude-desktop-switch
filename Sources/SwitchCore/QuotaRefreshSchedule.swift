@@ -22,6 +22,7 @@ public struct QuotaRefreshSchedule {
         var sampledAt: Date?
         var quietSince: Date?
         var blocked = false
+        var awaitingAccess = false
         var retryAt: Date?
     }
     public var activity = Activity()
@@ -81,12 +82,20 @@ public struct QuotaRefreshSchedule {
     public func isBlocked(_ id: String) -> Bool { entries[id]?.blocked == true }
     public mutating func credentialsChanged(_ id: String) { entries[id]?.blocked = false }
     public mutating func began(_ id: String, at date: Date) { entries[id]?.lastAttempt = date }
-    public mutating func suspend(_ id: String) { entries[id]?.blocked = true }
+    public mutating func suspend(_ id: String, awaitingAccess: Bool = false) {
+        entries[id]?.blocked = true; entries[id]?.awaitingAccess = awaitingAccess
+    }
+    public var accountsAwaitingAccess: [String] { entries.keys.filter { entries[$0]?.awaitingAccess == true }.sorted() }
+    public mutating func resumeAfterAccess() -> [String] {
+        let ids = accountsAwaitingAccess
+        for id in ids { entries[id]?.blocked = false; entries[id]?.awaitingAccess = false }
+        return ids
+    }
     public mutating func deferRead(_ id: String, until: Date) { entries[id]?.retryAt = until }
 
     public mutating func succeeded(_ snapshot: UsageSnapshot) {
         guard var entry = entries[snapshot.accountID] else { return }
-        entry.snapshot = snapshot; entry.blocked = false; entry.retryAt = nil
+        entry.snapshot = snapshot; entry.blocked = false; entry.awaitingAccess = false; entry.retryAt = nil
         entries[snapshot.accountID] = entry
     }
 

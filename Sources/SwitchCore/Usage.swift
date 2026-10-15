@@ -2,9 +2,7 @@ import Foundation
 
 public enum UsageOrigin: String, Codable, Sendable {
     case localCache, live, estimate
-    public var title: String {
-        switch self { case .localCache: return L10n.tr("Local record"); case .live: return L10n.tr("Live reading"); case .estimate: return L10n.tr("Local estimate") }
-    }
+
 }
 public struct QuotaWindow: Codable, Identifiable, Equatable, Sendable {
     public var id: String
@@ -81,7 +79,7 @@ public enum QuotaEstimator {
                          caption: L10n.tr("Reset expected · Awaiting confirmation from the current account"), stale: true, resetPending: true)
         }
         return .init(remainingPercent: max(0, 100 - window.usedPercent), lowerBound: nil, upperBound: nil,
-                     caption: active ? snapshot.origin.title : L10n.tr("Last reading · Other devices not checked"),
+                     caption: L10n.tr("Remaining quota"),
                      stale: age > freshFor, resetPending: false)
     }
 }

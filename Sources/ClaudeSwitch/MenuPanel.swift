@@ -10,6 +10,10 @@ struct MenuPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             separator
+            if state.quotaAccessRequired || state.authorizingQuotaAccess {
+                QuotaAccessStatus().padding(.horizontal, 14).padding(.vertical, 6)
+                separator
+            }
             if state.activeUnsaved { LoginSaveStatus(compact: true).padding(.horizontal, 14).padding(.vertical, 6) }
             if state.accounts.isEmpty {
                 if !state.activeUnsaved {
@@ -85,13 +89,13 @@ struct MenuPanel: View {
             Text("Claude Switch").font(.headline)
             Spacer()
             let busy = state.refreshing
-            Button { Task { await state.refreshCurrentQuota() } } label: {
+            Button { Task { await state.refreshLocalRecords() } } label: {
                 Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .medium))
                     .rotationEffect(.degrees(busy ? 360 : 0))
                     .animation(busy ? .linear(duration: 0.9).repeatForever(autoreverses: false) : .default, value: busy)
                     .frame(width: 20, height: 20).contentShape(Rectangle())
             }.buttonStyle(HoverRowStyle()).disabled(busy)
-                .hint(L10n.tr("Refresh current account quota"))
+                .hint(L10n.tr("Refresh accounts and conversations"))
         }.padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
     }
     private var separator: some View { Divider().padding(.horizontal, 14).padding(.vertical, 6) }

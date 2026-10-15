@@ -52,6 +52,7 @@ public final class QuotaRefreshQueue {
 
     /// Saving a newly discovered login coalesces with its pending or in-flight switch refresh.
     public func enqueue(_ accountID: String) { enqueue(accountID, afterSwitch: false, reason: .savedLogin) }
+    public func enqueueRecovery(_ accountID: String) { enqueue(accountID, afterSwitch: false, reason: .recovery) }
     public func enqueueCurrent(_ accountID: String, reason: Reason) {
         lastAccountID = accountID
         enqueue(accountID, afterSwitch: false, reason: reason)

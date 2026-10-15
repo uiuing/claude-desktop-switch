@@ -30,7 +30,7 @@ struct ClaudeSwitchApp: App {
                 }
                 Divider()
                 Button(L10n.tr("Search…")) { state.showQuickFind = true }.keyboardShortcut("k")
-                Button(L10n.tr("Refresh")) { Task { await state.refreshCurrentQuota() } }.keyboardShortcut("r")
+                Button(L10n.tr("Refresh")) { Task { await state.refreshLocalRecords() } }.keyboardShortcut("r")
             }
             CommandGroup(replacing: .appSettings) {
                 Button(L10n.tr("Settings…")) { state.page = .settings }.keyboardShortcut(",")
@@ -78,6 +78,7 @@ final class SwitchAppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     func applicationWillTerminate(_ notification: Notification) {
+        AppState.shared.clearQuotaAccess()
         WorkbenchLifecycle.shared.willTerminate()
     }
 }

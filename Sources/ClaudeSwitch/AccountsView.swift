@@ -17,6 +17,9 @@ struct AccountsView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
+                        if state.quotaAccessRequired || state.authorizingQuotaAccess {
+                            QuotaAccessStatus().padding(16).frame(maxWidth: .infinity, alignment: .leading).card()
+                        }
                         if state.claudeSignedOut {
                             Label(L10n.tr("Claude is signed out. Switch to a saved account below, or sign in to an account in Claude and it will be saved."),
                                   systemImage: "person.crop.circle.badge.questionmark")
@@ -56,6 +59,22 @@ struct AccountsView: View {
                 Button { state.showAddAccount = true } label: { Label(L10n.tr("Add account"), systemImage: "plus") }.help(L10n.tr("Add account"))
             }
         }
+    }
+}
+
+struct QuotaAccessStatus: View {
+    @Environment(AppState.self) private var state
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(L10n.tr("Allow Keychain access to update quota."), systemImage: "lock")
+                .fixedSize(horizontal: false, vertical: true)
+            if state.authorizingQuotaAccess {
+                ProgressView().controlSize(.small)
+            } else {
+                Button(L10n.tr("Allow access")) { Task { await state.authorizeQuotaAccess() } }
+                    .controlSize(.small).disabled(state.working || state.usageRefreshingAccountID != nil || state.demo)
+            }
+        }.font(.system(size: 12))
     }
 }
 
@@ -148,7 +167,7 @@ struct AccountCard: View {
                     }.frame(width: 26, height: 26).contentShape(Rectangle())
                 }
                 .buttonStyle(HoverRowStyle())
-                .disabled(state.usageRefreshingAccountID != nil || state.working || state.demo)
+                .disabled(state.usageRefreshingAccountID != nil || state.authorizingQuotaAccess || state.working || state.demo)
                 .accessibilityLabel(L10n.tr("Refresh quota"))
                 .hint(L10n.tr("Refreshes this account's quota and reset times without switching accounts. Reads for one login are at least 60 seconds apart."))
             }

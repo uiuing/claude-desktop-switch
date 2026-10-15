@@ -296,6 +296,7 @@ enum Format {
         return words.isEmpty ? raw : words.joined(separator: " ")
     }
     static func age(_ date: Date, now: Date) -> String {
+        if now.timeIntervalSince(date) < 1 { return L10n.tr("Just now") }
         let formatter = RelativeDateTimeFormatter()
         formatter.locale = L10n.locale
         formatter.unitsStyle = .full
@@ -327,7 +328,7 @@ enum Format {
     static func reset(_ row: QuotaReadout, now: Date, showResetTime: Bool = true) -> String {
         if row.state == .unknown { return L10n.tr("No data yet") }
         if row.state == .resetPending { return L10n.tr("Awaiting confirmation") }
-        if row.state == .stale { return L10n.tr("Last reading · {0}", row.observedAt.map { age($0, now: now) } ?? "—") }
+        if row.state == .stale { return L10n.tr("Updated {0}", row.observedAt.map { age($0, now: now) } ?? "—") }
         if row.awaitingFirstUse { return L10n.tr("Starts on next use") }
         guard let minutes = remaining(row, now: now) else { return L10n.tr("Reset time unknown") }
         if showResetTime, let reset = row.resetsAt {
@@ -342,9 +343,9 @@ enum Format {
     static func resetDetail(_ row: QuotaReadout) -> String? {
         guard row.state != .unknown else { return nil }
         if row.state == .resetPending { return L10n.tr("The expected reset time has passed. Refresh to confirm the current quota.") }
-        let source = row.observedAt.map { L10n.tr("{0} · Updated {1}", row.origin.title, date($0)) }
+        let source = row.observedAt.map { L10n.tr("Updated {0}", date($0)) }
         if row.awaitingFirstUse { return L10n.tr("This session hasn't started yet; it starts with your next message.") }
-        guard let reset = row.resetsAt else { return L10n.tr("Local records have no reset time; refresh to read it from the live quota.") }
+        guard let reset = row.resetsAt else { return L10n.tr("Reset time unknown") }
         let detail = row.resetIsEstimate ? L10n.tr("Resets by {0} at the latest (estimate)", date(reset)) : L10n.tr("quota.resetTooltip {0}", date(reset))
         return [source, detail].compactMap { $0 }.joined(separator: " · ")
     }

@@ -80,7 +80,7 @@ Cowork sessions are listed for reference only, and cloud chats have no local fil
 
 - `~/.claude`, `~/.claude.json` and the Claude Code credentials in the Keychain. The separate Claude Code CLI login keeps its own account.
 - MCP configuration, skills, plugins, hooks, projects, Cowork data and transcripts.
-- Claude's "Claude Safe Storage" Keychain item is only read, and only when you refresh quota (see [usage-data.md](usage-data.md)).
+- Claude's "Claude Safe Storage" Keychain item is only read, for quota access (see [usage-data.md](usage-data.md)).
 - Refresh tokens are never used.
 
 ## Files and permissions

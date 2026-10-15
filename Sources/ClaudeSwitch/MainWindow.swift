@@ -166,10 +166,10 @@ struct InventoryToolbar: ToolbarContent {
                         }.padding(16).frame(width: 300, alignment: .leading)
                     }
             }
-            Button { Task { await state.refreshCurrentQuota() } } label: {
+            Button { Task { await state.refreshLocalRecords() } } label: {
                 Label(L10n.tr("Refresh"), systemImage: "arrow.clockwise")
             }.disabled(state.refreshing)
-                .help(L10n.tr("Refresh current account quota"))
+                .help(L10n.tr("Refresh accounts and conversations"))
         }
     }
 }

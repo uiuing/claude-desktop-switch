@@ -55,6 +55,20 @@ public actor ActiveUsageClient: UsageProvider {
         self.transport = transport; self.now = now
     }
     public func identity() -> Account? { verifiedAccount }
+    public nonisolated var quotaAccessAvailable: Bool { DesktopTokenReader.access.available }
+    public nonisolated func clearQuotaAccess() { DesktopTokenReader.access.clear() }
+    public func authorizeQuotaAccess(allowPrompt: Bool) async throws {
+        guard !inFlight else { throw SwitchError.busy }
+        inFlight = true; defer { inFlight = false }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(with: Result {
+                    var key = try DesktopTokenReader.authorize(allowPrompt: allowPrompt)
+                    key.resetBytes(in: 0..<key.count)
+                })
+            }
+        }
+    }
     public func takeVerifiedPlan() -> (accountID: String, organizationID: String, plan: String?, observedAt: Date)? {
         defer { verifiedPlan = nil }; return verifiedPlan
     }

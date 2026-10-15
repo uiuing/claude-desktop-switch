@@ -44,6 +44,20 @@ final class DesktopTokenTests: XCTestCase {
         XCTAssertEqual(token.organizationID, org)
         XCTAssertEqual(token.credentialDigest, try IdentitySchema.fingerprint(auth))
     }
+    func testRotatedStorageKeyRetriesSilentlyAndStillValidatesAccount() throws {
+        let access = QuotaKeyAccess()
+        _ = try access.read(allowPrompt: true) { _ in Data("fixture-old-key".utf8) }
+        var loads = 0
+        let token = try DesktopTokenReader.read(config: savedAuth(), expectedAccount: account, allowPrompt: true, access: access) { prompt in
+            XCTAssertFalse(prompt)
+            loads += 1
+            return Data("fixture-password".utf8)
+        }
+        XCTAssertEqual(loads, 1)
+        XCTAssertEqual(token.accountID, account)
+        XCTAssertEqual(token.organizationID, org)
+        XCTAssertTrue(access.available)
+    }
 
     func testSavedAuthRejectsWrongAccountBeforeReadingKey() throws {
         let auth = try savedAuth()

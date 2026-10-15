@@ -39,7 +39,7 @@ The current account additionally gets a bounded read on:
 - publication of changed credentials for the same account; a changed encrypted cache only causes a request if the selected access token actually changed;
 - an observed reset boundary, once per boundary.
 
-A debounced file observer notices config publication and atomic file replacement. The existing 60-second local scan is a fallback. The menu bar refresh and `⌘R` read the current account online after checking local identity. The account-card refresh reads that card’s account online. Automatic reads never show a Keychain prompt.
+A debounced file observer notices config publication and atomic file replacement. The existing 60-second local scan is a fallback. Toolbar/menu refresh and `⌘R` rescan local accounts and conversations only (and statistics on the Usage page); they do not enqueue quota queries. The account-card refresh reads that card’s quota. Automatic reads never show a Keychain prompt.
 
 ### Automatic schedule and settings
 
@@ -77,7 +77,7 @@ An online refresh:
 
 A saved access token that has expired retains its last reading and asks the user to switch to the account so Claude can update the login. Non-current accounts are not actively renewed. Cancellation of a switch does not enqueue a switch refresh; an in-flight quota read is canceled when a file operation starts, and changed credentials discard the response.
 
-**Keychain access.** Only a manual refresh may request macOS authorization. Automatic reads stay silent and show recovery guidance when access is unavailable. Ad-hoc builds can be considered a new app after an update, so permission may be requested again.
+**Keychain access.** Only an explicit authorization action or manual quota refresh may request macOS approval. One shared notice covers accounts waiting for access. The authorized Safe Storage key is held only in memory, shared across accounts, and cleared on sleep, session deactivation or exit. A decryption failure discards it and permits one silent reread. Successful access resumes only permission-blocked accounts, preserving credential blocks and server cooldowns; the authorization action retries them 15 seconds apart while Claude is running. Background recovery stays silent. Ad-hoc builds can require approval again after an update.
 
 **Retry state** is persisted in Switch's own private directory, using an exclusive lock to serialize reservations across app instances:
 

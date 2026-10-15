@@ -105,6 +105,9 @@ final class ScreenshotTests: XCTestCase {
             if let id = state.activeID { state.usageNotices[id] = L10n.tr("Waiting for Claude to publish its login credentials.") }
             try save(captureWorkbench(state, dark: false), "quota-states-\(language)", maxWidth: 1600)
             try save(captureMenu(state, dark: false), "quota-menu-\(language)", maxWidth: 700)
+            state.quotaAccessRequired = true
+            try save(captureWorkbench(state, dark: false), "quota-access-\(language)", maxWidth: 1600)
+            try save(captureMenu(state, dark: false), "quota-access-menu-\(language)", maxWidth: 700)
         }
     }
 

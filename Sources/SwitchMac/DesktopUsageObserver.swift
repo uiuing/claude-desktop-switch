@@ -26,7 +26,9 @@ public final class DesktopUsageObserver: @unchecked Sendable {
         for name in [NSWorkspace.didWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
             notifications.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in receive(.wake) })
         }
-        notifications.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in receive(.sleep) })
+        for name in [NSWorkspace.willSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
+            notifications.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in receive(.sleep) })
+        }
         for (name, event) in [(NSWorkspace.didLaunchApplicationNotification, Event.launched),
                               (NSWorkspace.didTerminateApplicationNotification, .terminated)] {
             notifications.append(center.addObserver(forName: name, object: nil, queue: .main) { note in

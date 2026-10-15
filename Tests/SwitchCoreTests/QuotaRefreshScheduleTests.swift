@@ -18,6 +18,28 @@ final class QuotaRefreshScheduleTests: XCTestCase {
         schedule.selectCurrent(a, now: base)
         return schedule
     }
+    func testSharedAccessRecoveryPreservesCredentialBlocksAndServerCooldowns() {
+        var schedule = make()
+        let later = base.addingTimeInterval(3600)
+        schedule.suspend(a, awaitingAccess: true)
+        schedule.deferRead(a, until: later.addingTimeInterval(60))
+        schedule.suspend(b)
+        XCTAssertEqual(schedule.resumeAfterAccess(), [a])
+        XCTAssertFalse(schedule.isBlocked(a))
+        XCTAssertTrue(schedule.isBlocked(b))
+        XCTAssertTrue(schedule.dueAccounts(current: a, now: later).isEmpty)
+        XCTAssertEqual(schedule.dueAccounts(current: a, now: later.addingTimeInterval(60)), [a])
+        XCTAssertTrue(schedule.resumeAfterAccess().isEmpty)
+    }
+    func testAllAccessBlockedAccountsResumeOnceAndRemovedAccountsStayRemoved() {
+        var schedule = make()
+        schedule.suspend(a, awaitingAccess: true); schedule.suspend(b, awaitingAccess: true)
+        XCTAssertEqual(Set(schedule.resumeAfterAccess()), Set([a, b]))
+        schedule.suspend(a, awaitingAccess: true); schedule.suspend(b, awaitingAccess: true)
+        schedule.synchronize(accounts: [Account(id: a, organizationID: org, hasSnapshot: true)], snapshots: [:], now: base)
+        XCTAssertEqual(schedule.resumeAfterAccess(), [a])
+        XCTAssertTrue(schedule.accountsAwaitingAccess.isEmpty)
+    }
     func testChangeDensitySpeedsUpAndDecaysWithoutScalingBySessionCount() {
         var schedule = make()
         for minute in 0..<5 {

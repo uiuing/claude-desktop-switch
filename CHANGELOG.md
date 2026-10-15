@@ -14,7 +14,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
-- Quota and reset times now come exclusively from online responses. Legacy local estimates are removed; failed reads keep the last successful online measurement. Menu refresh and Command-R now refresh current-account quota online.
+- Quota and reset times now come exclusively from online responses. Legacy local estimates are removed; failed reads keep the last successful online measurement.
 
 - Current-account quota follows credential publication, including late renewal after switching. Incoming accounts have priority; startup, wake and network recovery can refresh stale readings.
 - Quota windows retain their own source and timestamp. Elapsed reset times show pending confirmation instead of fabricated full quota, and stale readings no longer drive switch suggestions.
@@ -26,6 +26,9 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Less background work: the usage cache no longer stores every reply and is written at most every five minutes, unchanged transcripts are not read again, statistics are rescanned every ten minutes while the Usage page is not on screen, waiting for a sign-in checks only the login itself, and a statistics scan no longer redraws the menu bar.
 
 ### Fixed
+
+- General refresh and Command-R now update local records independently of quota. Quota cards show only the update time, with newly fetched values labeled “Just now”.
+- One Keychain approval is shared across accounts, and permission-blocked quota requests resume without refreshing each card. Credential blocks and server cooldowns remain intact.
 
 - Token rejection, account/organization cooldowns and encrypted-cache changes use separate identities. Server retry delays survive token renewal and restarts without a one-hour cap.
 - Login detection includes committed SQLite WAL data through private copies; missing cookies no longer mark saved logins permanently expired, and old cookie-based invalid flags are cleared. Pending credential journals wait for publication.
