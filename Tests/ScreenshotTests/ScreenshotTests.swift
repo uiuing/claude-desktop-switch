@@ -67,6 +67,8 @@ final class ScreenshotTests: XCTestCase {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         NSApplication.shared.setActivationPolicy(.accessory)
         NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
         for language in ["en", "de"] {
             UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
             let state = AppState(demo: true)

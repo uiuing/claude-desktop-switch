@@ -26,7 +26,10 @@ private struct AuthorizedWorkbench: View {
                 case .usage: AnalyticsView()
                 case .settings: SettingsView()
                 }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            // The outgoing inspector still occupies space while it collapses.
+            // Let the new page shrink during that transition without widening the window.
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
         }
         // On the split view itself, not inside the detail: a nested inspector split
         // lags behind sidebar animations and overflows the window mid-transition.
