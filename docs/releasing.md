@@ -2,7 +2,7 @@
 
 Releases are built locally and published by hand on GitHub. Claude Switch doesn't have automatic or remote updates yet, so a GitHub release is how users learn about and get a new version.
 
-`Resources/Info.plist` is the single source of the version; the first release is `0.1.0`. Versions follow [Semantic Versioning](https://semver.org).
+`Resources/Info.plist` is the single source of the version. Versions follow [Semantic Versioning](https://semver.org).
 
 ## Steps
 
@@ -15,15 +15,36 @@ Releases are built locally and published by hand on GitHub. Claude Switch doesn'
 
    ```sh
    python3 scripts/check-localization.py
+   swift build
    swift test
    swift test --scratch-path .build/write-tests -Xswiftc -DCLAUDE_WRITE_ENABLED
    zsh scripts/package.sh            # dist/ClaudeSwitch-X.Y.Z-macOS.zip and .sha256
    ```
 
-5. Commit, tag and push:
+   Verify both architectures, the signature and the archive checksum. Inspect the regenerated images, including English and German in narrow layouts.
 
    ```sh
-   git commit -am "Release X.Y.Z"
+   lipo "dist/Claude Switch.app/Contents/MacOS/ClaudeSwitch" -verify_arch arm64 x86_64
+   codesign --verify --deep --strict "dist/Claude Switch.app"
+   (cd dist && shasum -a 256 -c ClaudeSwitch-X.Y.Z-macOS.zip.sha256)
+   if LC_ALL=C grep -a -q '/Users/' "dist/Claude Switch.app/Contents/MacOS/ClaudeSwitch"; then
+     echo 'Build paths remain in the release binary.' >&2
+     exit 1
+   fi
+   zsh scripts/release-notes.sh X.Y.Z > dist/release-notes-X.Y.Z.md
+   ```
+
+   Fixture tests and demo screenshots do not verify real-account switching, Keychain approval or live quota requests. Record any separate manual acceptance and outstanding limits before publishing. Do not run acceptance against a developer's everyday Claude data.
+
+5. Review the changed files and stage only the intended release files. Add updated documentation, scripts or screenshots explicitly when applicable. After reviewing the staged diff, commit, tag and push:
+
+   ```sh
+   git status --short
+   git diff --check
+   git diff
+   git add Resources/Info.plist CHANGELOG.md
+   git diff --cached
+   git commit -m "Release X.Y.Z"
    git tag vX.Y.Z
    git push origin main vX.Y.Z
    ```
@@ -33,8 +54,9 @@ Releases are built locally and published by hand on GitHub. Claude Switch doesn'
    ```sh
    gh release create vX.Y.Z \
      dist/ClaudeSwitch-X.Y.Z-macOS.zip dist/ClaudeSwitch-X.Y.Z-macOS.zip.sha256 \
+     --verify-tag \
      --title "Claude Switch X.Y.Z" \
-     --notes "$(zsh scripts/release-notes.sh X.Y.Z)"
+     --notes-file dist/release-notes-X.Y.Z.md
    ```
 
    or on the website: **Releases → Draft a new release**, choose the tag `vX.Y.Z`, set the title `Claude Switch X.Y.Z`, paste the output of `zsh scripts/release-notes.sh X.Y.Z` as the description, attach the zip and the `.sha256` file, keep **Set as the latest release** checked, and publish.
@@ -43,7 +65,7 @@ Releases are built locally and published by hand on GitHub. Claude Switch doesn'
 
 ## Signing and notarization (optional)
 
-By default the app is ad-hoc signed. Users have to approve it once in **System Settings → Privacy & Security**, and after each update macOS may ask again whether the new version can use the app's Keychain item. With an Apple Developer ID the app can be signed and notarized instead:
+By default the app is ad-hoc signed. Users have to approve it once in **System Settings → Privacy & Security**. After an update, the startup authorization screen may require renewed access to **Claude Safe Storage**, and macOS may also ask for access to Claude Switch's vault key. With an Apple Developer ID the app can be signed and notarized instead:
 
 1. Store notarization credentials once in your login keychain:
 

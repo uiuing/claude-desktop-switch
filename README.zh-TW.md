@@ -86,7 +86,9 @@ Claude Switch 會把你用到的每個登入加密保存在本機，並替你完
 
 ### 更新
 
-Claude Switch **目前還沒有遠端更新或自動更新**。想第一時間得知新版本，請在本儲存庫按 **Watch → Custom → Releases**，或關注 [Releases](https://github.com/uiuing/claude-desktop-switch/releases) 頁面；下載新版後取代「應用程式」中的舊版即可。已保存的帳號仍保留在本機；macOS 可能會詢問一次是否允許新版本使用 Claude Switch 的鑰匙圈項目，選 **永遠允許**。
+Claude Switch **目前還沒有遠端更新或自動更新**。想第一時間得知新版本，請在本儲存庫按 **Watch → Custom → Releases**，或關注 [Releases](https://github.com/uiuing/claude-desktop-switch/releases) 頁面。取代「應用程式」中的舊版前，請先結束 Claude Switch；已保存的帳號仍保留在本機。啟動時若顯示授權頁面，按 **允許存取**，再於 macOS 鑰匙圈對話框中允許存取 **Claude Safe Storage**。更新後，macOS 也可能詢問是否允許存取 Claude Switch 自己的加密金鑰；這些項目均可選擇 **永遠允許**。
+
+從 0.1.0 升級時，會移除舊的本機推估額度；帳號可能暫時顯示 **—**，直到下一次成功在線上更新。已保存的登入和對話不受影響。
 
 ## 快速上手
 

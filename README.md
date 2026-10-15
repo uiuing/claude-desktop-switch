@@ -86,7 +86,9 @@ Each release lists a SHA-256 checksum next to the download if you want to verify
 
 ### Updates
 
-Claude Switch **doesn't have remote or automatic updates yet**. To hear about new versions, watch this repository (**Watch → Custom → Releases**) or check the [Releases](https://github.com/uiuing/claude-desktop-switch/releases) page, then replace the app in Applications. Your saved accounts stay on your Mac; macOS may ask once whether the new version may use Claude Switch's Keychain item. Choose **Always Allow**.
+Claude Switch **doesn't have remote or automatic updates yet**. To hear about new versions, watch this repository (**Watch → Custom → Releases**) or check the [Releases](https://github.com/uiuing/claude-desktop-switch/releases) page. Quit Claude Switch before replacing it in Applications; your saved accounts stay on your Mac. On launch, choose **Allow access** if shown, then approve access to **Claude Safe Storage** in the macOS Keychain dialog. macOS may also ask for access to Claude Switch's own vault key after an update. Choose **Always Allow** for these items.
+
+When upgrading from 0.1.0, old locally estimated quota readings are removed. An account may show **—** until its next successful online refresh; saved logins and conversations are preserved.
 
 ## Getting started
 

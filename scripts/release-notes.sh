@@ -6,7 +6,7 @@ cd "${0:A:h:h}"
 
 version="${1:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)}"
 section="$(awk -v version="$version" '
-  $0 ~ "^## \\[" version "\\]" { found = 1; next }
+  index($0, "## [" version "]") == 1 { found = 1; next }
   found && /^## \[/ { exit }
   found && /^\[.*\]: / { exit }
   found { print }
@@ -32,5 +32,5 @@ Requires macOS 14 or later, Apple silicon or Intel. To verify the download: \`sh
 
 ### Updating
 
-Claude Switch doesn't have remote or automatic updates yet. Watch this repository (**Watch → Custom → Releases**) to hear about new versions, then replace the app in Applications. Saved accounts stay on your Mac; macOS may ask once whether the new version may use Claude Switch's Keychain item. Choose **Always Allow**.
+Claude Switch doesn't have remote or automatic updates yet. Watch this repository (**Watch → Custom → Releases**) to hear about new versions. Quit Claude Switch before replacing it in Applications; saved accounts stay on your Mac. On launch, choose **Allow access** if shown, then approve access to **Claude Safe Storage** in the macOS Keychain dialog. macOS may also ask for access to Claude Switch's own vault key after an update. Choose **Always Allow** for these items.
 EOF

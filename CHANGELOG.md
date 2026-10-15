@@ -6,46 +6,42 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-15
+
+More reliable quota readings and account switching, with less background work.
+
+### Upgrading from 0.1.0
+
+- On launch, Claude Switch checks access to **Claude Safe Storage** before opening the workbench. If prompted, choose **Allow access**, then approve the macOS Keychain dialog. Canceling leaves a retry screen; background work waits for authorization.
+- Quota and reset times now come only from online responses. Old local estimates are removed, so an account may show **—** until its next successful refresh. Saved logins and conversations are preserved.
+
 ### Added
 
-- Startup checks Keychain access before opening the workbench or starting background work. Missing permission shows an authorization screen with retry and quit actions.
-
-- Configurable automatic quota refresh: the current account follows conversation activity, other accounts default to 30 minutes, and queries are staggered. Automatic refresh pauses when Claude closes.
-
-- Manual quota refresh for each saved account without switching Claude Desktop.
+- Configurable automatic quota refresh: the current account follows conversation activity, other accounts default to 30 minutes, and queries are staggered. Refresh pauses when Claude closes and can be disabled in Settings.
+- Manual quota refresh for each saved account without switching Claude Desktop. Switching refreshes both the incoming and outgoing accounts once; newly saved logins are also refreshed once.
 
 ### Changed
 
-- Quota and reset times now come exclusively from online responses. Legacy local estimates are removed; failed reads keep the last successful online measurement.
-
-- Current-account quota follows credential publication, including late renewal after switching. Incoming accounts have priority; startup, wake and network recovery can refresh stale readings.
-- Quota windows retain their own source and timestamp. Elapsed reset times show pending confirmation instead of fabricated full quota, and stale readings no longer drive switch suggestions.
-
-- Switching accounts automatically refreshes both the outgoing and incoming accounts once. Queued reads survive concurrent work and per-login cooldowns, duplicate discovery notifications are coalesced, and a failure on one account does not stop the other. Automatic reads never show a Keychain prompt.
-
+- Failed quota reads retain the last successful online measurement and its timestamp. Elapsed reset times show **Awaiting confirmation**; stale readings no longer drive switch suggestions.
+- Current-account quota follows updated credentials, including late renewal after switching. Incoming accounts have priority; startup, wake and network recovery can refresh stale readings. Automatic reads never show a Keychain prompt.
+- General refresh and Command-R update local records independently of quota. Use each account's refresh button for quota; cards show the measurement time, with new readings labeled **Just now**.
 - Claude Code running in a terminal or an editor no longer blocks switching. Only Claude Desktop's helpers and the Claude Code sessions it started are waited for.
-- Old recovery copies are cleaned up: the two newest switches of each account and a week of other finished operations are kept. Unfinished operations are always kept.
-- Less background work: the usage cache no longer stores every reply and is written at most every five minutes, unchanged transcripts are not read again, statistics are rescanned every ten minutes while the Usage page is not on screen, waiting for a sign-in checks only the login itself, and a statistics scan no longer redraws the menu bar.
+- Old recovery copies are cleaned up: the two newest switches that moved each account's login out of Claude and a week of other finished operations are kept. Unfinished operations are always kept.
+- Less background work: unchanged transcripts are skipped, the smaller usage cache is written at most every five minutes, and statistics are rescanned every ten minutes while the Usage page is not visible. Statistics scans no longer redraw the menu bar.
 
 ### Fixed
 
-- Opening Usage from Conversations preserves the window width while the conversation details panel closes.
-
-- General refresh and Command-R now update local records independently of quota. Quota cards show only the update time, with newly fetched values labeled “Just now”.
-- One Keychain approval is shared across accounts, and permission-blocked quota requests resume without refreshing each card. Credential blocks and server cooldowns remain intact.
-
-- Token rejection, account/organization cooldowns and encrypted-cache changes use separate identities. Server retry delays survive token renewal and restarts without a one-hour cap.
-- Login detection includes committed SQLite WAL data through private copies; missing cookies no longer mark saved logins permanently expired, and old cookie-based invalid flags are cleared. Pending credential journals wait for publication.
-- Credential expiry, scope, Keychain, authorization, network and server failures have distinct recovery states. Profile validation is cached briefly; quota windows are parsed by their supported kind.
-
-- Online quota cooldowns and rejected credentials stay tracked separately for every login, including across app restarts and refreshes of other accounts.
-
+- Saved accounts can be switched to after Claude Desktop updates itself. A login saved by a newer Claude than the installed version is still refused.
+- An account using different organizations in Desktop and Claude Code keeps its Desktop organization, plan and quota. Session transfers stop if the destination organization cannot be confirmed.
+- Login detection and saved-snapshot validation include committed SQLite WAL data through private copies, so a newly signed-in account can be saved before Claude checkpoints its cookies. Missing cookies no longer mark saved logins permanently expired; old cookie-based invalid flags are cleared. Saving retries when Claude is still writing its login data.
+- Quota cooldowns and rejected credentials are tracked separately for each login across restarts. Token renewal cannot bypass server retry delays, and one account's failure does not stop another account's queued refresh.
+- One Keychain approval is shared across accounts; permission-blocked requests resume without refreshing each card. Credential blocks and server cooldowns remain intact.
+- Expired credentials, missing scopes, Keychain permissions, authorization errors, network failures and server failures have distinct recovery states. Quota parsing accepts only supported window kinds.
 - The "Quota was just read" notice no longer stays on an account card forever: it counts down and disappears when the wait is over. Quota notices can be dismissed, and they are cleared when that account is refreshed successfully.
-- Saved accounts can be switched to again after Claude Desktop updates itself. Only a login saved by a newer Claude than the one installed is refused.
-- An account that uses one organization in Claude Desktop and another in Claude Code keeps its organization, plan and quota steady, and a conversation moved to it no longer lands in an organization Claude Desktop doesn't show.
-- Saving the signed-in login tries again by itself when Claude was writing its data at that moment, and the message no longer mentions a preview.
+- Opening Usage from Conversations preserves the window width while the conversation details panel closes.
+- The German switch hint fits narrow menu rows without truncation.
 - Simplified Chinese uses mainland wording throughout, for example 数据, 文件 and 操作 instead of 资料, 档案 and 交易.
-- The documentation no longer says saved logins only work on this Mac: the Keychain item never syncs to iCloud, but it moves with a full migration of your macOS user account.
+- Documentation clarifies that the vault key never syncs to iCloud, but can move with a full migration of your macOS user account.
 
 ## [0.1.0] - 2026-10-14
 
@@ -67,5 +63,6 @@ First public release.
 - Links to the project on GitHub from the sidebar, the menu bar panel and Settings. There are no remote or automatic updates yet; new versions are published as GitHub releases.
 - `switch-inspect`, a read-only command-line diagnostic that prints counts only.
 
-[Unreleased]: https://github.com/uiuing/claude-desktop-switch/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/uiuing/claude-desktop-switch/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/uiuing/claude-desktop-switch/compare/v0.1.0...v0.1.5
 [0.1.0]: https://github.com/uiuing/claude-desktop-switch/releases/tag/v0.1.0

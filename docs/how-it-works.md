@@ -21,7 +21,7 @@ Claude Switch checks access to Claude Safe Storage before opening its main inter
 When Claude Desktop is signed in to an account that Claude Switch has not saved yet, or whose credentials changed, the app saves it automatically while Claude keeps running:
 
 1. It reads the allow-listed files. Nothing in Claude's folder is modified.
-2. It checks the credential fingerprint and the signed-in account before and after reading, and discards the copy if anything changed in between. Claude writes its data while it runs, so a discarded copy is taken again after 5, 15 and 45 seconds before the problem is shown.
+2. It checks the credential fingerprint and the signed-in account before and after reading, and discards the copy if anything changed in between. The captured cookie database is checked together with its captured WAL, so committed login changes need not wait for a database checkpoint. Claude writes its data while it runs, so a discarded copy is taken again after 5, 15 and 45 seconds before the problem is shown.
 3. It encrypts the copy with **AES-256-GCM**. The authenticated data binds each snapshot to its account, and every file also carries a SHA-256 digest.
 4. The encryption key is stored in your login Keychain as a non-synchronizing item that belongs to Claude Switch. It never goes to iCloud, and a copy of the saved logins cannot be read without it. The login Keychain does move with a full migration of your macOS user account (Migration Assistant or a restored backup), and the saved logins with it.
 

@@ -353,7 +353,7 @@ public actor SwitchEngine: SwitchService {
         prune(now: Date())
     }
 
-    private func capture(version: String) throws -> LoginSnapshot {
+    func capture(version: String) throws -> LoginSnapshot {
         let config = try environment.effectiveConfig()
         try IdentitySchema.validateConfig(config)
         let account = try environment.currentAccount()
@@ -384,7 +384,9 @@ public actor SwitchEngine: SwitchService {
         guard let cookies = files.first(where: { $0.path == "Cookies" }), directories.contains("Local Storage") else {
             throw SwitchError.blocked(L10n.tr("The login container does not match the current adapter. A recoverable snapshot cannot be created."))
         }
-        switch LoginProbe.signedIn(cookieData: cookies.data) {
+        // Claude may keep committed login changes in the WAL while it is running.
+        let wal = files.first { $0.path == "Cookies-wal" }?.data
+        switch LoginProbe.signedIn(cookieData: cookies.data, walData: wal) {
         case true?: break
         case false?: throw SwitchError.blocked(L10n.tr("Claude is signed out; nothing was saved."))
         // The copy caught the cookie store mid-write.
