@@ -38,13 +38,6 @@ Using personal and work accounts should not mean signing in over and over or fin
 
 ## Screenshots
 
-**Get a heads-up when you run low.**
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-en-dark.png?v=0.2.0-2">
-  <img src="docs/images/switch-reminder-menu-en-light.png?v=0.2.0-2" width="330" alt="Get a heads-up when you run low.">
-</picture>
-
 **Pick up where you left off.**
 
 <picture>
@@ -52,12 +45,24 @@ Using personal and work accounts should not mean signing in over and over or fin
   <img src="docs/images/conversations-en-light.png?v=0.2.0-2" alt="Pick up where you left off.">
 </picture>
 
-**Understand your usage.**
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-en-dark.png?v=0.2.0-2">
-  <img src="docs/images/usage-en-light.png?v=0.2.0-2" alt="Understand your usage.">
-</picture>
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <p><b>Get a heads-up when you run low.</b></p>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-en-dark.png?v=0.2.0-2">
+        <img src="docs/images/switch-reminder-menu-en-light.png?v=0.2.0-2" alt="Get a heads-up when you run low.">
+      </picture>
+    </td>
+    <td width="67%" valign="top">
+      <p><b>Understand your usage.</b></p>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-en-dark.png?v=0.2.0-2">
+        <img src="docs/images/usage-en-light.png?v=0.2.0-2" alt="Understand your usage.">
+      </picture>
+    </td>
+  </tr>
+</table>
 
 <sub>All screenshots use fictional sample data.</sub>
 

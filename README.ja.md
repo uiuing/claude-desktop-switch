@@ -38,13 +38,6 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 
 ## スクリーンショット
 
-**残りが少なくなったらお知らせ。**
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-ja-dark.png?v=0.2.0-2">
-  <img src="docs/images/switch-reminder-menu-ja-light.png?v=0.2.0-2" width="330" alt="残りが少なくなったらお知らせ。">
-</picture>
-
 **会話の続きを別のアカウントで。**
 
 <picture>
@@ -52,12 +45,24 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
   <img src="docs/images/conversations-ja-light.png?v=0.2.0-2" alt="会話の続きを別のアカウントで。">
 </picture>
 
-**自分の使い方を振り返る。**
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-ja-dark.png?v=0.2.0-2">
-  <img src="docs/images/usage-ja-light.png?v=0.2.0-2" alt="自分の使い方を振り返る。">
-</picture>
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <p><b>残りが少なくなったらお知らせ。</b></p>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-ja-dark.png?v=0.2.0-2">
+        <img src="docs/images/switch-reminder-menu-ja-light.png?v=0.2.0-2" alt="残りが少なくなったらお知らせ。">
+      </picture>
+    </td>
+    <td width="67%" valign="top">
+      <p><b>自分の使い方を振り返る。</b></p>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-ja-dark.png?v=0.2.0-2">
+        <img src="docs/images/usage-ja-light.png?v=0.2.0-2" alt="自分の使い方を振り返る。">
+      </picture>
+    </td>
+  </tr>
+</table>
 
 <sub>スクリーンショットには架空のサンプルデータを使用しています。</sub>
 
