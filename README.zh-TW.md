@@ -38,13 +38,6 @@
 
 ## 截圖
 
-**額度不足，及時提醒。**
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hant-dark.png?v=0.2.0-2">
-  <img src="docs/images/switch-reminder-menu-zh-Hant-light.png?v=0.2.0-2" width="330" alt="額度不足，及時提醒。">
-</picture>
-
 **換帳號，對話跟著走。**
 
 <picture>
@@ -52,12 +45,24 @@
   <img src="docs/images/conversations-zh-Hant-light.png?v=0.2.0-2" alt="換帳號，對話跟著走。">
 </picture>
 
-**看看自己的使用習慣。**
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hant-dark.png?v=0.2.0-2">
-  <img src="docs/images/usage-zh-Hant-light.png?v=0.2.0-2" alt="看看自己的使用習慣。">
-</picture>
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <p><b>額度不足，及時提醒。</b></p>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hant-dark.png?v=0.2.0-2">
+        <img src="docs/images/switch-reminder-menu-zh-Hant-light.png?v=0.2.0-2" alt="額度不足，及時提醒。">
+      </picture>
+    </td>
+    <td width="67%" valign="top">
+      <p><b>看看自己的使用習慣。</b></p>
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hant-dark.png?v=0.2.0-2">
+        <img src="docs/images/usage-zh-Hant-light.png?v=0.2.0-2" alt="看看自己的使用習慣。">
+      </picture>
+    </td>
+  </tr>
+</table>
 
 <sub>所有截圖皆使用虛構的範例資料。</sub>
 
