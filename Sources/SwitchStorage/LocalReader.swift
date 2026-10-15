@@ -11,7 +11,6 @@ public actor LocalReader: InventoryReader {
     /// The Claude Code login in `~/.claude.json`. Only these fields are decoded; the file also holds project history.
     private struct CodeAccount: Decodable { var accountUuid: String?; var emailAddress: String?; var organizationUuid: String? }
     private struct CodeConfig: Decodable { var oauthAccount: CodeAccount? }
-    private var limitLog = LimitLogScanner()
     public init(desktop: URL, codeConfig: URL, projects: URL? = nil) {
         self.desktop = desktop; self.codeConfig = codeConfig; self.projects = projects
     }
@@ -91,32 +90,11 @@ public actor LocalReader: InventoryReader {
         if let active, let org = accounts[active]?.organizationID, let seen = profile.observedAt[org] {
             accounts[active]?.plan = profile.plans[org]; accounts[active]?.planObservedAt = seen
         }
-        let samples = (try? SafeFiles.json(desktop.appendingPathComponent("plan-usage-history.json")))?["samples"].array ?? []
-        var hints: [String: [ResetHint]] = [:]
-        if let active, let org = accounts[active]?.organizationID { hints[active] = profile.limits[org] ?? [] }
-        if let projects {
-            // A transcript names only its session; a session copied to several accounts cannot be attributed.
-            var owners: [String: Set<String>] = [:]
-            for conversation in conversations { if let cli = conversation.cliSessionID { owners[cli, default: []].insert(conversation.accountID) } }
-            for (session, found) in limitLog.scan(projects: projects) {
-                if let owner = owners[session], owner.count == 1, let id = owner.first { hints[id, default: []] += found }
-            }
-        }
-        var cachedUsage: [String: UsageSnapshot] = [:]
-        for account in accounts.values {
-            guard let org = account.organizationID,
-                  accounts.values.filter({ $0.organizationID == org }).count == 1 else { continue }
-            if let reading = localUsage(accountID: account.id, organizationID: org, samples: samples, hints: hints[account.id] ?? []) {
-                cachedUsage[account.id] = reading
-            }
-        }
-        let usage = active.flatMap { cachedUsage[$0] }
-        if usage == nil { warnings.append(L10n.tr("No quota records can be reliably attributed to the current account.")) }
         let after = try SafeFiles.json(desktop.appendingPathComponent("config.json"))["lastKnownAccountUuid"].string?.lowercased()
         guard after == active else { throw SwitchError.changed }
         let signedIn = await loginState()
         return LocalInventory(activeAccountID: signedIn == false ? nil : active, accounts: accounts.values.sorted { $0.id < $1.id },
-                              conversations: conversations, usage: usage, warnings: Array(Set(warnings)).sorted(), cachedUsage: cachedUsage,
+                              conversations: conversations, usage: nil, warnings: Array(Set(warnings)).sorted(),
                               lastKnownAccountID: active, signedIn: signedIn)
     }
 
@@ -152,30 +130,4 @@ public actor LocalReader: InventoryReader {
         return profileCache.profile
     }
 
-    private func localUsage(accountID: String, organizationID: String, samples: [JSONValue],
-                            hints: [ResetHint]) -> UsageSnapshot? {
-        // A plan-history file can retain samples from the previous login. Never use samples.last blindly.
-        let now = Date()
-        let keys = [("fh", "five_hour", L10n.quotaTitle("five_hour", fallback: "five_hour")),
-                    ("sd", "seven_day", L10n.quotaTitle("seven_day", fallback: "seven_day"))]
-        let readings = samples.filter { $0["org"].string?.lowercased() == organizationID }.compactMap { sample -> UsageSample? in
-            guard let time = Dates.parse(sample["t"]), time <= now.addingTimeInterval(60) else { return nil }
-            var used: [String: Double] = [:]
-            for (key, id, _) in keys {
-                if let value = sample["u"][key].number, value.isFinite, (0...100).contains(value) { used[id] = value }
-            }
-            return UsageSample(time: time, used: used)
-        }.sorted { $0.time < $1.time }
-        guard let latest = readings.last else { return nil }
-        var windows: [QuotaWindow] = []
-        for (_, id, label) in keys {
-            guard let used = latest.used[id] else { continue }
-            // Samples carry no reset time: use one Claude recorded at a limit hit, else the latest bound.
-            let reset = ResetInference.reset(windowID: id, samples: readings, hints: hints, now: now)
-            windows.append(QuotaWindow(id: id, title: label, usedPercent: used, resetsAt: reset?.date,
-                                       resetIsEstimate: reset?.isEstimate ?? false))
-        }
-        guard !windows.isEmpty else { return nil }
-        return UsageSnapshot(accountID: accountID, organizationID: organizationID, observedAt: latest.time, origin: .localCache, windows: windows)
-    }
 }

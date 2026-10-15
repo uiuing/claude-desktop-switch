@@ -10,26 +10,26 @@ final class QuotaResetTests: XCTestCase {
         UsageSnapshot(accountID: "a", organizationID: "o", observedAt: base.addingTimeInterval(offset), origin: origin, windows: windows)
     }
 
-    func testElapsedFiveHourWindowStartsEmptyWithUnknownReset() {
+    func testElapsedFiveHourWindowPreservesMeasurement() {
         let window = QuotaWindow(id: "five_hour", title: "5h", usedPercent: 80, resetsAt: base.addingTimeInterval(hour))
         XCTAssertEqual(window.rolledOver(now: base), window)
         let rolled = window.rolledOver(now: base.addingTimeInterval(hour))
-        XCTAssertEqual(rolled.usedPercent, 0)
-        XCTAssertNil(rolled.resetsAt)
+        XCTAssertEqual(rolled.usedPercent, 80)
+        XCTAssertEqual(rolled.resetsAt, window.resetsAt)
     }
 
-    func testElapsedWeeklyWindowKeepsItsSchedule() {
+    func testElapsedWeeklyWindowDoesNotInventNewSchedule() {
         let reset = base.addingTimeInterval(day)
         let window = QuotaWindow(id: "seven_day", title: "7d", usedPercent: 70, resetsAt: reset)
-        XCTAssertEqual(window.rolledOver(now: reset.addingTimeInterval(1)).resetsAt, reset.addingTimeInterval(7 * day))
-        XCTAssertEqual(window.rolledOver(now: reset.addingTimeInterval(15 * day)).resetsAt, reset.addingTimeInterval(21 * day))
+        XCTAssertEqual(window.rolledOver(now: reset.addingTimeInterval(1)).resetsAt, reset)
+        XCTAssertEqual(window.rolledOver(now: reset.addingTimeInterval(15 * day)).resetsAt, reset)
         let model = QuotaWindow(id: "model:Opus", title: "Opus", usedPercent: 40, resetsAt: reset).rolledOver(now: reset)
-        XCTAssertEqual(model.usedPercent, 0)
-        XCTAssertNil(model.resetsAt)
+        XCTAssertEqual(model.usedPercent, 40)
+        XCTAssertEqual(model.resetsAt, reset)
     }
 
     func testUntouchedFiveHourWindowAwaitsFirstUse() {
-        let live = snapshot(.live, at: 0, [QuotaWindow(id: "five_hour", title: "5h", usedPercent: 0),
+        let live = snapshot(.live, at: 0, [QuotaWindow(id: "five_hour", title: "5h", usedPercent: 0, resetKnownAbsent: true),
                                            QuotaWindow(id: "seven_day", title: "7d", usedPercent: 0)])
         let fiveHour = QuotaReadout.make(id: "five_hour", title: "5h", window: live.windows[0], snapshot: live, active: true, now: base)
         let weekly = QuotaReadout.make(id: "seven_day", title: "7d", window: live.windows[1], snapshot: live, active: true, now: base)
@@ -90,14 +90,14 @@ final class QuotaResetTests: XCTestCase {
         XCTAssertNil(SwitchAdvisor.advice(active: lapsing, candidates: [("b", rows(fiveHour: 70, sevenDay: 40, sevenReset: 10 * hour))], now: base))
     }
 
-    func testReadoutShowsFullQuotaOnceResetPasses() {
+    func testReadoutWaitsForConfirmationOnceResetPasses() {
         let reset = base.addingTimeInterval(hour)
         let live = snapshot(.live, at: 0, [QuotaWindow(id: "seven_day", title: "7d", usedPercent: 90, resetsAt: reset)])
         let row = QuotaReadout.make(id: "seven_day", title: "7d", window: live.windows[0], snapshot: live,
                                     active: true, now: reset.addingTimeInterval(60))
-        XCTAssertEqual(row.remainingPercent, 100)
-        XCTAssertEqual(row.state, .recorded)
-        XCTAssertEqual(row.resetsAt, reset.addingTimeInterval(7 * day))
+        XCTAssertNil(row.remainingPercent)
+        XCTAssertEqual(row.state, .resetPending)
+        XCTAssertEqual(row.resetsAt, reset)
     }
 
     func testLocalReadingKeepsServerResetInsideTheSameWindow() {
@@ -111,11 +111,42 @@ final class QuotaResetTests: XCTestCase {
         XCTAssertEqual(merged.windows.first { $0.id == "seven_day_opus" }?.usedPercent, 5)
     }
 
-    func testRolledWeeklyResetIsNotLentToAReadingFromThePreviousWindow() {
+    func testElapsedPresentationDoesNotMutateMeasurementUsedForMerging() {
         let reset = base.addingTimeInterval(hour)
         let rolled = snapshot(.live, at: 0, [QuotaWindow(id: "seven_day", title: "7d", usedPercent: 60, resetsAt: reset)])
             .rollingOverElapsedResets(now: reset.addingTimeInterval(60))
         let late = snapshot(.localCache, at: 1800, [QuotaWindow(id: "seven_day", title: "7d", usedPercent: 65)])
-        XCTAssertNil(late.retainingKnownResets(from: rolled).windows.first { $0.id == "seven_day" }?.resetsAt)
+        XCTAssertEqual(late.retainingKnownResets(from: rolled).windows.first { $0.id == "seven_day" }?.resetsAt, reset)
+    }
+
+    func testRetainedWindowsAndResetKeepTheirOwnProvenance() throws {
+        let live = snapshot(.live, at: 0, [
+            QuotaWindow(id: "five_hour", title: "Session", usedPercent: 20, resetsAt: base.addingTimeInterval(2 * hour)),
+            QuotaWindow(id: "seven_day_opus", title: "Opus", usedPercent: 5)])
+        let local = snapshot(.localCache, at: 900, [QuotaWindow(id: "five_hour", title: "Session", usedPercent: 25)])
+        let merged = local.retainingKnownResets(from: live)
+        let five = try XCTUnwrap(merged.windows.first { $0.id == "five_hour" })
+        XCTAssertEqual(five.observedAt, base.addingTimeInterval(900))
+        XCTAssertEqual(five.origin, .localCache)
+        XCTAssertEqual(five.resetObservedAt, base); XCTAssertEqual(five.resetOrigin, .live)
+        let opus = try XCTUnwrap(merged.windows.first { $0.id == "seven_day_opus" })
+        XCTAssertEqual(opus.observedAt, base); XCTAssertEqual(opus.origin, .live)
+        let row = QuotaReadout.make(id: opus.id, title: opus.title, window: opus, snapshot: merged, active: true, now: base.addingTimeInterval(1000))
+        XCTAssertEqual(row.state, .stale); XCTAssertEqual(row.remainingPercent, 95)
+    }
+
+    func testStaleQuotaCannotRecommendSwitching() {
+        let low = rows(fiveHour: 10, sevenDay: 40)
+        let stale = rows(fiveHour: 95, sevenDay: 90, at: -601)
+        XCTAssertNil(SwitchAdvisor.advice(active: low, candidates: [("b", stale)], now: base))
+    }
+
+    func testLegacySnapshotDecodesWithoutPerWindowMetadata() throws {
+        let data = Data(#"{"accountID":"a","observedAt":0,"origin":"live","windows":[{"id":"five_hour","title":"Session","usedPercent":40,"resetIsEstimate":false}]}"#.utf8)
+        let decoded = try JSONDecoder().decode(UsageSnapshot.self, from: data)
+        XCTAssertNil(decoded.windows.first?.observedAt)
+        let row = AccountQuotaPresentation.rows(accountID: "a", snapshot: decoded, active: true, now: decoded.observedAt)[0]
+        XCTAssertEqual(row.remainingPercent, 60)
+        XCTAssertEqual(row.observedAt, decoded.observedAt)
     }
 }

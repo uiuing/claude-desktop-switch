@@ -43,5 +43,19 @@ final class ConfigJournalTests: XCTestCase {
         var torn = journal(#"{"oauth:tokenCache":"new"}"#, over: base); torn.removeLast(3)
         try write(config: base, journal: torn)
         XCTAssertEqual(try env.effectiveConfig()["oauth:tokenCache"].string, "current")
+        XCTAssertThrowsError(try env.liveConfig())
+    }
+
+    func testLiveReaderWaitsForCredentialJournalButIgnoresPreferenceChanges() throws {
+        let base = #"{"lastKnownAccountUuid":"0a1b2c3d-1111-4aaa-8bbb-000000000001","oauth:tokenCache":"old"}"#
+        let pending = base.replacingOccurrences(of: "old", with: "new")
+        try write(config: base, journal: journal(pending, over: base))
+        XCTAssertThrowsError(try env.liveConfig())
+        XCTAssertEqual(try env.effectiveConfig()["oauth:tokenCache"].string, "new")
+        try write(config: pending)
+        XCTAssertEqual(try env.liveConfig()["oauth:tokenCache"].string, "new")
+        let preference = pending.replacingOccurrences(of: "\"oauth:tokenCache\"", with: "\"theme\":\"dark\",\"oauth:tokenCache\"")
+        try write(config: pending, journal: journal(preference, over: pending))
+        XCTAssertEqual(try env.liveConfig()["oauth:tokenCache"].string, "new")
     }
 }

@@ -40,15 +40,18 @@ final class AppState {
     var analytics = UsageAnalytics()
     var tokenScanError: String?
     var tokenInitialScan = true
-    var refreshing = false
-    var usageRefreshingAccountID: String?
+    var refreshing = false { didSet { updateQuotaRefreshPause() } }
+    var usageRefreshingAccountID: String? { didSet { updateQuotaRefreshPause() } }
     var usageErrors: [String: String] = [:]
     /// A manual read that came within the per-login back-off; its notice counts down and clears itself.
     private(set) var usageCooldowns: [String: UsageCoolingDown] = [:]
-    /// Why the last live read was skipped while the login is merely not readable yet; shown only on hover.
+    /// Recovery guidance stays visible until a successful read replaces it.
     var usageNotices: [String: String] = [:]
     var scanningTokens = false
-    var working = false
+    var working = false { didSet {
+        updateQuotaRefreshPause()
+        if working { Task { await usageClient.cancelCurrentRead() } }
+    } }
     var message: String?
     var pending: PendingOperation?
     var search = ""
@@ -70,6 +73,7 @@ final class AppState {
     let environment = MacEnvironment()
     private let store: LibraryStore
     private let reader: LocalReader
+    private let sessionActivity: SessionActivityReader
     private let tokens: TokenScanner
     private let vault: CredentialVault
     private let engine: SwitchEngine
@@ -77,8 +81,20 @@ final class AppState {
     @ObservationIgnored private var started = false
     private var libraryReadable = true
     @ObservationIgnored private var polling: Task<Void, Never>?
+    @ObservationIgnored private var credentialObserver: DesktopUsageObserver?
+    @ObservationIgnored private var observedLoginSignature: String?
+    @ObservationIgnored private var recoveryAccounts = Set<String>()
+    @ObservationIgnored private var lifecycleChecks: [String: Date] = [:]
+    @ObservationIgnored private var resetChecks: [String: Date] = [:]
     @ObservationIgnored private var profileLookups = Set<String>()
-    @ObservationIgnored private var lastSignedInID: String?
+    @ObservationIgnored private var quotaSchedule = QuotaRefreshSchedule()
+    @ObservationIgnored private var networkAvailable = false
+    @ObservationIgnored private var desktopAwake = true
+    @ObservationIgnored private var automaticReadToken: UUID?
+    @ObservationIgnored private var preparingManualQuota = false
+    @ObservationIgnored private lazy var quotaRefreshQueue = QuotaRefreshQueue { [weak self] request in
+        await self?.refreshLive(accountID: request.accountID, automatic: request)
+    }
     private var transferChoices: [String: SessionTransferMode] = [:]
 
     init(demo: Bool = ProcessInfo.processInfo.arguments.contains("--demo")) {
@@ -86,11 +102,12 @@ final class AppState {
         let env = MacEnvironment()
         store = LibraryStore(root: env.root)
         reader = LocalReader(desktop: env.desktop, codeConfig: env.codeConfig, projects: env.projects)
+        sessionActivity = SessionActivityReader(desktop: env.desktop, projects: env.projects)
         tokens = TokenScanner(projects: env.projects, cacheURL: env.root.appendingPathComponent("usage-cache.json"))
         let vault = CredentialVault(root: env.root.appendingPathComponent("vault"))
         self.vault = vault
         engine = SwitchEngine(environment: env, vault: vault)
-        usageClient = ActiveUsageClient(environment: env)
+        usageClient = ActiveUsageClient(environment: env, vault: vault)
         if demo {
             let data = DemoData.make()
             library = data.library; inventory = data.inventory; analytics = data.analytics
@@ -142,12 +159,16 @@ final class AppState {
     var canExecute: Bool { BuildAccess.allowsClaudeWrites && !demo && !working && libraryReadable }
     var currentUsage: UsageSnapshot? { activeID.flatMap { library.usage[$0] } }
     func quotaRows(for accountID: String, now: Date = Date()) -> [QuotaReadout] {
-        AccountQuotaPresentation.rows(accountID: accountID, snapshot: library.usage[accountID], active: accountID == activeID, now: now)
+        AccountQuotaPresentation.rows(accountID: accountID, snapshot: library.usage[accountID], active: accountID == activeID,
+                                      now: now, freshFor: quotaFreshness(for: accountID, now: now))
+    }
+    private func quotaFreshness(for accountID: String, now: Date) -> TimeInterval {
+        max(600, quotaSchedule.interval(for: accountID, current: activeID, now: now) + 60)
     }
     func quotaUpdated(for accountID: String, now: Date = Date()) -> String {
         guard let snapshot = library.usage[accountID], snapshot.accountID == accountID else { return L10n.tr("No quota data yet") }
         guard snapshot.observedAt <= now.addingTimeInterval(60) else { return L10n.tr("Update time unknown") }
-        return L10n.tr("Updated {0}", Format.age(snapshot.observedAt, now: now))
+        return L10n.tr("{0} · Updated {1}", snapshot.origin.title, Format.age(snapshot.observedAt, now: now))
     }
     /// A saved account to move to when the signed-in one is about to run out.
     func switchAdvice(now: Date = Date()) -> (account: Account, advice: SwitchAdvice)? {
@@ -165,11 +186,11 @@ final class AppState {
         guard let snapshot = library.usage[accountID], snapshot.accountID == accountID else { return [] }
         return snapshot.windows.filter { !["five_hour", "seven_day"].contains($0.id) }.map { window in
             QuotaReadout.make(id: window.id, title: L10n.quotaTitle(window.id, fallback: window.title), window: window, snapshot: snapshot,
-                active: accountID == activeID, now: now)
+                active: accountID == activeID, now: now, freshFor: quotaFreshness(for: accountID, now: now))
         }
     }
     private func acceptUsage(_ incoming: UsageSnapshot) {
-        let snapshot = incoming.retainingKnownResets(from: library.usage[incoming.accountID])
+        guard let snapshot = incoming.onlineOnly() else { return }
         library.usage[snapshot.accountID] = snapshot
         var history = library.usageHistory[snapshot.accountID] ?? []
         if history.last?.observedAt != snapshot.observedAt { history.append(snapshot) }
@@ -215,15 +236,24 @@ final class AppState {
         guard !demo else { return }
         do { library = try await store.load() }
         catch { libraryReadable = false; message = L10n.tr("Could not read the Switch library. Settings changed in this session will not be saved.") }
-        Task(priority: .utility) { [weak self] in await self?.scanTokens() }
+        sampleDesktopActivity()
+        if quotaSchedule.activity.running { Task(priority: .utility) { [weak self] in await self?.scanTokens() } }
         do { try await engine.purgeMovedAsideLogins() } catch { message = display(error) }
         try? await engine.pruneTransactions()
         await refresh()
+        requestCurrentQuotaIfStale()
+        credentialObserver = DesktopUsageObserver(directory: environment.desktop) { [weak self] event in
+            Task { @MainActor [weak self] in await self?.observeDesktop(event) }
+        }
         polling = Task(priority: .utility) { [weak self] in
             while !Task.isCancelled {
                 do { try await Task.sleep(nanoseconds: 60_000_000_000) } catch { return }
                 guard let self else { return }
+                self.sampleDesktopActivity()
+                guard self.quotaSchedule.activity.running, self.desktopAwake else { continue }
                 await self.refresh()
+                await self.sampleSessionActivity()
+                self.scheduleQuotaReads()
                 if self.usageOnScreen || Date().timeIntervalSince(self.lastTokenScan) >= Self.backgroundScanInterval {
                     await self.scanTokens()
                 }
@@ -251,29 +281,15 @@ final class AppState {
             var changed = false
             inventory = result
             selectedSessionIDs.formIntersection(unarchivedSessions.map(\.id))
-            if let id = result.activeAccountID {
-                // Claude Desktop now signs in another account, through Switch or not. Live reads only concern
-                // the signed-in login, so what the previous one's last read reported no longer applies.
-                if let last = lastSignedInID, last != id {
-                    dismissUsageError(last); usageNotices[last] = nil
-                    Task { await refreshLive(trigger: .accountChanged(id)) }
-                }
-                lastSignedInID = id
-            }
-            for usage in result.cachedUsage.values {
-                // A reset time can arrive without a new usage sample, e.g. from a limit hit in a transcript.
-                let stored = library.usage[usage.accountID]
-                let newer = stored.map { $0.observedAt < usage.observedAt ||
-                    ($0.observedAt == usage.observedAt && $0.origin == .localCache && usage.retainingKnownResets(from: $0) != $0) } ?? true
-                if newer {
-                    acceptUsage(usage)
-                    changed = true
-                }
+            if let id = result.activeAccountID { quotaRefreshQueue.observedAccount(id) }
+            if let id = result.activeAccountID, let signature = try? environment.credentialDigest() {
+                quotaRefreshQueue.observedCredential(accountID: id, signature: signature)
             }
             let now = Date()
-            for (id, snapshot) in library.usage {
-                let rolled = snapshot.rollingOverElapsedResets(now: now)
-                if rolled != snapshot { library.usage[id] = rolled; changed = true }
+            if let id = result.activeAccountID, let snapshot = library.usage[id],
+               let reset = snapshot.windows.compactMap(\.resetsAt).filter({ $0 <= now }).max(), resetChecks[id] != reset {
+                resetChecks[id] = reset
+                quotaRefreshQueue.enqueueCurrent(id, reason: .reset)
             }
             var updated = knownAccounts
             for index in updated.indices {
@@ -287,11 +303,15 @@ final class AppState {
                     }
                 }
             }
-            // Claude keeps naming an account after it is signed out of it, by the user or by a server that
-            // rejected the login. That login is void; a session Claude keeps alive proves the opposite.
+            // Cookie absence is local evidence, not proof that a saved login was revoked by the server.
             if let id = result.lastKnownAccountID, let index = updated.firstIndex(where: { $0.id == id }) {
-                if result.signedIn == false, updated[index].loginInvalidAt == nil { updated[index].loginInvalidAt = now }
-                if result.signedIn == true { updated[index].loginInvalidAt = nil }
+                if result.signedIn == false {
+                    usageNotices[id] = L10n.tr("Verify the login in Claude. Switch will resume when updated credentials are available.")
+                    recoveryAccounts.insert(id)
+                }
+                if result.signedIn == true, updated[index].snapshotFingerprint != (try? await engine.currentLoginFingerprint()) {
+                    updated[index].loginInvalidAt = nil
+                }
             }
             if library.accounts != updated { library.accounts = updated; changed = true }
             recoveryIDs = try await engine.pendingRecovery()
@@ -301,6 +321,7 @@ final class AppState {
         } catch is CancellationError {
         } catch { message = display(error) }
         await saveCurrentLogin()
+        synchronizeQuotaSchedule()
     }
     /// Keeps the signed-in account's saved login current. Only Switch's own vault is written.
     /// `retry` is the user asking again; a failed save is otherwise only retried on its own schedule.
@@ -325,7 +346,7 @@ final class AppState {
             library.accounts = all; loginSaveError = nil; failedLoginFingerprint = nil
             loginSaveAttempts = 0; loginSaveRetryAt = nil; loginSaveRetry?.cancel()
             persist()
-            if added { Task { await refreshLive(trigger: .accountChanged(saved.accountID)) } }
+            if added { quotaRefreshQueue.enqueue(saved.accountID) }
         } catch {
             failedLoginFingerprint = fingerprint
             if Self.retriesLoginSave(after: error), loginSaveAttempts < Self.loginSaveRetryDelays.count {
@@ -359,7 +380,7 @@ final class AppState {
         }
         return display(error)
     }
-    func canRemove(_ account: Account) -> Bool { account.id != activeID && !working }
+    func canRemove(_ account: Account) -> Bool { account.id != activeID && usageRefreshingAccountID != account.id && !working }
     /// Forgets an account in Switch only: its saved login and quota history. Claude is not touched.
     func remove(_ account: Account) async {
         guard canRemove(account) else { return }
@@ -370,6 +391,8 @@ final class AppState {
         library.accounts.removeAll { $0.id == account.id }
         library.usage[account.id] = nil
         library.usageHistory[account.id] = nil
+        quotaRefreshQueue.discard(account.id)
+        synchronizeQuotaSchedule()
         for index in library.follows.indices { library.follows[index].targetAccountIDs.removeAll { $0 == account.id } }
         recoverableLogins.removeAll { $0 == account.id }
         persist()
@@ -379,55 +402,189 @@ final class AppState {
         let state = library
         Task { do { try await store.save(state) } catch { message = L10n.tr("Could not save settings.") } }
     }
-    enum LiveTrigger: Equatable { case manual, accountChanged(String) }
-    /// Rescans Claude's local records, then asks the server about the signed-in account.
-    func refreshNow() async {
-        await refresh()
-        await refreshLive()
+    private func updateQuotaRefreshPause() {
+        quotaRefreshQueue.isPaused = demo || working || refreshing || preparingManualQuota || usageRefreshingAccountID != nil ||
+            !library.preferences.quotaRefresh.enabled || !quotaSchedule.activity.permitsAutomaticReads
     }
-    /// Reads the server's quota for the signed-in account only: on request, and once after it changes or is added.
-    func refreshLive(trigger: LiveTrigger = .manual) async {
-        guard !demo, !working, usageRefreshingAccountID == nil else { return }
-        let accountID: String
-        switch trigger {
-        case .manual: guard let activeID else { return }; accountID = activeID
-        case .accountChanged(let id): accountID = id
-        }
-        usageRefreshingAccountID = accountID
-        defer { usageRefreshingAccountID = nil }
-        if trigger == .manual { dismissUsageError(accountID); usageNotices[accountID] = nil }
-        // A switched-in login is renewed by Claude itself after it starts; wait locally rather than asking early.
-        let deadline = Date().addingTimeInterval(trigger == .manual ? 0 : 120)
-        while true {
-            do {
-                guard activeID == accountID else { throw UsageNotReady(message: SwitchError.changed.localizedDescription) }
-                let snapshot = try await usageClient.fetchCurrent(accountID: accountID, allowKeychainPrompt: trigger == .manual)
-                guard activeID == snapshot.accountID else { return }
-                acceptUsage(snapshot)
-                dismissUsageError(accountID); usageNotices[accountID] = nil
-                if let identity = await usageClient.identity(), let index = library.accounts.firstIndex(where: { $0.id == identity.id }) {
-                    library.accounts[index].email = identity.email ?? library.accounts[index].email
-                    if let organization = identity.organizationID { library.accounts[index].confirmOrganization(organization, at: Date()) }
-                }
-                if let verified = await usageClient.takeVerifiedPlan(),
-                   let index = library.accounts.firstIndex(where: { $0.id == verified.accountID }) {
-                    library.accounts[index].observePlan(verified.plan, organizationID: verified.organizationID, at: verified.observedAt)
-                }
-                persist()
-                return
-            } catch is UsageNotReady where Date() < deadline {
-                do { try await Task.sleep(nanoseconds: 10_000_000_000) } catch { return }
-            } catch let notReady as UsageNotReady {
-                usageNotices[accountID] = notReady.message
-                return
-            } catch let cooling as UsageCoolingDown {
-                if trigger == .manual { showCooldown(cooling, for: accountID) }
-                return
-            } catch {
-                usageCooldowns[accountID] = nil
-                usageErrors[accountID] = display(error)
-                return
+    private func synchronizeQuotaSchedule() {
+        quotaSchedule.preferences = library.preferences.quotaRefresh.normalized
+        quotaSchedule.synchronize(accounts: accounts.filter { $0.loginInvalidAt == nil }, snapshots: library.usage, now: Date())
+        quotaSchedule.selectCurrent(activeID, now: Date())
+    }
+    func setQuotaRefreshPreferences(_ preferences: QuotaRefreshPreferences) {
+        library.preferences.quotaRefresh = preferences.normalized
+        synchronizeQuotaSchedule()
+        sampleDesktopActivity()
+        quotaRefreshQueue.discardPeriodic()
+        scheduleQuotaReads()
+        persist()
+    }
+    private func sampleDesktopActivity() {
+        guard !demo else { return }
+        quotaSchedule.activity = DesktopUsageObserver.activity(online: networkAvailable, awake: desktopAwake)
+        updateQuotaRefreshPause()
+        if !quotaSchedule.activity.permitsAutomaticReads || !library.preferences.quotaRefresh.enabled, let token = automaticReadToken {
+            Task {
+                guard automaticReadToken == token else { return }
+                await usageClient.cancelCurrentRead()
             }
+        }
+    }
+    private func sampleSessionActivity() async {
+        guard library.preferences.quotaRefresh.enabled, library.preferences.quotaRefresh.adaptive,
+              quotaSchedule.activity.running, desktopAwake, !working, let inventory, let id = activeID, let org = activeAccount?.organizationID else { return }
+        let observation = await sessionActivity.scan(accountID: id, organizationID: org,
+                                                     accounts: knownAccounts, conversations: inventory.conversations)
+        guard activeID == id, !working else { return }
+        quotaSchedule.observeTaskChanges(accountID: id, changed: observation.changed, complete: observation.complete && inventory.warnings.isEmpty, at: observation.observedAt)
+    }
+    private func scheduleQuotaReads() {
+        guard !demo, !working else { return }
+        synchronizeQuotaSchedule()
+        for id in quotaSchedule.dueAccounts(current: activeID, now: Date()) { quotaRefreshQueue.enqueuePeriodic(id) }
+    }
+    private func observeDesktop(_ event: DesktopUsageObserver.Event) async {
+        guard !demo else { return }
+        switch event {
+        case .sleep: desktopAwake = false
+        case .wake: desktopAwake = true
+        case .networkRestored: networkAvailable = true
+        case .networkUnavailable: networkAvailable = false
+        default: break
+        }
+        sampleDesktopActivity()
+        guard !working, quotaSchedule.activity.running, desktopAwake else { return }
+        if event != .networkUnavailable {
+            let signature = await loginSignature()
+            if signature != observedLoginSignature || event == .launched {
+                observedLoginSignature = signature
+                await refresh()
+            }
+            if event != .credentials { requestCurrentQuotaIfStale() }
+        }
+        scheduleQuotaReads()
+    }
+    private func requestCurrentQuotaIfStale() {
+        guard let id = activeID, !demo, !working, library.preferences.quotaRefresh.enabled, quotaSchedule.activity.permitsAutomaticReads, !quotaSchedule.isBlocked(id),
+              Date().timeIntervalSince(lifecycleChecks[id] ?? .distantPast) >= 60 else { return }
+        let snapshot = library.usage[id]
+        if recoveryAccounts.contains(id) || snapshot == nil || Date().timeIntervalSince(snapshot!.observedAt) >= quotaSchedule.interval(for: id, current: activeID, now: Date()) {
+            lifecycleChecks[id] = Date()
+            quotaRefreshQueue.enqueueCurrent(id, reason: .lifecycle)
+        }
+    }
+    /// All general refresh controls read the current account online after discovering local identity changes.
+    func refreshCurrentQuota() async {
+        guard !preparingManualQuota, !working, usageRefreshingAccountID == nil else { return }
+        preparingManualQuota = true; updateQuotaRefreshPause()
+        defer { preparingManualQuota = false; updateQuotaRefreshPause() }
+        await refresh()
+        if let id = activeID { await refreshNow(accountID: id) }
+    }
+    /// Rescans local identity and reads the selected account without switching to it.
+    func refreshNow(accountID: String) async {
+        _ = await refreshLive(accountID: accountID)
+    }
+    /// Returns a retry time for queued automatic reads; manual reads report their result immediately.
+    private func refreshLive(accountID: String, automatic: QuotaRefreshQueue.Request? = nil) async -> Date? {
+        guard !demo else { return nil }
+        let manual = automatic == nil
+        if !manual {
+            sampleDesktopActivity()
+            guard library.preferences.quotaRefresh.enabled, quotaSchedule.activity.permitsAutomaticReads else { return Date().addingTimeInterval(60) }
+            if automatic?.reason == .periodic, !quotaSchedule.dueAccounts(current: activeID, now: Date()).contains(accountID) { return nil }
+            if automatic?.reason == .credentialsChanged || automatic?.reason == .accountChanged {
+                quotaSchedule.credentialsChanged(accountID)
+            }
+            guard !quotaSchedule.isBlocked(accountID) else { return nil }
+        }
+        guard !working, usageRefreshingAccountID == nil else { return manual ? nil : Date().addingTimeInterval(1) }
+        usageRefreshingAccountID = accountID
+        automaticReadToken = manual ? nil : UUID()
+        var succeeded = false
+        defer {
+            automaticReadToken = nil
+            if manual { quotaRefreshQueue.completedManualRead(accountID: accountID, succeeded: succeeded) }
+            usageRefreshingAccountID = nil
+        }
+        if manual {
+            dismissUsageError(accountID); usageNotices[accountID] = nil
+            await refresh()
+        }
+        guard accounts.contains(where: { $0.id == accountID && $0.loginInvalidAt == nil }) else { return nil }
+        synchronizeQuotaSchedule()
+        quotaSchedule.began(accountID, at: Date())
+        let saved = activeID != accountID && (manual || inventory?.lastKnownAccountID != accountID)
+        // A switched-in login is renewed by Claude itself after it starts; wait locally rather than asking early.
+        let deadline = automatic?.readinessDeadline ?? .distantPast
+        do {
+            guard !working, saved || activeID == accountID else { throw UsageNotReady(message: SwitchError.changed.localizedDescription) }
+            let snapshot: UsageSnapshot
+            if saved { snapshot = try await usageClient.fetchSaved(accountID: accountID, allowKeychainPrompt: manual) }
+            else { snapshot = try await usageClient.fetchCurrent(accountID: accountID, allowKeychainPrompt: manual,
+                                                                onlyIfTokenChanged: automatic?.reason == .credentialsChanged) }
+            guard !working, saved || activeID == snapshot.accountID else { throw SwitchError.changed }
+            guard library.accounts.contains(where: { $0.id == accountID && $0.hasSnapshot }) else { return nil }
+            if !manual {
+                sampleDesktopActivity()
+                guard library.preferences.quotaRefresh.enabled, quotaSchedule.activity.permitsAutomaticReads else { return Date().addingTimeInterval(60) }
+            }
+            acceptUsage(snapshot)
+            quotaSchedule.succeeded(snapshot)
+            succeeded = true
+            recoveryAccounts.remove(accountID)
+            dismissUsageError(accountID); usageNotices[accountID] = nil
+            if let identity = await usageClient.identity(), let index = library.accounts.firstIndex(where: { $0.id == identity.id }) {
+                library.accounts[index].email = identity.email ?? library.accounts[index].email
+                if let organization = identity.organizationID { library.accounts[index].confirmOrganization(organization, at: Date()) }
+            }
+            if let verified = await usageClient.takeVerifiedPlan(),
+               let index = library.accounts.firstIndex(where: { $0.id == verified.accountID }) {
+                library.accounts[index].observePlan(verified.plan, organizationID: verified.organizationID, at: verified.observedAt)
+            }
+            persist()
+            return nil
+        } catch is UsageUnchanged {
+            return nil
+        } catch is CancellationError {
+            return manual ? nil : Date().addingTimeInterval(60)
+        } catch SwitchError.busy {
+            return manual ? nil : Date().addingTimeInterval(1)
+        } catch SwitchError.changed {
+            recoveryAccounts.insert(accountID)
+            dismissUsageError(accountID)
+            usageNotices[accountID] = L10n.tr("Waiting for Claude to publish its login credentials.")
+            if Date() >= deadline { quotaSchedule.suspend(accountID) }
+            return Date() < deadline ? Date().addingTimeInterval(10) : nil
+        } catch let notReady as UsageNotReady {
+            recoveryAccounts.insert(accountID)
+            dismissUsageError(accountID)
+            usageNotices[accountID] = notReady.message
+            if Date() >= deadline { quotaSchedule.suspend(accountID) }
+            return Date() < deadline ? Date().addingTimeInterval(10) : nil
+        } catch let cooling as UsageCoolingDown {
+            showCooldown(cooling, for: accountID)
+            quotaSchedule.deferRead(accountID, until: cooling.until)
+            return manual ? nil : cooling.until
+        } catch let failure as UsageFailure {
+            usageCooldowns[accountID] = nil
+            if !failure.isTransient { quotaSchedule.suspend(accountID) }
+            if failure.waitsForCredentials {
+                recoveryAccounts.insert(accountID)
+                usageNotices[accountID] = failure.localizedDescription
+                usageErrors[accountID] = nil
+            } else {
+                usageNotices[accountID] = nil
+                usageErrors[accountID] = failure.localizedDescription
+                if failure.isTransient { recoveryAccounts.insert(accountID) }
+                else { recoveryAccounts.remove(accountID) }
+            }
+            return failure.isTransient && Date() < deadline ? Date().addingTimeInterval(60) : nil
+        } catch {
+            quotaSchedule.suspend(accountID)
+            usageCooldowns[accountID] = nil
+            usageErrors[accountID] = display(error)
+            return nil
         }
     }
     /// The problem with this account's last live read, while it still applies.
@@ -435,15 +592,15 @@ final class AppState {
         if let cooling = usageCooldowns[accountID], cooling.until > Date() { return cooling.errorDescription }
         return usageErrors[accountID]
     }
+    func usageStatus(for accountID: String) -> String? {
+        if usageRefreshingAccountID == accountID { return L10n.tr("Reading quota…") }
+        return usageError(for: accountID) ?? usageNotices[accountID]
+    }
     func dismissUsageError(_ accountID: String) {
         usageErrors[accountID] = nil; usageCooldowns[accountID] = nil
     }
     private func showCooldown(_ cooling: UsageCoolingDown, for accountID: String) {
         usageCooldowns[accountID] = cooling
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(max(0, cooling.until.timeIntervalSinceNow) * 1_000_000_000))
-            if self?.usageCooldowns[accountID]?.until == cooling.until { self?.usageCooldowns[accountID] = nil }
-        }
     }
     private func acceptAnalytics(_ report: UsageAnalytics) {
         analytics = report; tokenScanDone = true
@@ -539,12 +696,16 @@ final class AppState {
             if [.capture, .switchAccount].contains(operation.plan.kind) { signedIn = operation.target.id }
             persist()
         } catch { message = display(error) }
+        if let signedIn {
+            if operation.plan.kind == .switchAccount {
+                quotaRefreshQueue.switched(from: operation.plan.sourceAccountID, to: signedIn)
+            } else { quotaRefreshQueue.enqueue(signedIn) }
+        }
         pending = nil; working = false
         // Claude comes to the front signed in to the new account; a lingering workbench would show the old state.
         if operation.plan.kind == .switchAccount, signedIn != nil { WorkbenchLifecycle.shared.closeWorkbench() }
         await refresh()
         if let signedIn {
-            Task { await refreshLive(trigger: .accountChanged(signedIn)) }
             if operation.plan.kind == .switchAccount { watchSwitchedLogin(signedIn) }
         }
     }
@@ -632,7 +793,7 @@ final class AppState {
         await refresh()
         seen = current
     }
-    /// Claude signs out within seconds when the server rejects a restored login; catch that while it happens.
+    /// Observe startup changes without treating a temporarily absent cookie as server rejection.
     private func watchSwitchedLogin(_ accountID: String) {
         loginWatch?.cancel()
         loginWatch = Task { [weak self] in
@@ -641,11 +802,9 @@ final class AppState {
                 do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
                 guard let self else { return }
                 await self.refreshOnLoginChange(since: &seen)
-                if let account = self.library.accounts.first(where: { $0.id == accountID }), account.loginInvalidAt != nil {
-                    self.message = L10n.tr("The server voided the saved login of {0}; Claude shows its sign-in screen. Sign in to this account in Claude again and it will be saved.",
-                                           L10n.argument(self.identity(account)))
-                    self.watchForNewLogin()
-                    return
+                if self.inventory?.signedIn == false {
+                    self.usageNotices[accountID] = L10n.tr("Verify the login in Claude. Switch will resume when updated credentials are available.")
+                    self.recoveryAccounts.insert(accountID)
                 }
             }
         }

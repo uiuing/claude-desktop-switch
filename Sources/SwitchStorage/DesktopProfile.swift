@@ -84,7 +84,6 @@ public enum DesktopProfile {
             }
             if result.plans[org] == nil, let plan = plan(tier: tier, capabilities: capabilities) { result.plans[org] = plan }
         }
-        result.limits = messageLimits(value, observedAt: observedAt)
         return result
     }
 

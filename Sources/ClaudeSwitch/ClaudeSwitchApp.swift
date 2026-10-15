@@ -30,7 +30,7 @@ struct ClaudeSwitchApp: App {
                 }
                 Divider()
                 Button(L10n.tr("Search…")) { state.showQuickFind = true }.keyboardShortcut("k")
-                Button(L10n.tr("Refresh")) { Task { await state.refresh() } }.keyboardShortcut("r")
+                Button(L10n.tr("Refresh")) { Task { await state.refreshCurrentQuota() } }.keyboardShortcut("r")
             }
             CommandGroup(replacing: .appSettings) {
                 Button(L10n.tr("Settings…")) { state.page = .settings }.keyboardShortcut(",")

@@ -59,6 +59,55 @@ final class ScreenshotTests: XCTestCase {
 
     // MARK: Capture
 
+    func testRenderQuotaSettings() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render quota settings.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            state.page = .settings
+            try save(captureWorkbench(state, dark: false, size: NSSize(width: 1080, height: 900), settle: 3),
+                     "quota-settings-\(language)", maxWidth: 1600)
+        }
+    }
+
+    func testRenderQuotaRecoveryStates() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render quota recovery states.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        for language in ["en", "de"] {
+            let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            state.inventory?.warnings = []
+            for (index, account) in state.accounts.enumerated() {
+                guard var snapshot = state.library.usage[account.id] else { continue }
+                let date = Date().addingTimeInterval(-3600)
+                snapshot.observedAt = date
+                for i in snapshot.windows.indices {
+                    snapshot.windows[i].observedAt = date
+                    if index == 0 { snapshot.windows[i].resetsAt = Date().addingTimeInterval(-60) }
+                }
+                state.library.usage[account.id] = snapshot
+            }
+            if let id = state.activeID { state.usageNotices[id] = L10n.tr("Waiting for Claude to publish its login credentials.") }
+            try save(captureWorkbench(state, dark: false), "quota-states-\(language)", maxWidth: 1600)
+            try save(captureMenu(state, dark: false), "quota-menu-\(language)", maxWidth: 700)
+        }
+    }
+
     private func captureWorkbench(_ state: AppState, dark: Bool, size: NSSize = windowSize, settle: TimeInterval = 1.2) throws -> NSImage {
         let controller = NSHostingController(rootView: MainWindow().environment(state).environment(\.locale, L10n.locale)
             .environment(\.controlActiveState, .key))
@@ -74,6 +123,8 @@ final class ScreenshotTests: XCTestCase {
         Self.windows.append(window)
         defer { window.orderOut(nil) }
         spin(settle)
+        window.display()
+        spin(0.2)
         return try capture(window)
     }
 

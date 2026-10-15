@@ -51,4 +51,15 @@ final class LocalReaderTests: XCTestCase {
         let inventory = try await reader(sessionsIn: desktopOrganization).scan(verifiedOrganizations: [account: verifiedOrganization])
         XCTAssertEqual(inventory.accounts.first { $0.id == account }?.organizationID, verifiedOrganization)
     }
+
+    func testLocalQuotaHistoryNeverSuppliesQuota() async throws {
+        let reader = try reader(sessionsIn: desktopOrganization)
+        let history = #"{"samples":[{"t":1800000000,"org":"\#(desktopOrganization)","u":{"fh":99,"sd":90}}]}"#
+        let desktop = await reader.desktop
+        try Data(history.utf8).write(to: desktop.appendingPathComponent("plan-usage-history.json"))
+        let inventory = try await reader.scan()
+        XCTAssertNil(inventory.usage)
+        XCTAssertTrue(inventory.cachedUsage.isEmpty)
+        XCTAssertTrue(inventory.warnings.isEmpty)
+    }
 }

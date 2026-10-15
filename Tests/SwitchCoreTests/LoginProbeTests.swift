@@ -42,4 +42,30 @@ final class LoginProbeTests: XCTestCase {
         XCTAssertEqual(LoginProbe.signedIn(cookies: folder.appendingPathComponent("none-\(UUID().uuidString)")), false)
         XCTAssertNil(LoginProbe.signedIn(cookieData: Data("not a database".utf8)))
     }
+
+    func testCommittedWALIsIncludedWithoutChangingOriginalFiles() throws {
+        let url = try cookies([])
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
+        defer { sqlite3_close(db) }
+        XCTAssertEqual(sqlite3_exec(db, "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; INSERT INTO cookies VALUES ('.claude.ai','sessionKeyV3',0)", nil, nil, nil), SQLITE_OK)
+        let wal = URL(fileURLWithPath: url.path + "-wal")
+        let databaseBefore = try Data(contentsOf: url), walBefore = try Data(contentsOf: wal)
+        XCTAssertFalse(walBefore.isEmpty)
+        XCTAssertEqual(LoginProbe.signedIn(cookies: url), true)
+        XCTAssertEqual(LoginProbe.signedIn(cookieData: databaseBefore, walData: walBefore), true)
+        XCTAssertEqual(try Data(contentsOf: url), databaseBefore)
+        XCTAssertEqual(try Data(contentsOf: wal), walBefore)
+        XCTAssertEqual(sqlite3_exec(db, "DELETE FROM cookies", nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(LoginProbe.signedIn(cookies: url), false)
+    }
+
+    func testSymlinkAndHotRollbackJournalAreUnknown() throws {
+        let url = try cookies([(".claude.ai", "sessionKey", nil)])
+        let link = url.deletingLastPathComponent().appendingPathComponent("linked")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: url)
+        XCTAssertNil(LoginProbe.signedIn(cookies: link))
+        try Data(repeating: 1, count: 64).write(to: URL(fileURLWithPath: url.path + "-journal"))
+        XCTAssertNil(LoginProbe.signedIn(cookies: url))
+    }
 }

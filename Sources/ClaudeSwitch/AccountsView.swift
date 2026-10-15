@@ -107,7 +107,7 @@ struct AccountCard: View {
                         }
                     }
                 }
-                if state.usageError(for: account.id) != nil { UsageErrorLine(accountID: account.id) }
+                if state.usageStatus(for: account.id) != nil { UsageErrorLine(accountID: account.id) }
             }
         }
         .padding(18)
@@ -140,8 +140,8 @@ struct AccountCard: View {
                 }.font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 12)
-            if active {
-                Button { Task { await state.refreshNow() } } label: {
+            if !invalid {
+                Button { Task { await state.refreshNow(accountID: account.id) } } label: {
                     Group {
                         if state.usageRefreshingAccountID == account.id { ProgressView().controlSize(.small) }
                         else { Image(systemName: "arrow.clockwise").foregroundStyle(Palette.brand) }
@@ -149,14 +149,16 @@ struct AccountCard: View {
                 }
                 .buttonStyle(HoverRowStyle())
                 .disabled(state.usageRefreshingAccountID != nil || state.working || state.demo)
-                .hint(L10n.tr("Rereads local records and asks Anthropic for the current account's quota and reset times. Reads for one login are at least 60 seconds apart."))
-            } else if invalid {
+                .accessibilityLabel(L10n.tr("Refresh quota"))
+                .hint(L10n.tr("Refreshes this account's quota and reset times without switching accounts. Reads for one login are at least 60 seconds apart."))
+            }
+            if invalid {
                 Button { state.showAddAccount = true } label: {
                     Label(L10n.tr("Sign in again"), systemImage: "person.crop.circle.badge.exclamationmark").labelStyle(.titleAndIcon)
                 }
                 .disabled(state.working)
                 .hint(L10n.tr("Move the current login out of Claude, then sign in to this account in Claude; it will be saved"))
-            } else {
+            } else if !active {
                 Button { Task { await state.prepare(.switchAccount, target: account) } } label: {
                     Label(L10n.tr("Switch"), systemImage: "arrow.left.arrow.right").labelStyle(.titleAndIcon)
                 }
@@ -184,14 +186,14 @@ private struct UsageErrorLine: View {
     let accountID: String
     var body: some View {
         SecondsTimeline(running: state.usageCooldowns[accountID] != nil) {
-            if let error = state.usageError(for: accountID) {
+            if let error = state.usageStatus(for: accountID) {
                 HStack(spacing: 4) {
                     Label(error, systemImage: "exclamationmark.circle").foregroundStyle(.orange).hint(error)
-                    Button { state.dismissUsageError(accountID) } label: {
+                    if state.usageError(for: accountID) != nil { Button { state.dismissUsageError(accountID) } label: {
                         Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
                             .frame(width: 16, height: 16).contentShape(Rectangle())
                     }
-                    .buttonStyle(HoverRowStyle()).foregroundStyle(.secondary).hint(L10n.tr("Dismiss"))
+                    .buttonStyle(HoverRowStyle()).foregroundStyle(.secondary).hint(L10n.tr("Dismiss")) }
                 }.font(.system(size: 11))
             }
         }

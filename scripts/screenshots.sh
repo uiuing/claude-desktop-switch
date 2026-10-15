@@ -5,6 +5,6 @@ set -euo pipefail
 cd "${0:A:h:h}"
 output="$PWD/docs/images"
 mkdir -p "$output"
-CLAUDE_SWITCH_SCREENSHOTS="$output" swift test --filter ScreenshotTests
+CLAUDE_SWITCH_SCREENSHOTS="$output" swift test --filter "${1:-ScreenshotTests}"
 sips -s format png -Z 512 Resources/AppIcon.icns --out "$output/icon.png" >/dev/null
 print "Rendered images into $output"

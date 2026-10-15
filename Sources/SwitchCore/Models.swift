@@ -74,8 +74,8 @@ public struct Account: Codable, Identifiable, Hashable, Sendable {
     public var lastSavedAt: Date?
     /// Credential fingerprint and Claude version of the saved snapshot; a change means it must be saved again.
     public var snapshotFingerprint: String?
-    /// When Claude was seen signed out of this account. The server no longer honours the saved login;
-    /// only signing in to it again in Claude clears this.
+    /// Legacy invalid-login marker. Local cookie absence and access-token expiry must not set it.
+    /// LibraryStore clears old heuristic flags; this does not establish that the login is valid.
     public var loginInvalidAt: Date?
     public init(id: String, email: String? = nil, organizationID: String? = nil,
                 hasSnapshot: Bool = false, lastSavedAt: Date? = nil, snapshotFingerprint: String? = nil) {
@@ -169,12 +169,14 @@ public struct FollowRule: Codable, Identifiable, Sendable {
 public struct Preferences: Codable, Sendable {
     public var maskEmail = false
     public var sessionSort: SessionSort = .time
+    public var quotaRefresh = QuotaRefreshPreferences()
     public init() {}
-    private enum CodingKeys: String, CodingKey { case maskEmail, sessionSort }
+    private enum CodingKeys: String, CodingKey { case maskEmail, sessionSort, quotaRefresh }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         maskEmail = try c.decodeIfPresent(Bool.self, forKey: .maskEmail) ?? false
         sessionSort = try c.decodeIfPresent(SessionSort.self, forKey: .sessionSort) ?? .time
+        quotaRefresh = try c.decodeIfPresent(QuotaRefreshPreferences.self, forKey: .quotaRefresh) ?? .init()
     }
 }
 public struct LibraryState: Codable, Sendable {

@@ -24,17 +24,17 @@ enum DemoData {
 
         func window(_ id: String, left: Double, resetsIn seconds: TimeInterval?) -> QuotaWindow {
             .init(id: id, title: L10n.quotaTitle(id, fallback: id), usedPercent: 100 - left,
-                  resetsAt: seconds.map { now.addingTimeInterval($0) })
+                  resetsAt: seconds.map { now.addingTimeInterval($0) }, resetKnownAbsent: seconds == nil)
         }
         let usage: [UsageSnapshot] = [
             UsageSnapshot(accountID: personal.id, observedAt: now.addingTimeInterval(-120), origin: .live,
                           windows: [window("five_hour", left: 14, resetsIn: 6_700), window("seven_day", left: 58, resetsIn: 262_000),
                                     window("seven_day_opus", left: 71, resetsIn: 262_000)]),
-            UsageSnapshot(accountID: studio.id, observedAt: now.addingTimeInterval(-2_400), origin: .localCache,
+            UsageSnapshot(accountID: studio.id, observedAt: now.addingTimeInterval(-240), origin: .live,
                           windows: [window("five_hour", left: 92, resetsIn: 15_100), window("seven_day", left: 83, resetsIn: 431_000)]),
-            UsageSnapshot(accountID: team.id, observedAt: now.addingTimeInterval(-5_400), origin: .localCache,
+            UsageSnapshot(accountID: team.id, observedAt: now.addingTimeInterval(-360), origin: .live,
                           windows: [window("five_hour", left: 67, resetsIn: 9_800), window("seven_day", left: 41, resetsIn: 128_000)]),
-            UsageSnapshot(accountID: research.id, observedAt: now.addingTimeInterval(-10_800), origin: .localCache,
+            UsageSnapshot(accountID: research.id, observedAt: now.addingTimeInterval(-480), origin: .live,
                           windows: [window("five_hour", left: 100, resetsIn: nil), window("seven_day", left: 12, resetsIn: 64_000)]),
         ]
 

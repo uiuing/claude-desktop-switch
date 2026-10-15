@@ -1,7 +1,7 @@
 import Foundation
 
 public enum QuotaReadingState: Equatable, Sendable {
-    case unknown, recorded, estimated
+    case unknown, recorded, estimated, stale, resetPending
 }
 
 public struct QuotaReadout: Identifiable, Equatable, Sendable {
@@ -13,10 +13,13 @@ public struct QuotaReadout: Identifiable, Equatable, Sendable {
     public var resetIsEstimate: Bool
     public var lowerBound: Double?
     public var upperBound: Double?
+    public var observedAt: Date?
+    public var origin: UsageOrigin
+    public var resetKnownAbsent: Bool
 
     /// An untouched five-hour window has no reset yet: it opens with the next request.
     public var awaitingFirstUse: Bool {
-        id == "five_hour" && state == .recorded && resetsAt == nil && remainingPercent == 100
+        id == "five_hour" && state == .recorded && resetsAt == nil && resetKnownAbsent && remainingPercent == 100
     }
 
     public var shortTitle: String { L10n.quotaShortTitle(id) ?? title }
@@ -27,42 +30,46 @@ public struct QuotaReadout: Identifiable, Equatable, Sendable {
     }
 
     public static func make(id: String, title: String, window: QuotaWindow?, snapshot: UsageSnapshot?,
-                            active: Bool, projection: QuotaProjection? = nil, now: Date = Date()) -> Self {
-        guard let window, let snapshot, snapshot.observedAt <= now.addingTimeInterval(60),
+                            active: Bool, projection: QuotaProjection? = nil, now: Date = Date(), freshFor: TimeInterval = 960) -> Self {
+        guard let window, let snapshot, (window.observedAt ?? snapshot.observedAt) <= now.addingTimeInterval(60),
               window.usedPercent.isFinite, (0...100).contains(window.usedPercent) else {
             return .init(id: id, title: title, state: .unknown)
         }
         if let reset = window.resetsAt, now >= reset {
-            let fresh = window.rolledOver(now: now)
-            return .init(id: id, title: title, remainingPercent: 100 - fresh.usedPercent, state: .recorded,
-                         resetsAt: fresh.resetsAt, resetIsEstimate: fresh.resetIsEstimate)
+            return .init(id: id, title: title, state: .resetPending, resetsAt: reset,
+                         resetIsEstimate: window.resetIsEstimate, observedAt: window.observedAt ?? snapshot.observedAt,
+                         origin: window.origin ?? snapshot.origin)
         }
-        let value = projection ?? QuotaEstimator.project(window, snapshot: snapshot, active: active, now: now)
+        let value = projection ?? QuotaEstimator.project(window, snapshot: snapshot, active: active, now: now, freshFor: freshFor)
         guard let percent = value.remainingPercent, percent.isFinite else {
             return .init(id: id, title: title, state: .unknown)
         }
         return .init(id: id, title: title, remainingPercent: min(100, max(0, percent)),
-                     state: value.lowerBound == nil && snapshot.origin != .estimate ? .recorded : .estimated,
+                     state: value.stale ? .stale : value.lowerBound == nil && (window.origin ?? snapshot.origin) != .estimate ? .recorded : .estimated,
                      resetsAt: window.resetsAt, resetIsEstimate: window.resetIsEstimate,
-                     lowerBound: value.lowerBound, upperBound: value.upperBound)
+                     lowerBound: value.lowerBound, upperBound: value.upperBound, observedAt: window.observedAt ?? snapshot.observedAt,
+                     origin: window.origin ?? snapshot.origin, resetKnownAbsent: window.resetKnownAbsent == true)
     }
 
     private init(id: String, title: String, remainingPercent: Double? = nil, state: QuotaReadingState,
-                 resetsAt: Date? = nil, resetIsEstimate: Bool = false, lowerBound: Double? = nil, upperBound: Double? = nil) {
+                 resetsAt: Date? = nil, resetIsEstimate: Bool = false, lowerBound: Double? = nil, upperBound: Double? = nil,
+                 observedAt: Date? = nil, origin: UsageOrigin = .localCache, resetKnownAbsent: Bool = false) {
         self.id = id; self.title = title; self.remainingPercent = remainingPercent; self.state = state
         self.resetsAt = resetsAt; self.resetIsEstimate = resetIsEstimate
         self.lowerBound = lowerBound; self.upperBound = upperBound
+        self.observedAt = observedAt; self.origin = origin
+        self.resetKnownAbsent = resetKnownAbsent
     }
 }
 
 public enum AccountQuotaPresentation {
     /// Keep both slots even when a fetch is missing. Unknown is never rendered as zero.
     public static func rows(accountID: String, snapshot: UsageSnapshot?, active: Bool,
-                            projections: [String: QuotaProjection] = [:], now: Date = Date()) -> [QuotaReadout] {
+                            projections: [String: QuotaProjection] = [:], now: Date = Date(), freshFor: TimeInterval = 960) -> [QuotaReadout] {
         let owned = snapshot?.accountID == accountID ? snapshot : nil
         return ["five_hour", "seven_day"].map { id in
             QuotaReadout.make(id: id, title: L10n.quotaTitle(id, fallback: id), window: owned?.windows.first { $0.id == id }, snapshot: owned,
-                             active: active, projection: projections[id], now: now)
+                             active: active, projection: projections[id], now: now, freshFor: freshFor)
         }
     }
 
@@ -102,7 +109,10 @@ public enum SwitchAdvisor {
     /// With neither, staying put is better than a switch.
     public static func advice(active: [QuotaReadout], candidates: [(id: String, rows: [QuotaReadout])],
                               now: Date = Date()) -> SwitchAdvice? {
-        shortage(active: active, candidates: candidates, now: now) ?? expiring(active: active, candidates: candidates, now: now)
+        // A slow display refresh does not make old measurements reliable enough for switching advice.
+        func recent(_ row: QuotaReadout) -> Bool { row.observedAt.map { (0...600).contains(now.timeIntervalSince($0)) } ?? false }
+        let active = active.filter(recent), candidates = candidates.map { (id: $0.id, rows: $0.rows.filter(recent)) }
+        return shortage(active: active, candidates: candidates, now: now) ?? expiring(active: active, candidates: candidates, now: now)
     }
 
     /// The five-hour window decides first; the weekly window only when it is nearly spent. A window that resets
@@ -146,9 +156,11 @@ public enum SwitchAdvisor {
         return picks.max { $0.rank < $1.rank }?.advice
     }
 
-    private static func window(_ id: String, _ rows: [QuotaReadout]) -> QuotaReadout? { rows.first { $0.id == id } }
+    private static func window(_ id: String, _ rows: [QuotaReadout]) -> QuotaReadout? {
+        rows.first { $0.id == id && $0.state == .recorded }
+    }
     private static func resets(_ row: QuotaReadout, within interval: TimeInterval, now: Date) -> Bool {
-        guard let reset = row.resetsAt else { return false }
+        guard let reset = row.resetsAt, !row.resetIsEstimate else { return false }
         return reset > now && reset.timeIntervalSince(now) <= interval
     }
     private static func lapses(_ row: QuotaReadout?, by date: Date?, floor: Double) -> Bool {
@@ -158,15 +170,9 @@ public enum SwitchAdvisor {
 }
 
 public extension QuotaWindow {
-    /// Usage starts again from zero once the reset passes. Weekly windows keep their schedule; a five-hour
-    /// window only opens with the next request, so its next reset stays unknown until it is read again.
+    /// Elapsed resets are presentation state, never a new measurement.
     func rolledOver(now: Date) -> QuotaWindow {
-        guard let reset = resetsAt, now >= reset else { return self }
-        var next: Date?
-        if id != "five_hour", let length = ResetInference.lengths[id] {
-            next = reset.addingTimeInterval(length * (floor(now.timeIntervalSince(reset) / length) + 1))
-        }
-        return QuotaWindow(id: id, title: title, usedPercent: 0, resetsAt: next, resetIsEstimate: resetIsEstimate)
+        self
     }
 }
 
@@ -182,7 +188,8 @@ public extension UsageSnapshot {
               let organizationID, previous.organizationID == organizationID,
               previous.observedAt <= observedAt else { return self }
         var result = self
-        result.windows = windows.map { window in
+        result.windows = windows.map { original in
+            let window = original.attributed(at: observedAt, origin: origin)
             // A stated reset from earlier in the same window beats an inferred bound.
             guard window.resetsAt == nil || window.resetIsEstimate,
                   let old = previous.windows.first(where: { $0.id == window.id }),
@@ -190,10 +197,13 @@ public extension UsageSnapshot {
                   ResetInference.lengths[window.id].map({ reset.addingTimeInterval(-$0) <= observedAt }) ?? true,
                   window.usedPercent >= old.usedPercent else { return window }
             var updated = window; updated.resetsAt = reset; updated.resetIsEstimate = false
+            updated.resetObservedAt = old.resetObservedAt ?? previous.observedAt
+            updated.resetOrigin = old.resetOrigin ?? previous.origin
             return updated
         }
         // Claude's local samples only carry the 5-hour and 7-day windows; the others keep the server's last reading.
         result.windows += previous.windows.filter { old in !windows.contains { $0.id == old.id } }
+            .map { $0.attributed(at: previous.observedAt, origin: previous.origin) }
         return result
     }
 }

@@ -4,26 +4,36 @@ import CommonCrypto
 import SwitchCore
 import SwitchStorage
 
-/// Only instantiated by an explicit live-usage action. Refresh tokens never leave the encrypted cache.
+/// Only the selected access token is retained; this reader never uses a refresh grant.
 struct DesktopAccessToken {
     let value: String
     let accountID: String
     let credentialDigest: String
     let expiresAt: Date
     let organizationID: String
+    var tokenDigest: String { digest(Data(value.utf8)) }
+    var quotaScope: String { digest(Data((accountID + ":" + organizationID).utf8)) }
 }
 enum DesktopTokenReader {
     static func read(environment: MacEnvironment, expectedAccount: String, allowPrompt: Bool) throws -> DesktopAccessToken {
-        let bytes = try SafeFiles.read(environment.desktop.appendingPathComponent("config.json"))
-        let config = try JSONDecoder().decode(JSONValue.self, from: bytes)
+        let config = try environment.liveConfig()
+        return try read(config: config, expectedAccount: expectedAccount, allowPrompt: allowPrompt)
+    }
+    static func read(config: JSONValue, expectedAccount: String, allowPrompt: Bool) throws -> DesktopAccessToken {
+        try read(config: config, expectedAccount: expectedAccount) { try safeStorageKey(allowPrompt: allowPrompt) }
+    }
+    /// Saved logins use the same encrypted cache, without restoring anything into Claude's folder.
+    static func read(config: JSONValue, expectedAccount: String, password: () throws -> Data) throws -> DesktopAccessToken {
+        try IdentitySchema.validateConfig(config)
         guard config["lastKnownAccountUuid"].string?.lowercased() == expectedAccount else {
             throw UsageNotReady(message: SwitchError.changed.localizedDescription)
         }
         guard let encoded = config["oauth:tokenCacheV2"].string ?? config["oauth:tokenCache"].string,
               let encrypted = Data(base64Encoded: encoded), encrypted.prefix(3) == Data("v10".utf8) else {
-            throw SwitchError.blocked(L10n.tr("This Desktop login encryption format is unsupported, so live quota can't be fetched. Showing usage read on this Mac with an inferred reset time."))
+            throw UsageFailure.invalidCredentials
         }
-        let password = try safeStorageKey(allowPrompt: allowPrompt)
+        var password = try password()
+        defer { password.resetBytes(in: 0..<password.count) }
         let salt = Data("saltysalt".utf8)
         var key = Data(count: kCCKeySizeAES128)
         let derive = key.withUnsafeMutableBytes { output in
@@ -48,20 +58,41 @@ enum DesktopTokenReader {
         } }
         guard status == kCCSuccess else { throw SwitchError.blocked(L10n.tr("Could not read the login cache. The adapter may need updating.")) }
         plain.count = written; defer { plain.resetBytes(in: 0..<plain.count) }
-        let cache = try JSONDecoder().decode(JSONValue.self, from: plain)
+        guard let cache = try? JSONDecoder().decode(JSONValue.self, from: plain), cache.object != nil else {
+            throw UsageFailure.invalidCredentials
+        }
         let fingerprint = try IdentitySchema.fingerprint(config)
-        let candidates = (cache.object ?? [:]).compactMap { composite, entry -> DesktopAccessToken? in
-            guard let org = usageOrganization(cacheKey: composite, account: expectedAccount),
-                  let token = entry["token"].string, !token.isEmpty,
-                  let expiry = Dates.parse(entry["expiresAt"]), expiry > Date().addingTimeInterval(60) else { return nil }
-            return DesktopAccessToken(value: token, accountID: expectedAccount, credentialDigest: fingerprint, expiresAt: expiry,
-                                      organizationID: org)
+        let entries = (cache.object ?? [:]).compactMap { key, entry -> (key: String, org: String, entry: JSONValue)? in
+            guard let org = usageOrganization(cacheKey: key, account: expectedAccount) else { return nil }
+            return (key, org, entry)
         }
-        guard Set(candidates.map(\.organizationID)).count <= 1 else {
-            throw SwitchError.blocked(L10n.tr("The login cache contains multiple organizations and can't be attributed. Showing usage read on this Mac with an inferred reset time."))
+        guard !entries.isEmpty else { throw UsageFailure.missingScopes }
+        guard Set(entries.map(\.org)).count == 1 else {
+            throw UsageFailure.ambiguousCredentials
         }
-        guard let token = candidates.max(by: { $0.expiresAt < $1.expiresAt }) else {
-            throw UsageNotReady(message: L10n.tr("The access token has expired. Let Claude update the login; Switch does not use refresh tokens."))
+        let bound = entries.filter { $0.key.hasPrefix("acct:") }
+        let owned = bound.isEmpty ? entries : bound
+        var candidates: [(token: DesktopAccessToken, rank: Int)] = []
+        var expired = false, expiring = false, malformed = false
+        for item in owned {
+            guard let value = item.entry["token"].string, !value.isEmpty else { malformed = true; continue }
+            guard let expiry = Dates.parse(item.entry["expiresAt"]) else { malformed = true; continue }
+            if expiry <= Date() { expired = true; continue }
+            if expiry <= Date().addingTimeInterval(60) { expiring = true; continue }
+            candidates.append((DesktopAccessToken(value: value, accountID: expectedAccount, credentialDigest: fingerprint,
+                                                  expiresAt: expiry, organizationID: item.org),
+                               item.key.contains("user:sessions:claude_code") ? 1 : 0))
+        }
+        guard let rank = candidates.map(\.rank).min() else {
+            if malformed { throw UsageFailure.invalidCredentials }
+            if expiring { throw UsageNotReady(reason: .expiring) }
+            if expired { throw UsageNotReady(reason: .expired) }
+            throw UsageNotReady(reason: .updating)
+        }
+        let selected = candidates.filter { $0.rank == rank }
+        guard Set(selected.map { $0.token.tokenDigest }).count == 1,
+              let token = selected.map(\.token).min(by: { $0.expiresAt < $1.expiresAt }) else {
+            throw UsageFailure.ambiguousCredentials
         }
         return token
     }
@@ -69,17 +100,20 @@ enum DesktopTokenReader {
     /// The organization of a token-cache entry that can read usage for `account`, or nil.
     /// Keys read `<client>:<org>:<audience>:<scopes>`, or `acct:<account>|<client>:<org>:…` once Desktop binds them to an account.
     static func usageOrganization(cacheKey: String, account: String) -> String? {
-        guard let boundary = cacheKey.range(of: "https://api.anthropic.com:") else { return nil }
-        let scopes = cacheKey[boundary.upperBound...].split(separator: " ")
-        guard scopes.contains("user:profile"), scopes.contains("user:inference") else { return nil }
-        let prefix = cacheKey[..<boundary.lowerBound].split(separator: ":")
-        switch prefix.count {
-        case 2: break
-        case 3 where prefix[0] == "acct":
-            guard prefix[1].split(separator: "|").first?.lowercased() == account.lowercased() else { return nil }
-        default: return nil
+        var key = cacheKey
+        if key.hasPrefix("acct:") {
+            let parts = key.dropFirst(5).split(separator: "|", omittingEmptySubsequences: false)
+            guard parts.count == 2, parts[0].lowercased() == account.lowercased() else { return nil }
+            key = String(parts[1])
         }
-        return UUID(uuidString: String(prefix[prefix.count - 1]))?.uuidString.lowercased()
+        let parts = key.components(separatedBy: ":https://api.anthropic.com:")
+        guard parts.count == 2 else { return nil }
+        let identity = parts[0].split(separator: ":", omittingEmptySubsequences: false)
+        let scopes = Set(parts[1].split(separator: " ").map(String.init))
+        let allowed: Set<String> = ["user:profile", "user:inference", "user:file_upload", "user:sessions:claude_code", "user:plugins"]
+        guard identity.count == 2, identity[0].lowercased() == DesktopUsageProtocol.clientID,
+              scopes.isSuperset(of: ["user:profile", "user:inference"]), scopes.isSubset(of: allowed) else { return nil }
+        return UUID(uuidString: String(identity[1]))?.uuidString.lowercased()
     }
 
     /// Claude's own encryption key, which only Claude is trusted to read until the user approves Switch once.
@@ -94,7 +128,7 @@ enum DesktopTokenReader {
         var old: DarwinBoolean = true
         guard SecKeychainGetUserInteractionAllowed(&old) == errSecSuccess,
               SecKeychainSetUserInteractionAllowed(false) == errSecSuccess else {
-            throw SwitchError.blocked(L10n.tr("Silent Keychain access can't be guaranteed, so live quota won't be fetched. Showing usage read on this Mac with an inferred reset time."))
+            throw UsageFailure.keychain
         }
         var status = SecItemCopyMatching(query as CFDictionary, &result)
         SecKeychainSetUserInteractionAllowed(old.boolValue)
@@ -104,11 +138,11 @@ enum DesktopTokenReader {
             status = SecItemCopyMatching(query as CFDictionary, &result)
             SecKeychainSetUserInteractionAllowed(old.boolValue)
             if status == errSecUserCanceled || status == errSecAuthFailed {
-                throw SwitchError.blocked(L10n.tr("Claude Switch isn't allowed to read Claude Safe Storage, so live quota can't be fetched. Showing usage read on this Mac with an inferred reset time."))
+                throw UsageFailure.keychain
             }
         }
         guard status == errSecSuccess, let password = result as? Data else {
-            throw SwitchError.blocked(L10n.tr("Allow Claude Switch to read Claude Safe Storage: click Refresh, enter your login password in the system prompt, and choose “Always Allow”."))
+            throw UsageFailure.keychain
         }
         return password
     }

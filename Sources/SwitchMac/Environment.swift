@@ -38,7 +38,27 @@ public struct MacEnvironment: Sendable {
         return pending
     }
     public func credentialDigest() throws -> String {
-        try IdentitySchema.fingerprint(SafeFiles.json(desktop.appendingPathComponent("config.json")))
+        try IdentitySchema.fingerprint(liveConfig())
+    }
+    /// A pending store journal is not proof of the running app's published identity.
+    public func liveConfig() throws -> JSONValue {
+        let url = desktop.appendingPathComponent("config.json")
+        let before = try SafeFiles.read(url)
+        let journal = FileManager.default.fileExists(atPath: configJournal.path) ? try SafeFiles.read(configJournal) : nil
+        let stored = try JSONDecoder().decode(JSONValue.self, from: before)
+        if let journal {
+            guard let newline = journal.firstIndex(of: 10) else { throw SwitchError.changed }
+            let header = String(decoding: journal[..<newline], as: UTF8.self).split(separator: " ")
+            let payload = Data(journal[journal.index(after: newline)...])
+            guard header.count == 3, header.first.map(String.init) == digest(payload),
+                  (try? JSONDecoder().decode(JSONValue.self, from: payload).object) != nil else { throw SwitchError.changed }
+        }
+        let effective = try Self.effectiveConfig(stored: before, journal: journal)
+        let journalAfter = FileManager.default.fileExists(atPath: configJournal.path) ? try SafeFiles.read(configJournal) : nil
+        guard try IdentitySchema.fingerprint(stored) == IdentitySchema.fingerprint(effective),
+              journalAfter == journal,
+              try SafeFiles.read(url) == before else { throw SwitchError.changed }
+        return stored
     }
     /// The account config.json names, or nil after Switch has moved the login out.
     public func lastKnownAccount() throws -> String? {

@@ -326,6 +326,8 @@ enum Format {
     }
     static func reset(_ row: QuotaReadout, now: Date, showResetTime: Bool = true) -> String {
         if row.state == .unknown { return L10n.tr("No data yet") }
+        if row.state == .resetPending { return L10n.tr("Awaiting confirmation") }
+        if row.state == .stale { return L10n.tr("Last reading · {0}", row.observedAt.map { age($0, now: now) } ?? "—") }
         if row.awaitingFirstUse { return L10n.tr("Starts on next use") }
         guard let minutes = remaining(row, now: now) else { return L10n.tr("Reset time unknown") }
         if showResetTime, let reset = row.resetsAt {
@@ -339,9 +341,12 @@ enum Format {
     /// Full reset date, including the estimate qualifier, or why there is none.
     static func resetDetail(_ row: QuotaReadout) -> String? {
         guard row.state != .unknown else { return nil }
+        if row.state == .resetPending { return L10n.tr("The expected reset time has passed. Refresh to confirm the current quota.") }
+        let source = row.observedAt.map { L10n.tr("{0} · Updated {1}", row.origin.title, date($0)) }
         if row.awaitingFirstUse { return L10n.tr("This session hasn't started yet; it starts with your next message.") }
         guard let reset = row.resetsAt else { return L10n.tr("Local records have no reset time; refresh to read it from the live quota.") }
-        return row.resetIsEstimate ? L10n.tr("Resets by {0} at the latest (estimate)", date(reset)) : L10n.tr("quota.resetTooltip {0}", date(reset))
+        let detail = row.resetIsEstimate ? L10n.tr("Resets by {0} at the latest (estimate)", date(reset)) : L10n.tr("quota.resetTooltip {0}", date(reset))
+        return [source, detail].compactMap { $0 }.joined(separator: " · ")
     }
     /// Show a time today, a localized tomorrow label, or a localized date and time.
     private static func resetMoment(_ date: Date) -> String {
@@ -360,6 +365,8 @@ enum Format {
     /// The shortest reset label, for a table column: the time if today, else how long until it.
     /// A "tomorrow" label with a time does not fit the column in every language.
     static func tinyReset(_ row: QuotaReadout, now: Date, showResetTime: Bool = true) -> String {
+        if row.state == .resetPending { return L10n.tr("quota.pending") }
+        if row.state == .stale { return L10n.tr("quota.stale") }
         if row.awaitingFirstUse { return L10n.tr("Not started") }
         guard row.state != .unknown, let minutes = remaining(row, now: now), let reset = row.resetsAt else { return "—" }
         if showResetTime, Calendar.autoupdatingCurrent.isDateInToday(reset) { return resetMoment(reset) }
@@ -368,6 +375,8 @@ enum Format {
         return L10n.tr("in {0}d", L10n.number((minutes + 1439) / 1440))
     }
     static func shortReset(_ row: QuotaReadout, now: Date, showResetTime: Bool = true) -> String {
+        if row.state == .resetPending { return L10n.tr("quota.pending") }
+        if row.state == .stale { return L10n.tr("quota.stale") }
         guard row.state != .unknown, let minutes = remaining(row, now: now) else { return "—" }
         let value = showResetTime ? row.resetsAt.map(resetMoment) ?? duration(minutes, short: true) : duration(minutes, short: true)
         return row.resetIsEstimate ? L10n.tr("By {0}", value) : value

@@ -85,13 +85,13 @@ struct MenuPanel: View {
             Text("Claude Switch").font(.headline)
             Spacer()
             let busy = state.refreshing
-            Button { Task { await state.refresh() } } label: {
+            Button { Task { await state.refreshCurrentQuota() } } label: {
                 Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .medium))
                     .rotationEffect(.degrees(busy ? 360 : 0))
                     .animation(busy ? .linear(duration: 0.9).repeatForever(autoreverses: false) : .default, value: busy)
                     .frame(width: 20, height: 20).contentShape(Rectangle())
             }.buttonStyle(HoverRowStyle()).disabled(busy)
-                .hint(L10n.tr("Rereads local records without asking Anthropic for quota. Quota is read once automatically after switching or adding an account."))
+                .hint(L10n.tr("Refresh current account quota"))
         }.padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
     }
     private var separator: some View { Divider().padding(.horizontal, 14).padding(.vertical, 6) }
@@ -170,6 +170,8 @@ private struct MenuAccountRow: View {
     }
     private var subtitle: (text: String, color: Color) {
         if let error = state.usageError(for: account.id) { return (error, .orange) }
+        if state.usageRefreshingAccountID == account.id { return (L10n.tr("Reading quota…"), .secondary) }
+        if state.usageNotices[account.id] != nil { return (L10n.tr("Waiting for Claude"), .orange) }
         if active {
             if let shortage { return (shortage.status, Color(nsColor: .systemOrange)) }
             return (L10n.tr("Active"), Palette.green)
