@@ -4,6 +4,13 @@ import SwitchCore
 
 /// Local cookie evidence only. Absence is not proof of server-side revocation.
 public enum LoginProbe {
+    /// Metadata only: polling never copies or queries the cookie database unless a rescan is needed.
+    public static func publicationSignature(desktop: URL) -> [FileStamp?] {
+        ["config.json", "config.json.journal", "Cookies", "Cookies-wal", "Cookies-journal"].map {
+            try? stamp(desktop.appendingPathComponent($0))
+        }
+    }
+
     /// Read a bounded, stable private copy including committed WAL frames. SQLite never opens Claude's files.
     public static func signedIn(cookies url: URL, now: Date = Date()) -> Bool? {
         do {

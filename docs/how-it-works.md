@@ -21,7 +21,7 @@ Claude Switch checks access to Claude Safe Storage before opening its main inter
 When Claude Desktop is signed in to an account that Claude Switch has not saved yet, or whose credentials changed, the app saves it automatically while Claude keeps running:
 
 1. It reads the allow-listed files. Nothing in Claude's folder is modified.
-2. It checks the credential fingerprint and the signed-in account before and after reading, and discards the copy if anything changed in between. The captured cookie database is checked together with its captured WAL, so committed login changes need not wait for a database checkpoint. Claude writes its data while it runs, so a discarded copy is taken again after 5, 15 and 45 seconds before the problem is shown.
+2. It checks the credential fingerprint and the signed-in account before and after reading, and discards the copy if anything changed in between. The captured cookie database is checked together with its captured WAL, so committed login changes need not wait for a database checkpoint. Claude writes its data while it runs, so transient failures retry after 1, 2, 5, 15 and 30 seconds, then at most once per 30 seconds. Persistent failures are shown with a retry action while automatic recovery continues; unsafe paths and unsupported formats require a manual retry or changed credentials.
 3. It encrypts the copy with **AES-256-GCM**. The authenticated data binds each snapshot to its account, and every file also carries a SHA-256 digest.
 4. The encryption key is stored in your login Keychain as a non-synchronizing item that belongs to Claude Switch. It never goes to iCloud, and a copy of the saved logins cannot be read without it. The login Keychain does move with a full migration of your macOS user account (Migration Assistant or a restored backup), and the saved logins with it.
 
@@ -55,6 +55,10 @@ If a switch is interrupted (power loss, crash, full disk), Claude Switch shows a
 **Add account** moves the current login out of Claude into the encrypted vault: it removes the identity allow-list from Claude's folder (the three `config.json` keys are removed structurally, everything else in the file stays), and reopens Claude at its sign-in screen. Sign in with another account and it is saved automatically.
 
 Nothing is signed out on the server, so the account you moved aside stays valid.
+
+While waiting for a login, Switch checks publication metadata every second and observes changes to config and cookie files, including the cookie WAL. It scans immediately on entry, after a publication, and at least every five seconds while state is unchanged. An unsuccessful or busy scan never consumes a publication. Only a verified signed-in account with a matching saved fingerprint completes discovery; an account already saved before the watcher started can also complete it. Account saving does not wait for online quota or email retrieval.
+
+After fifteen minutes, metadata checks slow to five seconds and unchanged-state scans to fifteen seconds; discovery keeps running. Checks pause while Claude is closed, the Mac is asleep or another operation is running. Startup recovers discovery for signed-out or unsaved logins, and wake or relaunch restores the fast interval. The account list shows waiting or saving status, with saving errors taking priority over the waiting indicator.
 
 > [!WARNING]
 > Do not change accounts with Claude's own **Log out** or Claude Code's `/login`. Both revoke the current login on the server, and the copy Claude Switch saved stops working. If Claude cannot restore the login, sign in to it once more. Local cookie absence alone does not establish server revocation.

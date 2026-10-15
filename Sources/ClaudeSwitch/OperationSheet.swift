@@ -213,13 +213,13 @@ struct AddAccountSheet: View {
                 }
             }.padding(16).frame(maxWidth: .infinity, alignment: .leading).card(radius: 10)
             Group {
-                if state.awaitingNewLogin {
+                if state.activeUnsaved {
+                    LoginSaveStatus()
+                } else if state.awaitingNewLogin {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
                         Text(L10n.tr("Waiting for a new sign-in in Claude…"))
                     }
-                } else if state.activeUnsaved {
-                    LoginSaveStatus()
                 } else {
                     Label(L10n.tr("Don't change accounts with /login or by signing out in Claude: that voids the saved login of the previous account."),
                           systemImage: "exclamationmark.triangle")

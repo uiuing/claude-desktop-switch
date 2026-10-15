@@ -49,6 +49,65 @@ final class UsageClientTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: env.desktop.path))
     }
 
+    func testProfileEmailIsReturnedWithQuotaForEachSupportedField() async throws {
+        for field in ["email", "email_address", "emailAddress"] {
+            let env = try environment(), service = service(), client = client(env, service: service)
+            await service.setProfile(.object([
+                "account": .object(["uuid": .string(accountA), field: .string("mi•••el@gmail.com")]),
+                "organization": .object(["uuid": .string(organization)])
+            ]))
+            let snapshot = try await fetch(client, accountA)
+            let identity = await client.identity()
+            XCTAssertEqual(identity?.email, "mi•••el@gmail.com", field)
+            XCTAssertEqual(identity?.id, snapshot.accountID)
+            let paths = await service.paths
+            XCTAssertEqual(paths, ["/api/oauth/profile", "/api/oauth/usage"])
+        }
+    }
+
+    func testCanonicalProfileEmailWinsAndEmptyFieldsFallBack() async throws {
+        for value in ["mi•••el@gmail.com", "", " \n", "invalid", "mi•••el@gmail.com\nInjected"] {
+            let env = try environment(), service = service(), client = client(env, service: service)
+            await service.setProfile(.object([
+                "account": .object(["uuid": .string(accountA), "email": .string(value),
+                                    "email_address": .string("al•••ce@outlook.com")]),
+                "organization": .object(["uuid": .string(organization)])
+            ]))
+            _ = try await fetch(client, accountA)
+            let identity = await client.identity()
+            XCTAssertEqual(identity?.email, value == "mi•••el@gmail.com" ? value : "al•••ce@outlook.com")
+        }
+    }
+
+    func testMissingAccountEmailDoesNotBorrowAnUnrelatedAddress() async throws {
+        let env = try environment(), service = service(), client = client(env, service: service)
+        await service.setProfile(.object([
+            "email": .string("al•••ce@outlook.com"),
+            "account": .object(["uuid": .string(accountA)]),
+            "organization": .object(["uuid": .string(organization), "email": .string("te•••am@gmail.com")])
+        ]))
+        let snapshot = try await fetch(client, accountA)
+        let identity = await client.identity()
+        XCTAssertNil(identity?.email)
+        XCTAssertEqual(snapshot.windows.first?.usedPercent, 23)
+    }
+
+    func testEveryAllowedRefreshRechecksProfileWithTheSameToken() async throws {
+        let env = try environment(), service = service(), clock = FixtureClock()
+        let client = client(env, service: service, clock: clock)
+        await service.setProfile(.object([
+            "account": .object(["uuid": .string(accountA), "email": .string("mi•••el@gmail.com")]),
+            "organization": .object(["uuid": .string(organization)])
+        ]))
+        _ = try await fetch(client, accountA)
+        clock.advance(61)
+        _ = try await fetch(client, accountA)
+        let identity = await client.identity()
+        XCTAssertEqual(identity?.email, "mi•••el@gmail.com")
+        let paths = await service.paths
+        XCTAssertEqual(paths, ["/api/oauth/profile", "/api/oauth/usage", "/api/oauth/profile", "/api/oauth/usage"])
+    }
+
     private func profile(plan: String?) -> JSONValue {
         var org: [String: JSONValue] = ["uuid": .string(organization)]
         if let plan { org["rate_limit_tier"] = .string(plan) }
@@ -128,6 +187,20 @@ final class UsageClientTests: XCTestCase {
         catch let failure as UsageFailure { XCTAssertEqual(failure, .identityMismatch) }
         let verified = await client.takeVerifiedPlan(), identity = await client.identity()
         XCTAssertNil(verified); XCTAssertNil(identity)
+    }
+
+    func testMismatchedProfileNeverPublishesEmail() async throws {
+        let env = try environment(), service = service(), client = client(env, service: service)
+        await service.setProfile(.object([
+            "account": .object(["uuid": .string(accountB), "email": .string("al•••ce@outlook.com")]),
+            "organization": .object(["uuid": .string(organization)])
+        ]))
+        do { _ = try await fetch(client, accountA); XCTFail("Expected identity mismatch") }
+        catch let failure as UsageFailure { XCTAssertEqual(failure, .identityMismatch) }
+        let identity = await client.identity()
+        XCTAssertNil(identity)
+        let paths = await service.paths
+        XCTAssertEqual(paths, ["/api/oauth/profile"])
     }
 
     func testAlternatingAccountsKeepsBothCooldownsAcrossRelaunch() async throws {

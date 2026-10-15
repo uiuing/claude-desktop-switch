@@ -44,6 +44,15 @@ final class LoginCaptureTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: wal), walBefore)
     }
 
+    func testPublicationSignatureDetectsCookieWALChangesWithoutConfigChanges() throws {
+        let (env, database) = try fixture(signedIn: false)
+        let config = try Data(contentsOf: env.desktop.appendingPathComponent("config.json"))
+        let before = LoginProbe.publicationSignature(desktop: env.desktop)
+        XCTAssertEqual(sqlite3_exec(database, "INSERT INTO cookies VALUES ('.claude.ai','sessionKeyV3',0)", nil, nil, nil), SQLITE_OK)
+        XCTAssertNotEqual(LoginProbe.publicationSignature(desktop: env.desktop), before)
+        XCTAssertEqual(try Data(contentsOf: env.desktop.appendingPathComponent("config.json")), config)
+    }
+
     func testCaptureRejectsLogoutCommittedOnlyInWAL() async throws {
         let (env, database) = try fixture(signedIn: true)
         XCTAssertEqual(sqlite3_exec(database, "DELETE FROM cookies", nil, nil, nil), SQLITE_OK)

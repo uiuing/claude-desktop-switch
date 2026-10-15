@@ -9,6 +9,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 - Free accounts are distinguished from unknown plans. Each allowed quota refresh rechecks the profile, and verified plan changes update even when quota is unavailable. Old local caches cannot restore an outdated paid plan, and quota from a previous plan is cleared.
+- Newly added accounts read their email from the OAuth profile's `account.email` field, while retaining support for older field names. Quota refresh also fills in emails missing from already saved accounts. A missing email is shown as not yet retrieved instead of claiming it is absent from the Mac.
+- Adding an account checks local login publication every second and periodically rechecks unchanged state. Failed or busy scans no longer lose a login change, cookie WAL updates are observed directly, and transient saves keep retrying with bounded back-off. Discovery resumes after startup or wake and slows down after fifteen minutes instead of stopping. Saving failures remain visible with a retry action.
 
 ## [0.1.5] - 2026-10-15
 

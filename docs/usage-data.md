@@ -41,7 +41,7 @@ The current account additionally gets a bounded read on:
 - publication of changed credentials for the same account; a changed encrypted cache only causes a request if the selected access token actually changed;
 - an observed reset boundary, once per boundary.
 
-A debounced file observer notices config publication and atomic file replacement. The existing 60-second local scan is a fallback. Toolbar/menu refresh and `⌘R` rescan local accounts and conversations only (and statistics on the Usage page); they do not enqueue quota queries. The account-card refresh reads that card’s quota. Automatic reads never show a Keychain prompt.
+A debounced file observer notices config and cookie publication, including WAL updates and atomic file replacement. The existing 60-second local scan is a fallback. Toolbar/menu refresh and `⌘R` rescan local accounts and conversations only (and statistics on the Usage page); they do not enqueue quota queries. The account-card refresh reads that card's quota. Automatic reads never show a Keychain prompt.
 
 ### Automatic schedule and settings
 
@@ -69,6 +69,7 @@ An online refresh:
 
 - uses only `GET https://api.anthropic.com/api/oauth/profile` and `GET /api/oauth/usage?skip_spend=1`; manual and automatic quota reads skip spending statistics, which the quota display does not use;
 - verifies the account and organization with a fresh profile response before each allowed usage read, so a plan change does not wait for token renewal;
+- reads the verified account's email from `account.email`, with `email_address` and `emailAddress` as compatibility fields. A verified profile fills in missing emails for new and existing saved accounts even if the following quota read fails. An unavailable email remains unknown; addresses from other objects are never borrowed;
 - reads the encrypted cache with **Claude Safe Storage**. It matches the supported client ID, exact audience, required and allowed scopes, account binding and a single organization. Conflicting equally suitable credentials stop the read; the latest expiry does not decide ownership;
 - checks the server-provided `expiresAt` rather than assuming an eight-hour token lifetime. Expired and soon-expiring tokens wait for Claude; malformed metadata, missing scope, Keychain errors and authorization failures have separate messages;
 - never uses refresh grants, web cookies or inference requests. Claude Desktop remains responsible for renewing its login. No saved login is restored merely to read quota.

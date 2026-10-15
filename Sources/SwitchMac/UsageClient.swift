@@ -144,8 +144,7 @@ public actor ActiveUsageClient: UsageProvider {
             try await validate(token)
             try checkCancellation(generation)
             // A verified plan remains useful when the subsequent usage endpoint denies a downgraded login.
-            let email = profile["account"]["email_address"].string ?? profile["account"]["emailAddress"].string
-            verifiedAccount = Account(id: token.accountID, email: email, organizationID: token.organizationID)
+            verifiedAccount = Account(id: token.accountID, email: Self.profileEmail(profile["account"]), organizationID: token.organizationID)
             verifiedPlan = (token.accountID, token.organizationID, AccountPlan.profile(profile), now())
             guard token.expiresAt > now().addingTimeInterval(15) else { throw UsageNotReady(reason: .expiring) }
             let request = try DesktopUsageProtocol.request(path: "/api/oauth/usage", token: token.value, codeVersion: version)
@@ -184,6 +183,16 @@ public actor ActiveUsageClient: UsageProvider {
     private func checkCancellation(_ generation: UInt64) throws {
         try Task.checkCancellation()
         guard generation == cancellationGeneration else { throw CancellationError() }
+    }
+    private static func profileEmail(_ account: JSONValue) -> String? {
+        for field in ["email", "email_address", "emailAddress"] {
+            guard let email = account[field].string?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  email.utf8.count <= 320,
+                  email.rangeOfCharacter(from: .controlCharacters) == nil,
+                  email.range(of: #"^[^@\s"]+@[^@\s"]+\.[A-Za-z]{2,}$"#, options: .regularExpression) != nil else { continue }
+            return email
+        }
+        return nil
     }
     private func getJSON(_ session: URLSession, request: URLRequest, token: DesktopAccessToken) async throws -> JSONValue {
         let (data, http) = try await transport(session, request)

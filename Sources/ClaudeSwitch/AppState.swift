@@ -67,9 +67,7 @@ final class AppState {
     var tokenScanDone = false
     var savingLogin = false
     var loginSaveError: String?
-    @ObservationIgnored private var failedLoginFingerprint: String?
-    @ObservationIgnored private var loginSaveAttempts = 0
-    @ObservationIgnored private var loginSaveRetryAt: Date?
+    @ObservationIgnored private var loginSaveRecovery = LoginSaveRetry()
     @ObservationIgnored private var loginSaveRetry: Task<Void, Never>?
     let demo: Bool
     let startupAccess: StartupAccess
@@ -123,7 +121,7 @@ final class AppState {
     /// Accounts saved in Switch. Claude's local data only decides which of them is signed in.
     var accounts: [Account] { knownAccounts.filter(\.hasSnapshot) }
     /// The Claude Desktop login is known but Switch has not saved it (yet).
-    var activeUnsaved: Bool { !demo && activeID != nil && activeAccount == nil }
+    var activeUnsaved: Bool { activeID != nil && activeAccount == nil }
     /// Claude shows its sign-in screen, whether Switch moved the login out or the server rejected it.
     var claudeSignedOut: Bool { !demo && inventory?.signedIn == false }
     /// Every account Claude Desktop has left on this Mac. Only used to attribute sessions.
@@ -255,7 +253,7 @@ final class AppState {
         if quotaSchedule.activity.running { Task(priority: .utility) { [weak self] in await self?.scanTokens() } }
         do { try await engine.purgeMovedAsideLogins() } catch { message = display(error) }
         try? await engine.pruneTransactions()
-        await refresh()
+        if !(await refresh()) { watchForNewLogin() }
         requestCurrentQuotaIfStale()
         credentialObserver = DesktopUsageObserver(directory: environment.desktop) { [weak self] event in
             Task { @MainActor [weak self] in await self?.observeDesktop(event) }
@@ -285,15 +283,18 @@ final class AppState {
         guard Date().timeIntervalSince(lastTokenScan) >= 60 else { return }
         await scanTokens()
     }
-    func refresh(triggerQuotaEvents: Bool = true) async {
-        guard startupAccess.isReady, !refreshing, !working else { return }
-        if demo { return }
+    @discardableResult
+    func refresh(triggerQuotaEvents: Bool = true) async -> Bool {
+        guard startupAccess.isReady, !refreshing, !working else { return false }
+        if demo { return false }
         refreshing = true; defer { refreshing = false }
+        var scanned = false
         do {
             let verified = Dictionary(library.accounts.compactMap { account in
                 account.organizationVerifiedAt == nil ? nil : account.organizationID.map { (account.id, $0) }
             }, uniquingKeysWith: { first, _ in first })
             let result = try await reader.scan(verifiedOrganizations: verified)
+            scanned = true
             var changed = false
             inventory = result
             selectedSessionIDs.formIntersection(unarchivedSessions.map(\.id))
@@ -341,6 +342,8 @@ final class AppState {
         } catch { message = display(error) }
         await saveCurrentLogin(triggerQuotaEvents: triggerQuotaEvents)
         synchronizeQuotaSchedule()
+        if scanned, switchLoginWatch == nil, claudeSignedOut || activeUnsaved { watchForNewLogin() }
+        return scanned
     }
     /// Keeps the signed-in account's saved login current. Only Switch's own vault is written.
     /// `retry` is the user asking again; a failed save is otherwise only retried on its own schedule.
@@ -349,11 +352,7 @@ final class AppState {
         guard let fingerprint = try? await engine.currentLoginFingerprint() else { return }
         let stored = knownAccounts.first { $0.id == activeID }
         if stored?.hasSnapshot == true && stored?.snapshotFingerprint == fingerprint { loginSaveError = nil; return }
-        if retry || failedLoginFingerprint != fingerprint {
-            loginSaveAttempts = 0; loginSaveRetryAt = nil
-        } else if loginSaveRetryAt.map({ $0 > Date() }) ?? true {
-            return
-        }
+        guard loginSaveRecovery.shouldAttempt(fingerprint, manual: retry, now: Date()) else { return }
         savingLogin = true; defer { savingLogin = false }
         do {
             let saved = try await engine.saveCurrentLogin()
@@ -362,30 +361,30 @@ final class AppState {
             let added = !all[index].hasSnapshot
             all[index].hasSnapshot = true; all[index].lastSavedAt = Date(); all[index].snapshotFingerprint = saved.fingerprint
             all[index].loginInvalidAt = nil
-            library.accounts = all; loginSaveError = nil; failedLoginFingerprint = nil
-            loginSaveAttempts = 0; loginSaveRetryAt = nil; loginSaveRetry?.cancel()
+            library.accounts = all; loginSaveError = nil; loginSaveRecovery.reset(); loginSaveRetry?.cancel()
             persist()
             if added && triggerQuotaEvents { quotaRefreshQueue.enqueue(saved.accountID) }
         } catch {
-            failedLoginFingerprint = fingerprint
-            if Self.retriesLoginSave(after: error), loginSaveAttempts < Self.loginSaveRetryDelays.count {
-                let delay = Self.loginSaveRetryDelays[loginSaveAttempts]
-                loginSaveAttempts += 1; loginSaveRetryAt = Date().addingTimeInterval(delay); loginSaveError = nil
+            let delay = loginSaveRecovery.failed(transient: Self.retriesLoginSave(after: error), now: Date())
+            loginSaveError = loginSaveRecovery.showError ? loginSaveMessage(error) : nil
+            if let delay {
                 loginSaveRetry?.cancel()
                 loginSaveRetry = Task { [weak self] in
                     try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                    guard !Task.isCancelled else { return }
-                    await self?.saveCurrentLogin(triggerQuotaEvents: triggerQuotaEvents)
+                    guard !Task.isCancelled, let self else { return }
+                    self.sampleDesktopActivity()
+                    guard self.desktopAwake, self.quotaSchedule.activity.running else { return }
+                    await self.saveCurrentLogin(triggerQuotaEvents: triggerQuotaEvents)
                 }
-            } else {
-                loginSaveRetryAt = nil
-                loginSaveError = loginSaveMessage(error)
             }
         }
     }
-    /// Copying a login while Claude writes to it can catch a file mid-change. Such a save is tried again after these
-    /// delays; a format or Keychain problem is not, as waiting does not change it.
-    private static let loginSaveRetryDelays: [TimeInterval] = [5, 15, 45]
+    func retryLoginSave() async {
+        guard startupAccess.isReady, !demo, !working else { return }
+        loginSaveRecovery.reset(); loginSaveRetry?.cancel(); loginSaveError = nil
+        watchForNewLogin()
+        await refresh()
+    }
     private static func retriesLoginSave(after error: Error) -> Bool {
         guard let error = error as? SwitchError else { return true }
         switch error {
@@ -473,12 +472,13 @@ final class AppState {
         default: break
         }
         sampleDesktopActivity()
+        if event == .wake || event == .launched { loginDiscovery?.resume() }
         guard !working, quotaSchedule.activity.running, desktopAwake else { return }
         if event != .networkUnavailable {
             let signature = await loginSignature()
             if signature != observedLoginSignature || event == .launched {
-                observedLoginSignature = signature
-                await refresh()
+                if await refresh() { observedLoginSignature = signature }
+                else if switchLoginWatch == nil { watchForNewLogin() }
             }
             if event != .credentials { requestCurrentQuotaIfStale() }
         }
@@ -799,6 +799,8 @@ final class AppState {
 
     var awaitingNewLogin = false
     @ObservationIgnored private var loginWatch: Task<Void, Never>?
+    @ObservationIgnored private var loginDiscovery: LoginDiscovery?
+    @ObservationIgnored private var switchLoginWatch: Task<Void, Never>?
     /// Accounts whose saved login is gone from the vault but that Switch still holds a copy of.
     var recoverableLogins: [String] = []
     func restoreLogin(_ accountID: String) async {
@@ -842,49 +844,57 @@ final class AppState {
         working = false
         await refresh()
     }
-    /// Polls quickly while Claude shows its sign-in screen, so the new login is saved within seconds.
+    /// Scan immediately, observe publications each second, and recheck unchanged state after transient races.
     private func watchForNewLogin() {
+        guard !demo, startupAccess.isReady, loginWatch == nil else { return }
+        switchLoginWatch?.cancel(); switchLoginWatch = nil
         awaitingNewLogin = true
-        let started = Date()
-        loginWatch?.cancel()
+        let discovery = LoginDiscovery(paused: { [weak self] in
+            guard let self else { return true }
+            return self.working || self.refreshing || !self.desktopAwake || !self.quotaSchedule.activity.running
+        }, signature: { [weak self] in
+            await self?.loginSignature() ?? ""
+        }, scan: { [weak self] in
+            guard let self, await self.refresh() else { return .retry }
+            guard self.inventory?.signedIn == true, let account = self.activeAccount,
+                  let fingerprint = try? await self.engine.currentLoginFingerprint(),
+                  !self.working, self.activeID == account.id, account.snapshotFingerprint == fingerprint else { return .pending }
+            return .saved
+        })
+        loginDiscovery = discovery
         loginWatch = Task { [weak self] in
-            var seen = await self?.loginSignature()
-            for _ in 0..<300 {
-                do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
-                guard let self else { return }
-                await self.refreshOnLoginChange(since: &seen)
-                if let account = self.activeAccount, (account.lastSavedAt ?? .distantPast) > started {
-                    self.awaitingNewLogin = false
+            while !Task.isCancelled {
+                await discovery.poll()
+                guard let self, self.loginDiscovery === discovery else { return }
+                if discovery.completed, let account = self.activeAccount {
+                    self.awaitingNewLogin = false; self.loginDiscovery = nil; self.loginWatch = nil
                     self.message = L10n.tr("Saved {0}. You can now switch with one click.", L10n.argument(self.identity(account)))
                     return
                 }
+                do { try await Task.sleep(nanoseconds: UInt64(discovery.pollingInterval * 1_000_000_000)) } catch { return }
             }
-            self?.awaitingNewLogin = false
         }
     }
-    /// What decides the signed-in login: the account and credentials in config.json and the session cookie.
-    /// Checking only these every few seconds costs a fraction of a full rescan.
+    /// Metadata changes only trigger a scan; they never establish identity or prove that Claude signed in.
     private func loginSignature() async -> String {
         let environment = environment
         return await Task.detached(priority: .utility) {
-            let account = (try? environment.lastKnownAccount()) ?? nil
-            let credentials = try? environment.credentialDigest()
-            let signedIn = environment.signedIn().map { $0 ? "in" : "out" }
-            return [account, credentials, signedIn].map { $0 ?? "?" }.joined(separator: "|")
+            let stamps = LoginProbe.publicationSignature(desktop: environment.desktop)
+            return digest((try? JSONEncoder().encode(stamps)) ?? Data())
         }.value
     }
     /// Rescans everything once the login changed. A rescan that cannot run yet is tried again on the next check.
     private func refreshOnLoginChange(since seen: inout String?) async {
         let current = await loginSignature()
         guard current != seen, !refreshing, !working else { return }
-        await refresh()
-        seen = current
+        if await refresh() { seen = current }
     }
     /// Observe startup changes without treating a temporarily absent cookie as server rejection.
     private func watchSwitchedLogin(_ accountID: String) {
-        loginWatch?.cancel()
-        loginWatch = Task { [weak self] in
-            var seen = await self?.loginSignature()
+        loginWatch?.cancel(); loginWatch = nil; loginDiscovery = nil; awaitingNewLogin = false
+        switchLoginWatch?.cancel()
+        switchLoginWatch = Task { [weak self] in
+            var seen: String?
             for _ in 0..<12 {
                 do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
                 guard let self else { return }
@@ -894,6 +904,9 @@ final class AppState {
                     self.recoveryAccounts.insert(accountID)
                 }
             }
+            guard !Task.isCancelled, let self else { return }
+            self.switchLoginWatch = nil
+            if self.claudeSignedOut || self.activeUnsaved { self.watchForNewLogin() }
         }
     }
     func recover(_ id: String) async {

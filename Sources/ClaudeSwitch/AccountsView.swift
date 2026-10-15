@@ -6,7 +6,7 @@ struct AccountsView: View {
     @State private var discarding: String?
     var body: some View {
         Group {
-            if state.accounts.isEmpty && !state.activeUnsaved && state.recoverableLogins.isEmpty && !state.claudeSignedOut {
+            if state.accounts.isEmpty && !state.activeUnsaved && state.recoverableLogins.isEmpty && !state.claudeSignedOut && !state.awaitingNewLogin {
                 ContentUnavailableView {
                     Label(L10n.tr("No accounts yet"), systemImage: "person.crop.circle.badge.plus")
                 } description: {
@@ -20,7 +20,10 @@ struct AccountsView: View {
                         if state.quotaAccessRequired || state.authorizingQuotaAccess {
                             QuotaAccessStatus().padding(16).frame(maxWidth: .infinity, alignment: .leading).card()
                         }
-                        if state.claudeSignedOut {
+                        if state.awaitingNewLogin && !state.activeUnsaved {
+                            Label(L10n.tr("Waiting for a new sign-in in Claude…"), systemImage: "person.crop.circle.badge.questionmark")
+                                .font(.system(size: 12)).padding(16).frame(maxWidth: .infinity, alignment: .leading).card()
+                        } else if state.claudeSignedOut {
                             Label(L10n.tr("Claude is signed out. Switch to a saved account below, or sign in to an account in Claude and it will be saved."),
                                   systemImage: "person.crop.circle.badge.questionmark")
                                 .font(.system(size: 12)).padding(16).frame(maxWidth: .infinity, alignment: .leading).card()
@@ -88,7 +91,7 @@ struct LoginSaveStatus: View {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text(L10n.tr("Could not save the current login: {0}", L10n.argument(error))).lineLimit(compact ? 2 : 3)
                 Spacer(minLength: 8)
-                Button(L10n.tr("Retry")) { Task { await state.saveCurrentLogin(retry: true) } }.controlSize(.small)
+                Button(L10n.tr("Retry")) { Task { await state.retryLoginSave() } }.controlSize(.small)
             } else {
                 ProgressView().controlSize(.small)
                 Text(L10n.tr("Saving the signed-in account…"))
@@ -152,7 +155,7 @@ struct AccountCard: View {
                 }
                 HStack(spacing: 5) {
                     if account.email == nil {
-                        Text(L10n.tr("No email address is stored locally for this account")).hint(L10n.tr("Claude Desktop only stores the account ID locally. The email becomes available after signing in to Claude Code or refreshing quota."))
+                        Text(L10n.tr("Email not retrieved yet")).hint(L10n.tr("Refresh this account's quota to read its email from Claude."))
                         Text("·")
                     }
                     Text(state.quotaUpdated(for: account.id, now: now)).hint(state.usageNotices[account.id])

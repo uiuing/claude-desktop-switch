@@ -59,6 +59,32 @@ final class ScreenshotTests: XCTestCase {
 
     // MARK: Capture
 
+    func testRenderMissingAccountEmail() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render the missing-email state.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            state.inventory?.warnings = []
+            let id = try XCTUnwrap(state.activeID)
+            for index in state.library.accounts.indices where state.library.accounts[index].id == id {
+                state.library.accounts[index].email = nil
+            }
+            if let index = state.inventory?.accounts.firstIndex(where: { $0.id == id }) {
+                state.inventory?.accounts[index].email = nil
+            }
+            try save(captureWorkbench(state, dark: false),
+                     "account-email-pending-\(language)", maxWidth: 1600)
+        }
+    }
+
     func testRenderAccountPlans() throws {
         guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
             throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render account plans.")
@@ -106,6 +132,33 @@ final class ScreenshotTests: XCTestCase {
                 try save(captureWorkbench(state, dark: dark, size: NSSize(width: width, height: 980), settle: 2),
                          name, maxWidth: 1600)
             }
+        }
+    }
+
+    func testRenderLoginDiscoveryStates() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render login discovery states.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            let id = try XCTUnwrap(state.activeID)
+            state.inventory?.warnings = []; state.awaitingNewLogin = true
+            state.inventory?.activeAccountID = nil; state.inventory?.signedIn = false
+            try save(captureWorkbench(state, dark: false), "login-waiting-\(language)", maxWidth: 1600)
+            state.inventory?.activeAccountID = id; state.inventory?.signedIn = true
+            for index in state.library.accounts.indices where state.library.accounts[index].id == id {
+                state.library.accounts[index].hasSnapshot = false
+            }
+            XCTAssertTrue(state.activeUnsaved)
+            state.loginSaveError = L10n.tr("Claude kept writing its data while the login was being copied. Try again in a moment.")
+            try save(captureWorkbench(state, dark: false), "login-save-retry-\(language)", maxWidth: 1600)
         }
     }
 

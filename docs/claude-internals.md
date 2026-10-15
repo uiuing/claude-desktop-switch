@@ -84,7 +84,7 @@ Used on the event triggers and configurable, staggered periodic schedule in [usa
 
 | Request | Fields read |
 | --- | --- |
-| `GET https://api.anthropic.com/api/oauth/profile` | `account.uuid`, `account.email_address`, `account.has_claude_max`, `account.has_claude_pro`, `organization.uuid`, `organization.rate_limit_tier`, `organization.capabilities`, `organization.raven_type` |
+| `GET https://api.anthropic.com/api/oauth/profile` | `account.uuid`, `account.email` (with `email_address` / `emailAddress` compatibility), `account.has_claude_max`, `account.has_claude_pro`, `organization.uuid`, `organization.rate_limit_tier`, `organization.capabilities`, `organization.raven_type` |
 | `GET https://api.anthropic.com/api/oauth/usage?skip_spend=1` | `five_hour`, `seven_day`, `seven_day_sonnet`, `seven_day_opus`, `seven_day_oauth_apps`, `seven_day_cowork` → `utilization`, `resets_at`; `limits[]` with `kind == weekly_scoped` → optional `scope.model.id`, `scope.model.display_name`, `percent` or `utilization`, `resets_at` |
 
 The OAuth compatibility builder uses: `Authorization: Bearer <token>`, `anthropic-beta: oauth-2025-04-20`, `User-Agent: claude-code/<installed version>`. These fields do not establish transport equivalence with Electron. Desktop 2.37337.1 has both an OAuth usage path and a separate cookie-based organization-usage path. Switch uses only the OAuth compatibility path. Back-off and credential selection rules are in [usage-data.md](usage-data.md). [`ActiveUsageClient`]

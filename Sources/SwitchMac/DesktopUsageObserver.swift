@@ -49,7 +49,8 @@ public final class DesktopUsageObserver: @unchecked Sendable {
     }
     private func watch() {
         sources.forEach { $0.cancel() }; sources.removeAll()
-        for url in [directory, directory.appendingPathComponent("config.json"), directory.appendingPathComponent("config.json.journal")] {
+        let files = ["config.json", "config.json.journal", "Cookies", "Cookies-wal", "Cookies-journal"]
+        for url in [directory] + files.map({ directory.appendingPathComponent($0) }) {
             guard (try? SafeFiles.validateAncestors(url)) != nil else { continue }
             let fd = open(url.path, O_EVTONLY | O_NOFOLLOW | O_CLOEXEC)
             guard fd >= 0 else { continue }
