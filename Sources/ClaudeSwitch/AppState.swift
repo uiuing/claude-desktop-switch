@@ -36,7 +36,11 @@ final class AppState {
     static let shared = AppState()
     var page: NavigationPage = .accounts
     var library = LibraryState()
-    var inventory: LocalInventory?
+    var inventory: LocalInventory? { didSet {
+        if oldValue?.activeAccountID != inventory?.activeAccountID || oldValue?.signedIn != inventory?.signedIn {
+            codeTaskBinding.invalidate(.connecting, excludeProcesses: true)
+        }
+    } }
     var tokenDays = 0
     var analytics = UsageAnalytics()
     var tokenScanError: String?
@@ -55,6 +59,8 @@ final class AppState {
     var working = false { didSet {
         updateQuotaRefreshPause()
         if working {
+            codeTasksNeedInventory = true
+            codeTaskBinding.invalidate(.switching, excludeProcesses: true)
             updateSwitchReminder()
             Task { await usageClient.cancelCurrentRead() }
         }
@@ -96,6 +102,13 @@ final class AppState {
     private let store: LibraryStore
     private let reader: LocalReader
     private let sessionActivity: SessionActivityReader
+    let codeTaskSource: CodeTaskSource
+    var codeTaskBinding = CodeTaskBinding() { didSet { updateMenuBarTaskAnimation() } }
+    let menuBarTaskAnimation: MenuBarTaskAnimation
+    @ObservationIgnored var codeTaskPolling: Task<Void, Never>?
+    @ObservationIgnored var codeTasksNeedInventory = true
+    @ObservationIgnored var readingCodeTasks = false
+    var openingCodeTask = false
     private let tokens: TokenScanner
     private let vault: CredentialVault
     private let engine: SwitchEngine
@@ -111,7 +124,7 @@ final class AppState {
     @ObservationIgnored private var profileLookups = Set<String>()
     @ObservationIgnored private var quotaSchedule = QuotaRefreshSchedule()
     @ObservationIgnored private var networkAvailable = false
-    @ObservationIgnored private var desktopAwake = true
+    @ObservationIgnored var desktopAwake = true
     @ObservationIgnored private var automaticReadToken: UUID?
     @ObservationIgnored private var preparingManualQuota = false
     @ObservationIgnored private lazy var quotaRefreshQueue = QuotaRefreshQueue { [weak self] request in
@@ -122,12 +135,15 @@ final class AppState {
     init(demo: Bool = ProcessInfo.processInfo.arguments.contains("--demo"), startupAccess: StartupAccess? = nil) {
         self.demo = demo
         self.startupAccess = startupAccess ?? StartupAccess(ready: demo)
+        // Interactive demos animate; fixture-created demo states keep screenshots deterministic.
+        menuBarTaskAnimation = MenuBarTaskAnimation(enabled: !demo || ProcessInfo.processInfo.arguments.contains("--demo"))
         notifications = AppNotifications(demo: demo)
         updates = AppUpdates(demo: demo)
         let env = MacEnvironment()
         store = LibraryStore(root: env.root)
         reader = LocalReader(desktop: env.desktop, codeConfig: env.codeConfig, projects: env.projects)
         sessionActivity = SessionActivityReader(desktop: env.desktop, projects: env.projects)
+        codeTaskSource = CodeTaskSource(environment: env)
         tokens = TokenScanner(projects: env.projects, cacheURL: env.root.appendingPathComponent("usage-cache.json"))
         let vault = CredentialVault(root: env.root.appendingPathComponent("vault"))
         self.vault = vault
@@ -140,6 +156,7 @@ final class AppState {
             quotaSchedule.activity = .init(running: true, online: true)
             let data = DemoData.make()
             library = data.library; inventory = data.inventory; analytics = data.analytics
+            installDemoCodeTasks()
             tokenScanDone = true
         }
         Task { [weak self] in await self?.start() }
@@ -190,13 +207,16 @@ final class AppState {
     var unarchivedSessions: [Conversation] { (inventory?.conversations ?? []).filter { !$0.archived } }
     var selectedSessions: [Conversation] { unarchivedSessions.filter { selectedSessionIDs.contains($0.id) } }
     var sessions: [Conversation] {
+        let known = knownAccounts
+        let identities = search.isEmpty ? [:] : Dictionary(known.map { ($0.id, identity($0)) }, uniquingKeysWith: { first, _ in first })
+        let unassigned = L10n.tr("Unassigned account")
         let filtered = unarchivedSessions.filter { session in
             (sessionFilter == nil || session.kind == sessionFilter) &&
             (selectedAccountID == nil || selectedAccountID == session.accountID) &&
             (search.isEmpty || session.title.localizedStandardContains(search) ||
-             (session.project ?? "").localizedStandardContains(search) || identity(id: session.accountID).localizedStandardContains(search))
+             (session.project ?? "").localizedStandardContains(search) || (identities[session.accountID] ?? unassigned).localizedStandardContains(search))
         }
-        return SessionLibrary.sorted(filtered, order: library.preferences.sessionSort, accounts: knownAccounts)
+        return SessionLibrary.sorted(filtered, order: library.preferences.sessionSort, accounts: known)
     }
     var canExecute: Bool { startupAccess.isReady && BuildAccess.allowsClaudeWrites && !demo && !working && libraryReadable }
     var currentUsage: UsageSnapshot? { activeID.flatMap { quotaSnapshot(for: $0) } }
@@ -242,11 +262,14 @@ final class AppState {
         if history.last?.observedAt != snapshot.observedAt { history.append(snapshot) }
         library.usageHistory[snapshot.accountID] = Array(history.suffix(128))
     }
-    func follows(_ id: String) -> Bool {
-        guard let session = inventory?.conversations.first(where: { $0.id == id }) else {
-            return library.follows.contains { $0.conversationID == id }
-        }
+    func follows(_ session: Conversation) -> Bool {
         return library.follows.contains { $0.matches(session) }
+    }
+    var followedSessionCount: Int {
+        guard !library.follows.isEmpty else { return 0 }
+        let sessionIDs = Set(library.follows.compactMap { $0.sessionID ?? $0.conversationID.split(separator: "/").last.map(String.init) })
+        let legacyIDs = Set(library.follows.filter { $0.sessionID == nil }.map(\.conversationID))
+        return Set(unarchivedSessions.lazy.filter { sessionIDs.contains($0.sessionID) || legacyIDs.contains($0.id) }.map(\.sessionID)).count
     }
     /// One choice per session, shared by following and by transferring it now. Moving is the default.
     func transferMode(_ session: Conversation) -> SessionTransferMode {
@@ -337,6 +360,7 @@ final class AppState {
             }
         }
         servicesLoaded = true
+        startCodeTaskPolling()
         await openPendingNotification()
     }
     /// Statistics only show on the Usage page; while it is off screen the cache is kept current far less often.
@@ -362,6 +386,7 @@ final class AppState {
             scanned = true
             var changed = false
             inventory = result
+            codeTasksNeedInventory = false
             selectedSessionIDs.formIntersection(unarchivedSessions.map(\.id))
             if triggerQuotaEvents, let id = result.activeAccountID { quotaRefreshQueue.observedAccount(id) }
             if triggerQuotaEvents, let id = result.activeAccountID, let signature = try? environment.credentialDigest() {
@@ -485,6 +510,7 @@ final class AppState {
     }
     func persist() {
         updateSwitchReminder()
+        if !library.preferences.showCodeTasks { codeTaskBinding.invalidate(.unavailable) }
         guard startupAccess.isReady, !demo, libraryReadable else { return }
         let state = library
         Task { do { try await store.save(state) } catch { message = L10n.tr("Could not save settings.") } }
@@ -536,7 +562,9 @@ final class AppState {
     private func observeDesktop(_ event: DesktopUsageObserver.Event) async {
         guard !demo else { return }
         switch event {
-        case .sleep: desktopAwake = false; clearKeychainAccess()
+        case .sleep:
+            codeTaskBinding.invalidate(.unavailable)
+            desktopAwake = false; clearKeychainAccess()
         case .wake:
             desktopAwake = true
             await startupAccess.recheck(using: authorizeKeychainItem, start: { await self.startAuthorizedServices() })
@@ -544,7 +572,12 @@ final class AppState {
         case .networkUnavailable: networkAvailable = false
         default: break
         }
+        if event == .credentials || event == .launched {
+            codeTasksNeedInventory = true
+            codeTaskBinding.invalidate(.connecting, excludeProcesses: event == .launched)
+        }
         sampleDesktopActivity()
+        if !quotaSchedule.activity.running { codeTaskBinding.invalidate(.offline, excludeProcesses: true) }
         if event == .wake || event == .launched { loginDiscovery?.resume() }
         guard startupAccess.isReady, !working, quotaSchedule.activity.running, desktopAwake else { return }
         if event != .networkUnavailable {
@@ -552,6 +585,8 @@ final class AppState {
             if signature != observedLoginSignature || event == .launched {
                 if await refresh() { observedLoginSignature = signature }
                 else if switchLoginWatch == nil { watchForNewLogin() }
+            } else if event == .credentials, !refreshing {
+                codeTasksNeedInventory = false
             }
             if event != .credentials { requestCurrentQuotaIfStale() }
         }
@@ -789,7 +824,7 @@ final class AppState {
     }
     func toggleFollow(_ session: Conversation) {
         guard session.kind == .code, session.cliSessionID != nil else { return }
-        if follows(session.id) { library.follows.removeAll { $0.matches(session) } }
+        if follows(session) { library.follows.removeAll { $0.matches(session) } }
         else {
             library.follows.append(FollowRule(conversationID: session.id, sessionID: session.sessionID,
                                               transferMode: transferMode(session)))

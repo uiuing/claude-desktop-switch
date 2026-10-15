@@ -88,6 +88,9 @@ struct SettingsView: View {
             }
             Section(L10n.tr("Menu bar")) {
                 Toggle(L10n.tr("Show in menu bar"), isOn: $showInMenuBar)
+                Toggle(L10n.tr("Show GitHub, feedback and version links"), isOn: preference(\.showMenuProjectLinks))
+                Toggle(L10n.tr("Show Claude Code task status"), isOn: Binding(
+                    get: { state.library.preferences.showCodeTasks }, set: { state.setCodeTasksEnabled($0) }))
                 Toggle(L10n.tr("Mask email addresses (keep first and last characters)"), isOn: preference(\.maskEmail))
             }
             if !state.recoveryIDs.isEmpty {

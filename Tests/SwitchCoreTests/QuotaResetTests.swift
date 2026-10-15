@@ -116,13 +116,13 @@ final class QuotaResetTests: XCTestCase {
 
     func testAdviceOnlyWhenActiveIsLowAndTargetIsClearlyBetter() {
         XCTAssertNil(recommend(active: rows(fiveHour: 60, sevenDay: 50), candidates: [("b", rows(fiveHour: 100, sevenDay: 90))], now: base))
-        let low = rows(fiveHour: 15, sevenDay: 50)
-        XCTAssertNil(recommend(active: low, candidates: [("b", rows(fiveHour: 30, sevenDay: 90))], now: base))
+        let low = rows(fiveHour: 10, sevenDay: 50)
+        XCTAssertNil(recommend(active: low, candidates: [("b", rows(fiveHour: 25, sevenDay: 90))], now: base))
         XCTAssertNil(recommend(active: low, candidates: [("b", rows(fiveHour: 90, sevenDay: 10))], now: base))
         let advice = recommend(active: low, candidates: [("b", rows(fiveHour: 60, sevenDay: 90)),
                                                                     ("c", rows(fiveHour: 80, sevenDay: 30))], now: base)
         XCTAssertEqual(advice?.accountID, "c")
-        XCTAssertEqual(advice?.reason, .fiveHourLow("15%"))
+        XCTAssertEqual(advice?.reason, .fiveHourLow("10%"))
     }
 
     func testWeeklyShortageAdvisesEvenWithFullFiveHourWindow() {

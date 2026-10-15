@@ -70,6 +70,8 @@ Activity scheduling reads only modification times and sizes of Code transcripts/
 
 ## Claude Code transcripts
 
+The separate [Code task status reader](code-task-status.md) reads bounded PID registry records under `~/.claude/sessions/` and selected Desktop Code indexes. It validates Desktop process ancestry, native process birth, `hostSessionId`, and `cliSessionId`. Transcript timestamps are not task state. The private registry format was inspected statically in the official Claude Code 2.1.301 distribution; compatibility with a running Desktop engine remains a separate acceptance step.
+
 `~/.claude/projects/<project>/<cliSessionId>.jsonl` (shared by every account; never moved or deleted):
 
 - rows have `type` (`user`, `assistant`, …), `timestamp`, `sessionId`, `isSidechain`, `requestId`, `message.id`, `message.model`, and `message.usage` with `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`;

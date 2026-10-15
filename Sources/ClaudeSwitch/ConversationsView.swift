@@ -3,17 +3,18 @@ import SwitchCore
 
 struct ConversationsView: View {
     @Environment(AppState.self) private var state
-    private var groups: [(account: String, sessions: [Conversation])] {
+    private func groups(_ sessions: [Conversation]) -> [(account: String, sessions: [Conversation])] {
         var result: [(account: String, sessions: [Conversation])] = []
-        for session in state.sessions {
+        for session in sessions {
             if result.last?.account == session.accountID { result[result.count - 1].sessions.append(session) }
             else { result.append((session.accountID, [session])) }
         }
         return result
     }
     var body: some View {
+        let sessions = state.sessions
         Group {
-            if state.sessions.isEmpty {
+            if sessions.isEmpty {
                 if state.search.isEmpty {
                     ContentUnavailableView(L10n.tr("No conversations"), systemImage: "bubble.left.and.text.bubble.right",
                                            description: Text(L10n.tr("Conversations appear here after you use Code or Cowork in Claude Desktop.")))
@@ -23,13 +24,13 @@ struct ConversationsView: View {
             } else {
                 List(selection: Bindable(state).selectedSessionIDs) {
                     if state.library.preferences.sessionSort == .account {
-                        ForEach(groups, id: \.account) { group in
+                        ForEach(groups(sessions), id: \.account) { group in
                             Section(state.identity(id: group.account)) {
                                 ForEach(group.sessions) { SessionRow(session: $0, showAccount: false).tag($0.id) }
                             }
                         }
                     } else {
-                        ForEach(state.sessions) { SessionRow(session: $0, showAccount: true).tag($0.id) }
+                        ForEach(sessions) { SessionRow(session: $0, showAccount: true).tag($0.id) }
                     }
                 }
                 .listStyle(.inset)
@@ -37,7 +38,7 @@ struct ConversationsView: View {
         }
         .safeAreaInset(edge: .top, spacing: 0) { filterBar }
         .navigationTitle(L10n.tr("Conversations"))
-        .navigationSubtitle(subtitle)
+        .navigationSubtitle(subtitle(total: sessions.count))
         .searchable(text: Bindable(state).search, placement: .toolbar, prompt: L10n.tr("Search conversations, projects or accounts"))
         .toolbar {
             InventoryToolbar(state: state)
@@ -90,9 +91,8 @@ struct ConversationsView: View {
         let owners = Set(state.unarchivedSessions.map(\.accountID))
         return state.knownAccounts.filter { owners.contains($0.id) }
     }
-    private var subtitle: String {
-        let total = state.sessions.count
-        let following = Set(state.unarchivedSessions.filter { state.follows($0.id) }.map(\.sessionID)).count
+    private func subtitle(total: Int) -> String {
+        let following = state.followedSessionCount
         return following > 0 ? L10n.tr("Conversations: {0} · Following switches: {1}", L10n.argument(total), L10n.argument(following)) : L10n.tr("Conversations: {0}", L10n.argument(total))
     }
 }
@@ -114,7 +114,7 @@ private struct SessionRow: View {
                 }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
-            if state.follows(session.id) {
+            if state.follows(session) {
                 Image(systemName: "link").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.brand)
                     .help(L10n.tr("Follow account switches"))
             }
@@ -135,7 +135,7 @@ private struct SessionRow: View {
                     }.disabled(targets.isEmpty || state.working)
                 }
                 Divider()
-                Button(state.follows(session.id) ? L10n.tr("Stop following switches") : L10n.tr("Follow account switches")) { state.toggleFollow(session) }
+                Button(state.follows(session) ? L10n.tr("Stop following switches") : L10n.tr("Follow account switches")) { state.toggleFollow(session) }
                     .disabled(session.cliSessionID == nil)
             }
         }
@@ -213,7 +213,7 @@ struct SessionInspector: View {
                 .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let session = single {
                 Divider().padding(.vertical, 2)
-                Toggle(isOn: Binding(get: { state.follows(session.id) }, set: { _ in state.toggleFollow(session) })) {
+                Toggle(isOn: Binding(get: { state.follows(session) }, set: { _ in state.toggleFollow(session) })) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L10n.tr("Follow account switches")).font(.system(size: 13, weight: .medium))
                         Text(followCaption(session)).font(.system(size: 11)).foregroundStyle(.secondary)

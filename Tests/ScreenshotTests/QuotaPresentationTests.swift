@@ -45,6 +45,44 @@ final class QuotaPresentationTests: XCTestCase {
         XCTAssertNotEqual(state.switchAdvice()?.account.id, backup)
     }
 
+    static func weeklyHeadroomFixture(now: Date = Date()) -> AppState {
+        let state = AppState(demo: true)
+        var accounts = Array(state.library.accounts.prefix(3))
+        for index in accounts.indices { accounts[index].plan = "Pro" }
+        state.library.accounts = accounts
+        state.inventory?.accounts = accounts
+        let measurements: [(session: Double, weekly: Double, days: Double)] = [(5, 70, 4), (100, 60, 5.1), (100, 85, 5.8)]
+        for (index, account) in accounts.enumerated() {
+            let value = measurements[index]
+            state.library.usage[account.id] = UsageSnapshot(accountID: account.id, organizationID: account.organizationID,
+                observedAt: now, origin: .live, windows: [
+                    QuotaWindow(id: "five_hour", title: "five_hour", usedPercent: 100 - value.session,
+                                resetsAt: index == 0 ? now.addingTimeInterval(7200) : nil, resetKnownAbsent: index != 0),
+                    QuotaWindow(id: "seven_day", title: "seven_day", usedPercent: 100 - value.weekly,
+                                resetsAt: now.addingTimeInterval(value.days * 86400))
+                ])
+        }
+        return state
+    }
+
+    func testWeeklyHeadroomPreferenceReachesListsAdviceAndMenu() throws {
+        let now = Date()
+        let state = Self.weeklyHeadroomFixture(now: now)
+        let accounts = state.library.accounts
+        let expected = [accounts[0].id, accounts[2].id, accounts[1].id]
+        let ranking = state.accountRanking(now: now)
+        XCTAssertEqual(ranking.displayAccounts.map(\.id), expected)
+        XCTAssertEqual(state.accounts.map(\.id), expected)
+        XCTAssertEqual(state.knownAccounts.filter(\.hasSnapshot).map(\.id), expected)
+        XCTAssertEqual(state.switchAdvice(now: now)?.account.id, accounts[2].id)
+        let menu = AccountMenuSnapshot(ranking)
+        XCTAssertEqual(menu.accounts(from: ranking).map(\.id), expected)
+        XCTAssertEqual(menu.advice(from: ranking)?.accountID, accounts[2].id)
+        let lower = try XCTUnwrap(ranking.ranked.first { $0.account.id == accounts[1].id }?.window("seven_day"))
+        let higher = try XCTUnwrap(ranking.ranked.first { $0.account.id == accounts[2].id }?.window("seven_day"))
+        XCTAssertEqual(Format.tinyReset(lower, now: now), Format.tinyReset(higher, now: now))
+    }
+
     func testAllQuotaSurfacesRejectUnownedReadings() throws {
         for mismatch in ["account", "organization", "missingOrganization"] {
             let state = AppState(demo: true)

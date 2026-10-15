@@ -21,6 +21,14 @@ public struct SwitchReminderPolicy: Codable, Sendable {
         var reset: Date?
         var opportunityTarget: String?
         var exhausted: Bool
+
+        func sameEpisode(as other: Scope, observedAt: Date) -> Bool {
+            guard source == other.source, organization == other.organization, window == other.window,
+                  opportunityTarget == other.opportunityTarget else { return false }
+            // Missing or corrected reset timestamps do not establish a new quota cycle.
+            guard let reset, let nextReset = other.reset else { return true }
+            return observedAt < reset || abs(nextReset.timeIntervalSince(reset)) <= 60
+        }
     }
     private struct Receipt: Codable {
         var scope: Scope
@@ -40,7 +48,8 @@ public struct SwitchReminderPolicy: Codable, Sendable {
         guard let active = ranking.ranked.first(where: { $0.account.id == ranking.activeID }) else { return nil }
         // With no reset timestamp, only a fresh recovery above the warning band starts a new episode.
         for row in active.rows where AccountRanking.recent(row, now: now) {
-            let recovered = (row.remainingPercent ?? 0) > (row.id == "five_hour" ? 25 : 15)
+            let threshold = row.id == "five_hour" ? SwitchAdvisor.sessionWarningPercent : SwitchAdvisor.weeklyWarningPercent
+            let recovered = (row.remainingPercent ?? 0) > threshold + 5
             if recovered {
                 receipts.removeAll { $0.scope.source == active.account.id && $0.scope.window == row.id &&
                     $0.scope.reset == nil && $0.scope.opportunityTarget == nil }
@@ -61,14 +70,23 @@ public struct SwitchReminderPolicy: Codable, Sendable {
         let scope = Scope(source: active.account.id, organization: active.account.organizationID, window: row.id,
                           reset: row.resetsAt, opportunityTarget: kind == .expiring ? target.account.id : nil,
                           exhausted: exhausted)
-        let isNew = !receipts.contains { $0.scope == scope }
-        if isNew { receipts.append(Receipt(scope: scope, id: UUID(), issuedAt: now, reviewed: false)) }
-        receipts = Array(receipts.suffix(32))
-        guard let receipt = receipts.first(where: { $0.scope == scope }) else { return nil }
-        let deadlines = (active.rows + target.rows).flatMap { value in
-            [value.observedAt?.addingTimeInterval(AccountRanking.freshFor), value.resetsAt].compactMap { $0 }
+        let matching = receipts.indices.filter { receipts[$0].scope.sameEpisode(as: scope, observedAt: row.observedAt ?? now) }
+        for index in matching {
+            if let reset = scope.reset { receipts[index].scope.reset = reset }
         }
-        let expiry = deadlines.filter { $0 > now }.min() ?? now
+        // Once escalated, keep that reminder even if a later reading moves slightly above zero.
+        let existing = matching.last { receipts[$0].scope.exhausted } ?? matching.last { receipts[$0].scope.exhausted == exhausted }
+        let isNew = existing == nil
+        let receipt = existing.map { receipts[$0] } ?? Receipt(scope: scope, id: UUID(), issuedAt: now, reviewed: false)
+        if isNew { receipts.append(receipt) }
+        receipts = Array(receipts.suffix(32))
+        func deadlines(for rows: [QuotaReadout]) -> [Date] {
+            rows.flatMap { value in
+                [value.observedAt?.addingTimeInterval(AccountRanking.freshFor), value.resetsAt].compactMap { $0 }
+            }
+        }
+        let targetDeadlines = AccountRanking.unusedBackupDeadline(target.rows, now: now).map { [$0] } ?? deadlines(for: target.rows)
+        let expiry = (deadlines(for: active.rows) + targetDeadlines).filter { $0 > now }.min() ?? now
         return Decision(reminder: SwitchReminder(id: receipt.id, sourceAccountID: active.account.id,
             targetAccountID: target.account.id, kind: kind, remaining: row.percentageText, exhausted: exhausted,
             needsReview: !receipt.reviewed, expiresAt: expiry), shouldNotify: isNew)

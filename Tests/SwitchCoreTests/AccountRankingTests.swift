@@ -27,7 +27,7 @@ final class AccountRankingTests: XCTestCase {
         let result = rank([candidate("pro", five: 90), candidate("max", plan: "Max 20x", five: 40)], active: "pro")
         XCTAssertEqual(result.ranked.map(\.account.id), ["max", "pro"])
         XCTAssertEqual(result.displayAccounts.map(\.id), ["pro", "max"])
-        XCTAssertEqual(try XCTUnwrap(result.ranked.first?.score), 8, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(result.ranked.first?.score), 8.32, accuracy: 1e-9)
         XCTAssertEqual(result.bestBackup?.account.id, "max")
         XCTAssertNil(result.advice)
     }
@@ -37,7 +37,7 @@ final class AccountRankingTests: XCTestCase {
                            candidate("balanced", plan: "Max 5x", five: 60, seven: 60),
                            candidate("exhausted", plan: "Max 20x", five: 100, seven: 0)])
         XCTAssertEqual(result.ranked.map(\.account.id), ["balanced", "low-week", "exhausted"])
-        XCTAssertEqual(try XCTUnwrap(result.ranked[1].score), 0.9, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(result.ranked[1].score), 0.90045, accuracy: 1e-9)
         XCTAssertEqual(result.ranked.last?.availability, .exhausted)
         XCTAssertEqual(result.ranked.last?.score, 0)
     }
@@ -60,7 +60,7 @@ final class AccountRankingTests: XCTestCase {
     }
 
     func testOnlyTheRankedBackupCanBeRecommended() {
-        let result = rank([candidate("active", plan: "Max 20x", five: 14, seven: 58),
+        let result = rank([candidate("active", plan: "Max 20x", five: 8, seven: 58),
                            candidate("max-five", plan: "Max 5x", five: 92, seven: 83),
                            candidate("pro", five: 100, seven: 90)], active: "active")
         XCTAssertEqual(result.bestBackup?.account.id, "max-five")
@@ -69,7 +69,7 @@ final class AccountRankingTests: XCTestCase {
     }
 
     func testLowerCapacityNeverReplacesHigherCapacityJustBecauseItsPercentageIsHigher() {
-        let result = rank([candidate("active", plan: "Max 20x", five: 14), candidate("backup", five: 100)], active: "active")
+        let result = rank([candidate("active", plan: "Max 20x", five: 10), candidate("backup", five: 100)], active: "active")
         XCTAssertNil(result.advice)
     }
 
@@ -81,8 +81,25 @@ final class AccountRankingTests: XCTestCase {
     }
 
     func testSmallGainsAndHealthyCurrentAccountsDoNotPromptASwitch() {
-        XCTAssertNil(rank([candidate("active", five: 15), candidate("backup", five: 30)], active: "active").advice)
+        XCTAssertNil(rank([candidate("active", five: 10), candidate("backup", five: 25)], active: "active").advice)
         XCTAssertNil(rank([candidate("active", five: 60), candidate("backup", five: 100)], active: "active").advice)
+    }
+
+    func testWarningThresholdsUseUnroundedRemainingQuota() {
+        for left in [20.0, 15, 11, 10.01] {
+            XCTAssertNil(rank([candidate("active", five: left), candidate("backup")], active: "active").advice)
+        }
+        for left in [10.0, 9, 1] {
+            let result = rank([candidate("active", five: left), candidate("backup")], active: "active")
+            XCTAssertEqual(result.advice?.reason, .fiveHourLow(result.ranked.first { $0.account.id == "active" }!.rows[0].percentageText))
+        }
+        for left in [10.0, 6, 5.01] {
+            XCTAssertNil(rank([candidate("active", seven: left), candidate("backup")], active: "active").advice)
+        }
+        for left in [5.0, 4, 1] {
+            let result = rank([candidate("active", seven: left), candidate("backup")], active: "active")
+            XCTAssertEqual(result.advice?.reason, .sevenDayLow(result.ranked.first { $0.account.id == "active" }!.rows[1].percentageText))
+        }
     }
 
     func testExhaustionDoesNotWaitForImminentResetOrRequireKnownPlan() {
@@ -165,6 +182,103 @@ final class AccountRankingTests: XCTestCase {
         XCTAssertTrue(result.bestBackup?.window("five_hour")?.awaitingFirstUse == true)
     }
 
+    func testConfirmedUnusedBackupSurvivesThePollingGap() {
+        let activeID = "0a1b2c3d-1111-4aaa-8bbb-000000000001"
+        let backupID = "0a1b2c3d-1111-4aaa-8bbb-000000000002"
+        for age in [601.0, 1800, 7200] {
+            let result = rank([candidate(activeID, five: 10, seven: 60),
+                               candidate(backupID, five: 100, seven: 90, age: age, fiveReset: nil)], active: activeID)
+            XCTAssertEqual(result.bestBackup?.account.id, backupID)
+            XCTAssertEqual(result.advice?.accountID, backupID)
+            XCTAssertEqual(result.bestBackup?.window("five_hour")?.observedAt, now.addingTimeInterval(-age))
+        }
+    }
+
+    func testUnusedBackupsKeepTheSameRankingAcrossRefreshAges() throws {
+        let activeID = "0a1b2c3d-1111-4aaa-8bbb-000000000001"
+        let preferredID = "0a1b2c3d-1111-4aaa-8bbb-000000000002"
+        let otherID = "0a1b2c3d-1111-4aaa-8bbb-000000000003"
+        for preferredAge in [0.0, 600, 601, 1800, 7200] {
+            for otherAge in [0.0, 600, 601, 1800, 7200] {
+                let result = rank([candidate(activeID, five: 5, seven: 60),
+                                   candidate(preferredID, five: 100, seven: 100, age: preferredAge,
+                                             fiveReset: nil, sevenReset: 3 * 86400),
+                                   candidate(otherID, five: 100, seven: 65, age: otherAge,
+                                             fiveReset: nil, sevenReset: 5 * 86400)], active: activeID)
+                XCTAssertEqual(result.bestBackup?.account.id, preferredID)
+                XCTAssertEqual(result.advice?.accountID, preferredID)
+                let preferred = try XCTUnwrap(result.ranked.first { $0.account.id == preferredID })
+                XCTAssertEqual(try XCTUnwrap(preferred.score), 1.05 + 0.1 * (1 - 3.0 / 7), accuracy: 1e-9)
+            }
+        }
+    }
+
+    func testUnusedBackupScoreDoesNotDropWhenItsReadingPassesTenMinutes() throws {
+        let backupID = "0a1b2c3d-1111-4aaa-8bbb-000000000002"
+        let value = candidate(backupID, five: 100, seven: 90, age: 600, fiveReset: nil, sevenReset: 3 * 86400)
+        let before = try XCTUnwrap(rank([value]).ranked.first)
+        let after = try XCTUnwrap(AccountRanking.evaluate([value], activeID: nil,
+                                                         now: now.addingTimeInterval(1)).ranked.first)
+        XCTAssertEqual(after.availability, .available)
+        XCTAssertEqual(after.baseScore, before.baseScore)
+        XCTAssertGreaterThan(try XCTUnwrap(after.score), try XCTUnwrap(before.score))
+    }
+
+    func testUnusedBackupRequiresConfirmedSessionAndUsableWeeklyWindow() {
+        let activeID = "0a1b2c3d-1111-4aaa-8bbb-000000000001"
+        let backupID = "0a1b2c3d-1111-4aaa-8bbb-000000000002"
+        let unused = candidate(backupID, five: 100, age: 3600, fiveReset: nil)
+        var missingConfirmation = unused; missingConfirmation.rows[0].resetKnownAbsent = false
+        var missingWeeklyReset = unused; missingWeeklyReset.rows[1].resetsAt = nil
+        var estimatedWeeklyReset = unused; estimatedWeeklyReset.rows[1].resetIsEstimate = true
+        var invalidWeekly = unused; invalidWeekly.rows[1].remainingPercent = .nan
+        var futureWeekly = unused; futureWeekly.rows[1].observedAt = now.addingTimeInterval(1)
+        var unsaved = unused; unsaved.account.hasSnapshot = false
+        let blocked = [missingConfirmation, missingWeeklyReset, estimatedWeeklyReset, invalidWeekly, futureWeekly, unsaved,
+                       candidate(backupID, five: 100, seven: nil, age: 3600, fiveReset: nil),
+                       candidate(backupID, five: 100, seven: 0, age: 3600, fiveReset: nil),
+                       candidate(backupID, five: 100, age: 3600, fiveReset: nil, sevenReset: -1),
+                       candidate(backupID, five: 100, age: 3600, fiveReset: nil, invalid: true),
+                       candidate(backupID, five: 100, age: 3600, fiveReset: nil, origin: .localCache),
+                       candidate(backupID, five: 100, age: 3600, fiveReset: nil, origin: .estimate)]
+        for value in blocked {
+            let result = rank([candidate(activeID, five: 10), value], active: activeID)
+            XCTAssertNil(result.bestBackup)
+            XCTAssertNil(result.advice)
+        }
+    }
+
+    func testOnlyAnOnlineConfirmationMakesAnElapsedSessionUnused() {
+        let activeID = "0a1b2c3d-1111-4aaa-8bbb-000000000001"
+        let backupID = "0a1b2c3d-1111-4aaa-8bbb-000000000002"
+        let active = candidate(activeID, five: 10)
+        let pending = candidate(backupID, five: 0, age: 3600, fiveReset: -60)
+        XCTAssertNil(rank([active, pending], active: activeID).advice)
+        let confirmed = candidate(backupID, five: 100, age: 1800, fiveReset: nil)
+        XCTAssertEqual(rank([active, confirmed], active: activeID).advice?.accountID, backupID)
+        let started = candidate(backupID, five: 90, age: 1800)
+        XCTAssertNil(rank([active, started], active: activeID).advice)
+    }
+
+    func testUnusedBackupValidityIsRecheckedAtItsWeeklyReset() {
+        let activeID = "0a1b2c3d-1111-4aaa-8bbb-000000000001"
+        let backupID = "0a1b2c3d-1111-4aaa-8bbb-000000000002"
+        let result = rank([candidate(activeID, five: 10),
+                           candidate(backupID, five: 100, age: 3600, fiveReset: nil, sevenReset: 90)], active: activeID)
+        XCTAssertEqual(result.advice?.accountID, backupID)
+        XCTAssertNil(SwitchAdvisor.advice(active: result.ranked.first { $0.account.id == activeID },
+                                         target: result.bestBackup, now: now.addingTimeInterval(91)))
+    }
+
+    func testUnusedCurrentAccountStillNeedsRecentUsageForAdvice() {
+        let activeID = "0a1b2c3d-1111-4aaa-8bbb-000000000001"
+        let backupID = "0a1b2c3d-1111-4aaa-8bbb-000000000002"
+        let result = rank([candidate(activeID, five: 100, seven: 5, age: 3600, fiveReset: nil),
+                           candidate(backupID)], active: activeID)
+        XCTAssertEqual(result.ranked.first { $0.account.id == activeID }?.availability, .needsRefresh)
+        XCTAssertNil(result.advice)
+    }
+
     func testExtraModelLimitDoesNotBlockTheGeneralAccountRanking() {
         var value = candidate("backup")
         var opus = value.rows[1]; opus.id = "seven_day_opus"; opus.remainingPercent = 0
@@ -198,9 +312,9 @@ final class AccountRankingTests: XCTestCase {
         let soon = try XCTUnwrap(result.ranked.first { $0.account.id == "soon" })
         let later = try XCTUnwrap(result.ranked.first { $0.account.id == "later" })
         XCTAssertEqual(try XCTUnwrap(soon.baseScore), 0.8, accuracy: 1e-9)
-        XCTAssertEqual(soon.resetBonus, 0.072, accuracy: 1e-9)
-        XCTAssertEqual(try XCTUnwrap(soon.score), 0.8576, accuracy: 1e-9)
-        XCTAssertEqual(try XCTUnwrap(later.score), 0.833448, accuracy: 1e-9)
+        XCTAssertEqual(soon.resetBonus, 0.0738, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(soon.score), 0.913316, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(later.score), 0.866248, accuracy: 1e-9)
         XCTAssertLessThan(try XCTUnwrap(soon.baseScore), try XCTUnwrap(later.baseScore))
         XCTAssertEqual(result.bestBackup?.account.id, "soon")
         XCTAssertEqual(result.advice?.accountID, "soon")
@@ -295,8 +409,8 @@ final class AccountRankingTests: XCTestCase {
                                                                   fiveReset: 1800, sevenReset: 86400)]).ranked.first?.score)
                     XCTAssertGreaterThanOrEqual(moreFive, baseline)
                     XCTAssertGreaterThanOrEqual(moreSeven, baseline)
-                    XCTAssertLessThanOrEqual(baseline, multiplier*five/100*1.1+1e-9)
-                    XCTAssertLessThanOrEqual(baseline, try XCTUnwrap(value.baseScore)*1.1+1e-9)
+                    XCTAssertLessThanOrEqual(baseline, multiplier*five/100*1.15+1e-9)
+                    XCTAssertLessThanOrEqual(baseline, try XCTUnwrap(value.baseScore)*1.15+1e-9)
                     XCTAssertLessThanOrEqual(value.resetBonus, AccountRanking.maximumResetBonus)
                 }
             }
@@ -318,5 +432,119 @@ final class AccountRankingTests: XCTestCase {
         XCTAssertNil(menu.advice(from: expired))
         let added = rank([candidate("active", five: 10), candidate("b", five: 60), candidate("new", five: 95)], active: "active")
         XCTAssertEqual(menu.accounts(from: added).map(\.id), ["active", "b", "new"])
+    }
+
+    func testNearbyUnusedSessionsPreferMoreWeeklyQuotaAcrossPlansAndRefreshAges() {
+        let active = "0a1b2c3d-1111-4aaa-8bbb-000000000001"
+        let lower = "0a1b2c3d-1111-4aaa-8bbb-000000000002"
+        let higher = "0a1b2c3d-1111-4aaa-8bbb-000000000003"
+        for plan in ["Pro", "Max 5x", "Max 20x"] {
+            for age in [0.0, 601, 7200] {
+                for session in [100.0, 99, 95] {
+                    // Only confirmed unused sessions remain eligible beyond the fresh-reading interval.
+                    let measuredAge = session == 100 ? age : 0
+                    let result = rank([
+                        candidate(active, plan: plan, five: 5),
+                        candidate(lower, plan: plan, five: 100, seven: 60, age: age,
+                                  fiveReset: nil, sevenReset: 5.1 * 86400),
+                        candidate(higher, plan: plan, five: session, seven: 85, age: measuredAge,
+                                  fiveReset: session == 100 ? nil : 18000, sevenReset: 5.8 * 86400)
+                    ], active: active)
+                    XCTAssertEqual(result.displayAccounts.map(\.id), [active, higher, lower])
+                    XCTAssertEqual(result.bestBackup?.account.id, higher)
+                    XCTAssertEqual(result.advice?.accountID, higher)
+                    XCTAssertEqual(AccountMenuSnapshot(result).suggestedID, higher)
+                }
+            }
+        }
+    }
+
+    func testSimilarSessionAndResetTimesFavorEvenASmallWeeklyAdvantage() {
+        let result = rank([candidate("active", five: 5),
+                           candidate("lower", five: 90, seven: 70, fiveReset: 7200, sevenReset: 4 * 86400),
+                           candidate("higher", five: 85, seven: 71, fiveReset: 10800, sevenReset: 5 * 86400)], active: "active")
+        XCTAssertEqual(result.bestBackup?.account.id, "higher")
+        XCTAssertEqual(result.advice?.accountID, "higher")
+        XCTAssertGreaterThan(result.ranked[0].score!, result.ranked[1].score!)
+    }
+
+    func testSessionToleranceDoesNotEraseAClearCapacityAdvantage() {
+        for session in [94.0, 94.99, 80] {
+            let result = rank([candidate("active", five: 5),
+                               candidate("larger", five: 100, seven: 60, fiveReset: nil),
+                               candidate("smaller", five: session, seven: 100)], active: "active")
+            XCTAssertEqual(result.bestBackup?.account.id, "larger")
+            XCTAssertEqual(result.advice?.accountID, "larger")
+        }
+    }
+
+    func testLargeWeeklyResetGapCanOutweighMoreWeeklyQuota() {
+        let result = rank([candidate("active", five: 5),
+                           candidate("soon", five: 100, seven: 60, fiveReset: nil, sevenReset: 0.5 * 86400),
+                           candidate("later", five: 100, seven: 85, fiveReset: nil, sevenReset: 6 * 86400)], active: "active")
+        XCTAssertEqual(result.bestBackup?.account.id, "soon")
+        XCTAssertEqual(result.advice?.accountID, "soon")
+    }
+
+    func testLargeSessionResetGapCanOutweighMoreWeeklyQuota() {
+        let result = rank([candidate("active", five: 5),
+                           candidate("soon", five: 95, seven: 60, fiveReset: 1800),
+                           candidate("later", five: 100, seven: 85, fiveReset: nil)], active: "active")
+        XCTAssertEqual(result.bestBackup?.account.id, "soon")
+        XCTAssertEqual(result.advice?.accountID, "soon")
+    }
+
+    func testNearbyResetsDoNotInterruptAHealthyCurrentAccount() {
+        let session = rank([candidate("active", five: 80, fiveReset: 3600),
+                            candidate("backup", five: 80, seven: 85, fiveReset: 1800)], active: "active")
+        XCTAssertEqual(session.bestBackup?.account.id, "backup")
+        XCTAssertNil(session.advice)
+        let weekly = rank([candidate("active", sevenReset: 1.5 * 86400),
+                           candidate("backup", seven: 85, sevenReset: 0.75 * 86400)], active: "active")
+        XCTAssertEqual(weekly.bestBackup?.account.id, "backup")
+        XCTAssertNil(weekly.advice)
+    }
+
+    func testWeeklyPreferenceDoesNotPromoteAnUnusableOrUnconfirmedAccount() {
+        for unusable in [candidate("higher", five: 99, seven: 100, age: 601),
+                         candidate("higher", five: 100, seven: 100, invalid: true),
+                         candidate("higher", five: 100, seven: nil),
+                         candidate("higher", five: 100, seven: 0)] {
+            let result = rank([candidate("active", five: 5), candidate("usable", five: 100, seven: 60), unusable], active: "active")
+            XCTAssertEqual(result.bestBackup?.account.id, "usable")
+            XCTAssertEqual(result.advice?.accountID, "usable")
+        }
+    }
+
+    func testLowWeeklyReserveStillDiscountsFullSessions() {
+        let result = rank([candidate("active", five: 5),
+                           candidate("limited", five: 100, seven: 5, fiveReset: nil, sevenReset: 1800),
+                           candidate("usable", five: 95, seven: 80)], active: "active")
+        XCTAssertEqual(result.bestBackup?.account.id, "usable")
+        XCTAssertEqual(result.advice?.accountID, "usable")
+    }
+
+    func testOverlappingToleranceBandsAreIndependentOfInputOrder() {
+        let values = [candidate("a", five: 100, seven: 60, sevenReset: 4 * 86400),
+                      candidate("b", five: 96, seven: 70, sevenReset: 4.8 * 86400),
+                      candidate("c", five: 92, seven: 80, sevenReset: 5.6 * 86400),
+                      candidate("d", plan: "Max 5x", five: 22, seven: 60),
+                      candidate("e", plan: "Max 5x", five: 20, seven: 90)]
+        func permutations(_ values: [Candidate]) -> [[Candidate]] {
+            if values.isEmpty { return [[]] }
+            return values.indices.flatMap { index in
+                var rest = values; let first = rest.remove(at: index)
+                return permutations(rest).map { [first] + $0 }
+            }
+        }
+        let expected = rank(values).ranked
+        XCTAssertLessThan(expected.firstIndex { $0.account.id == "b" }!, expected.firstIndex { $0.account.id == "a" }!)
+        XCTAssertLessThan(expected.firstIndex { $0.account.id == "a" }!, expected.firstIndex { $0.account.id == "c" }!)
+        for input in permutations(values) {
+            let result = rank(input)
+            XCTAssertEqual(result.ranked, expected)
+            let scores = result.ranked.compactMap(\.score)
+            XCTAssertEqual(scores, scores.sorted(by: >))
+        }
     }
 }
