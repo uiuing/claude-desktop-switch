@@ -4,13 +4,12 @@
 
 # Claude Switch
 
-**在 Mac 菜单栏里管理所有 Claude Desktop 账号，一键切换。**
+**换个账号，接着做事。**
 
-保存登录、查看剩余额度，切换账号时也能带上本地 Code 会话。
+常用 Claude Desktop 账号和剩余额度，都在 Mac 菜单栏里。切换账号时，也能带上需要继续的 Code 会话。
 
 [![最新版本](https://img.shields.io/badge/Download-latest_release-C9653F?style=flat-square)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111?style=flat-square&logo=apple)
-![Swift 6](https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3B82F6?style=flat-square)](LICENSE)
 
 [English](README.md) · **简体中文** · [繁體中文](README.zh-TW.md) · [日本語](README.ja.md)
@@ -26,21 +25,16 @@
 
 ## 为什么需要它
 
-Claude Desktop 同一时间只能登录一个账号。如果你同时有个人账号和工作账号，或者不同项目用不同套餐，换账号就得退出登录、再登录，还很难记住每个账号还剩多少额度。
-
-Claude Switch 把你用到的每个登录加密保存在本机，并替你完成切换。它是原生 macOS 菜单栏应用，没有第三方依赖。
+个人账号、工作账号来回用，不该总是卡在重新登录、查看额度和找回会话上。Claude Switch 帮你保存常用账号，看清哪个还有余量，换号后也能接着处理本地 Code 会话。
 
 ## 功能
 
-- **切换不用重新登录**：选一个已保存的账号并确认，Claude 会正常退出、恢复登录，再自动打开。
-- **剩余额度一目了然**：在线读取 5 小时、每周及模型专属额度，同时显示重置时间和上次更新时间。自动刷新随会话活动调整，Claude 退出后暂停。
-- **找到还有余量的账号**：结合套餐、剩余额度与已确认的重置时间排序，当前账号始终置顶；过期数据不会触发推荐。
-- **需要时提醒你**：菜单栏标记和可选的 macOS 通知提示推荐账号，确认切换前可以查看账号与跟随的会话。
-- **Code 会话跟着走**：移动、复制或跟随本地 Claude Code 会话，保留模式、工作树和偏好设置。添加账号后，也能在单独的预览中确认带入跟随会话。
-- **添加账号不用退出登录**：保留原账号的登录，让 Claude 打开登录页；新账号登录完成后自动保存。
-- **查看本地用量**：Token 总量、模型、活跃热力图、连续天数和每日图表；用量统计与订阅额度分别展示。
-- **数据由你掌握**：登录在本机加密保存，切换与转移都有可恢复的操作日志。没有自建服务器接收账号或会话数据。详见 [工作原理](docs/how-it-works.md)（英文）。
-- **原生 macOS 体验**：SwiftUI、浅色与深色模式、快捷键、10 种语言，并内置版本检查，下载与安装由你决定。
+- **切换不用重新登录**：常用账号保存一次，之后直接从菜单栏选择需要的账号。
+- **剩余额度一眼看清**：把各个账号的余量放在一起，不用来回切换着查。
+- **额度不足，及时提醒**：快用完时，有合适的备用账号就会提醒你，让你决定要不要切换。
+- **换账号，会话跟着走**：移动或复制本地 Claude Code 会话，也可以让指定会话每次切换时自动跟随。
+- **添加账号，不丢原来的登录**：新账号登录后一起保存，需要时随时切回来。
+- **看看自己的使用习惯**：查看本地 Code 的每日用量、常用模型和活跃趋势。
 
 ## 截图
 
@@ -51,29 +45,29 @@ Claude Switch 把你用到的每个登录加密保存在本机，并替你完成
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png?v=0.2.0">
         <img src="docs/images/conversations-light.png?v=0.2.0" alt="会话：移动、复制或跟随 Claude Code 会话">
       </picture>
-      <p align="center"><b>会话</b> · 在账号之间移动、复制或跟随会话</p>
+      <p align="center"><b>会话</b> · 换个账号，继续手上的工作</p>
     </td>
     <td width="50%">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png?v=0.2.0">
         <img src="docs/images/usage-light.png?v=0.2.0" alt="用量统计：活跃热力图与按模型的每日 Token">
       </picture>
-      <p align="center"><b>用量</b> · Token、模型、热力图与连续天数</p>
+      <p align="center"><b>用量</b> · 看看自己的使用习惯</p>
     </td>
   </tr>
   <tr>
     <td width="50%">
       <img src="docs/images/switch-reminder-menu-zh-Hans.png?v=0.2.0" width="330" alt="切换提醒">
-      <p><b>切换提醒</b> · 先查看推荐账号的额度，再确认切换</p>
+      <p><b>切换提醒</b> · 需要时，找到还有余量的账号</p>
     </td>
     <td width="50%">
       <img src="docs/images/new-account-follow-confirm-zh-Hans.png?v=0.2.0" alt="带上会话">
-      <p><b>带上会话</b> · 添加账号后确认移动或复制</p>
+      <p><b>带上会话</b> · 选择新账号要继续的会话</p>
     </td>
   </tr>
 </table>
 
-<sub>所有截图均使用内置示例数据，由 <code>scripts/screenshots.sh</code> 生成。</sub>
+<sub>所有截图均使用虚构的示例数据。</sub>
 
 ## 安装
 
@@ -95,16 +89,15 @@ Claude Switch 把你用到的每个登录加密保存在本机，并替你完成
 
 ### 更新
 
-Claude Switch 运行时每天最多检查一次 GitHub 新版本。可在 **设置 → 版本更新** 中手动检查或关闭自动检查。**查看最新版本** 打开 [发布页](https://github.com/uiuing/claude-desktop-switch/releases/latest)，下载与安装由你手动完成。
+在 **设置 → 版本更新** 中检查新版本，或关闭自动检查。点击 **查看最新版本** 前往 [下载页](https://github.com/uiuing/claude-desktop-switch/releases/latest)，下载与安装由你手动完成。
 
-替换「应用程序」中的旧版前，先退出 Claude Switch。启动时若显示授权页面，点击 **允许访问**，再在 macOS 对话框中允许访问 **Claude Safe Storage** 和 **Claude Switch · 已保存的登录**。选择 **始终允许**，可记住对当前应用版本的授权。
+替换「应用程序」中的旧版前，先退出 Claude Switch。启动时如果出现授权提示，点击 **允许访问**，再确认 macOS 对话框。选择 **始终允许** 可减少重复询问。
 
 ## 快速上手
 
 1. 像平常一样**登录 Claude Desktop**，然后打开 Claude Switch，按提示允许访问钥匙串，当前账号会被自动保存。
 2. 在菜单栏点 **添加账号…**。Claude 会重启到登录页，用另一个账号登录，它也会被自动保存。
 3. 之后随时在菜单栏或账号窗口里**切换**。
-
 
 可在首次设置或 **设置 → 通知** 中开启切换推荐和操作结果通知。每次切换仍需你确认。
 
@@ -117,11 +110,10 @@ Claude Switch 运行时每天最多检查一次 GitHub 新版本。可在 **设�
 
 ## 隐私与安全
 
-- **数据只在你的 Mac 上**：保存的登录用 AES-256-GCM 加密，密钥存放在登录钥匙串中，不会同步到 iCloud，单独复制保存的登录也无法读取。
-- **没有遥测、没有统计、没有我们自己的服务器。**
-- **有限的联网行为**：向 Anthropic 查询账号和额度，向 GitHub 查询公开版本信息，两项自动检查均可关闭。版本检查不发送账号数据，也不上传本地会话。
-- **改动范围很小**：只替换 Claude Desktop 的登录文件；Claude Code 自己的登录、你的项目、MCP 服务、Skills 和设置都不会碰。
-- **可以恢复**：每次切换都有操作日志，中途被打断时可以恢复到切换前的状态。
+- 保存的登录在 Mac 上加密，由登录钥匙串保护。
+- 没有遥测、追踪或自建服务器，也不上传本地会话。
+- 额度查询连接 Anthropic，版本检查连接 GitHub；两项自动检查都可关闭。
+- 切换中断时可在设置中恢复。你的项目和 Claude Code 命令行登录不会被改动。
 
 详细说明（英文）：[工作原理](docs/how-it-works.md) · [额度与用量数据](docs/usage-data.md) · [安全策略](.github/SECURITY.md)
 
@@ -130,7 +122,7 @@ Claude Switch 运行时每天最多检查一次 GitHub 新版本。可在 **设�
 <details>
 <summary><b>为什么 macOS 会询问是否允许 Claude Switch 使用「Claude Safe Storage」？</b></summary>
 
-Claude 用这个钥匙串项目里的密钥加密登录令牌。Claude Switch 只有在线读取所选账号的额度时才需要它，只在你点击 **允许访问** 或手动刷新额度时询问。一次授权供所有账号使用，受影响的账号会自动重试。启动时会先检查权限，授权后才能进入。选 **始终允许** 可避免重启后的重复询问。
+Claude Switch 需要这项权限来显示账号额度，另一项权限用于保护保存的登录。点击 **允许访问** 后，在 macOS 对话框中确认；选择 **始终允许** 可减少重复询问。
 </details>
 
 <details>
@@ -142,19 +134,19 @@ Claude 用这个钥匙串项目里的密钥加密登录令牌。Claude Switch �
 <details>
 <summary><b>为什么有的账号显示「—」或者较早的额度数据？</b></summary>
 
-刷新失败时保留上次成功的额度数据和时间；「—」表示尚无可用额度数据。若保存的访问令牌已过期，请切换到该账号，让 Claude 更新登录凭据。
+「—」表示暂时没有可用的额度信息。如果一直无法更新，请切换到这个账号，确认在 Claude 中已登录，再刷新一次。
 </details>
 
 <details>
 <summary><b>能把保存的账号迁移到另一台 Mac 吗？</b></summary>
 
-单独复制文件不行：保存的登录只能用这台 Mac 登录钥匙串里的密钥读取。用迁移助理或从备份完整恢复用户账户时，钥匙串会一起迁移，保存的账号可能可以继续使用。否则在新 Mac 上把每个账号登录一次，就会重新保存。
+在新 Mac 上重新登录各个账号，就能再次保存。通过 macOS 迁移助理完整迁移时，原来保存的登录也可能继续使用。
 </details>
 
 <details>
 <summary><b>Claude Desktop 更新后会不会失效？</b></summary>
 
-Claude Switch 依赖 Claude Desktop 的本地文件格式，这不是公开 API。遇到无法识别的格式时，它会停下来而不是猜测，也不会改动任何东西。如果遇到这种情况，欢迎 [提交 Issue](https://github.com/uiuing/claude-desktop-switch/issues/new/choose)。
+Claude Desktop 更新后，偶尔也需要同步更新 Claude Switch。如果无法切换，请先检查新版，或 [提交 Issue](https://github.com/uiuing/claude-desktop-switch/issues/new/choose)。
 </details>
 
 ## 从源码构建

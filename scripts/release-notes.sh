@@ -32,5 +32,5 @@ Requires macOS 14 or later, Apple silicon or Intel. To verify the download: \`sh
 
 ### Updating
 
-Claude Switch checks for new versions at most once per day while open. You can check manually or disable automatic checks in **Settings → Updates**. Downloading and installing remain manual. Quit Claude Switch before replacing it in Applications. On launch, choose **Allow access** if shown, then approve the macOS dialogs for **Claude Safe Storage** and **Claude Switch · Saved Logins**. Choose **Always Allow** to remember access for this app build.
+Check for new versions in **Settings → Updates**, where you can also turn automatic checks off. Downloading and installing remain manual. Quit Claude Switch before replacing it in Applications. If asked on launch, choose **Allow access** and approve the macOS prompts. **Always Allow** helps avoid repeated prompts.
 EOF
