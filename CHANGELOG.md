@@ -6,6 +6,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-16
+
 Smarter account choices, timely reminders and Code conversations that travel with you.
 
 ### Added
@@ -90,6 +92,7 @@ First public release.
 - Links to the project on GitHub from the sidebar, the menu bar panel and Settings. There are no remote or automatic updates yet; new versions are published as GitHub releases.
 - `switch-inspect`, a read-only command-line diagnostic that prints counts only.
 
-[Unreleased]: https://github.com/uiuing/claude-desktop-switch/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/uiuing/claude-desktop-switch/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/uiuing/claude-desktop-switch/compare/v0.1.0...v0.1.5
 [0.1.0]: https://github.com/uiuing/claude-desktop-switch/releases/tag/v0.1.0
