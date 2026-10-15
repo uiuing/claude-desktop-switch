@@ -49,6 +49,87 @@ final class UsageClientTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: env.desktop.path))
     }
 
+    private func profile(plan: String?) -> JSONValue {
+        var org: [String: JSONValue] = ["uuid": .string(organization)]
+        if let plan { org["rate_limit_tier"] = .string(plan) }
+        return .object(["account": .object(["uuid": .string(accountA)]), "organization": .object(org)])
+    }
+
+    func testPlanChangesAreReadWithoutTokenRenewal() async throws {
+        let env = try environment(), service = service(), clock = FixtureClock()
+        let client = client(env, service: service, clock: clock)
+        for (tier, expected) in [("default_claude_max_20x", "Max 20x" as String?), ("default_claude_ai", "Free"),
+                                 ("future_tier", nil), ("default_claude_pro", "Pro")] {
+            await service.setProfile(profile(plan: tier))
+            _ = try await fetch(client, accountA)
+            let verified = await client.takeVerifiedPlan()
+            XCTAssertNotNil(verified)
+            XCTAssertEqual(verified?.plan, expected)
+            XCTAssertEqual(verified?.observedAt, clock.date)
+            clock.advance(61)
+        }
+    }
+
+    func testVerifiedDowngradeSurvivesUsageDenialOrUnavailableQuota() async throws {
+        for status in [403, 429, 503, 200] {
+            let env = try environment(), service = service(), client = client(env, service: service)
+            await service.setProfile(profile(plan: "default_claude_ai"))
+            await service.setUsageStatus(status)
+            if status == 200 { await service.setUsageBody(.object([:])) }
+            do { _ = try await fetch(client, accountA); XCTFail("Expected unavailable quota") } catch {}
+            let verified = await client.takeVerifiedPlan(), identity = await client.identity()
+            XCTAssertEqual(verified?.plan, "Free")
+            XCTAssertEqual(identity?.id, accountA)
+            let consumed = await client.takeVerifiedPlan()
+            XCTAssertNil(consumed)
+        }
+    }
+
+    func testMalformedOrMissingPlanMetadataPublishesUnknownInsteadOfFree() async throws {
+        for field in [JSONValue.null, .string("false")] {
+            let env = try environment(), service = service(), client = client(env, service: service)
+            await service.setProfile(.object([
+                "account": .object(["uuid": .string(accountA), "has_claude_pro": field]),
+                "organization": .object(["uuid": .string(organization)])
+            ]))
+            _ = try await fetch(client, accountA)
+            let verified = await client.takeVerifiedPlan()
+            XCTAssertNotNil(verified); XCTAssertNil(verified?.plan)
+        }
+    }
+
+    func testProfileFailureNeverReplacesAPreviouslyConfirmedPaidPlan() async throws {
+        for status in [401, 403, 429, 503] {
+            let env = try environment(), service = service(), clock = FixtureClock()
+            let client = client(env, service: service, clock: clock)
+            await service.setProfile(profile(plan: "default_claude_max_20x"))
+            _ = try await fetch(client, accountA)
+            let previous = await client.takeVerifiedPlan()
+            XCTAssertEqual(previous?.plan, "Max 20x")
+            clock.advance(61)
+            await service.reject(accountA, status: status)
+            do { _ = try await fetch(client, accountA); XCTFail("Expected profile query failure") } catch {}
+            let verified = await client.takeVerifiedPlan(), identity = await client.identity()
+            XCTAssertNil(verified); XCTAssertNil(identity)
+        }
+    }
+
+    func testChangedProfileIdentityCannotPublishThePreviousAccountsPlan() async throws {
+        let env = try environment(), service = service(), clock = FixtureClock()
+        let client = client(env, service: service, clock: clock)
+        await service.setProfile(profile(plan: "default_claude_pro"))
+        _ = try await fetch(client, accountA)
+        clock.advance(61)
+        await service.setProfile(.object([
+            "account": .object(["uuid": .string(accountB)]),
+            "organization": .object(["uuid": .string(organization), "rate_limit_tier": .string("default_claude_ai")])
+        ]))
+        do { _ = try await fetch(client, accountA); XCTFail("Expected mismatched profile") }
+        catch let failure as UsageFailure { XCTAssertEqual(failure, .identityMismatch) }
+        let verified = await client.takeVerifiedPlan(), identity = await client.identity()
+        XCTAssertNil(verified); XCTAssertNil(identity)
+    }
+
     func testAlternatingAccountsKeepsBothCooldownsAcrossRelaunch() async throws {
         let env = try environment(), service = service(), client = client(env, service: service)
         _ = try await fetch(client, accountA)
@@ -107,15 +188,16 @@ final class UsageClientTests: XCTestCase {
 
     func testCredentialChangeDuringRequestDiscardsReading() async throws {
         let env = try environment(), service = service(), client = client(env, service: service)
-        var validations = 0
         do {
             _ = try await client.fetch(accountID: accountA, readToken: { self.token(self.accountA) }, validate: { _ in
-                validations += 1
-                if validations == 4 { throw SwitchError.changed }
+                if await service.paths.last == "/api/oauth/usage" { throw SwitchError.changed }
             })
             XCTFail("Expected changed credentials to discard the response")
         } catch SwitchError.changed {}
-        XCTAssertEqual(validations, 4)
+        let paths = await service.paths
+        XCTAssertEqual(paths, ["/api/oauth/profile", "/api/oauth/usage"])
+        let verified = await client.takeVerifiedPlan(), identity = await client.identity()
+        XCTAssertNil(verified); XCTAssertNil(identity)
     }
 
     func testCredentialChangeBeforeUsageStopsRequest() async throws {
@@ -193,7 +275,7 @@ final class UsageClientTests: XCTestCase {
         XCTAssertEqual(count, 3)
     }
 
-    func testProfileCacheIsScopedToTokenAndExpires() async throws {
+    func testProfileIsRecheckedAcrossTokenChangesAndIntervals() async throws {
         let env = try environment(), service = service(), clock = FixtureClock()
         let client = client(env, service: service, clock: clock)
         _ = try await fetch(client, accountA)
@@ -204,7 +286,7 @@ final class UsageClientTests: XCTestCase {
         clock.advance(601)
         _ = try await fetch(client, accountA, generation: "2")
         let paths = await service.paths
-        XCTAssertEqual(paths.filter { $0.hasSuffix("profile") }.count, 3)
+        XCTAssertEqual(paths.filter { $0.hasSuffix("profile") }.count, 4)
         XCTAssertEqual(paths.filter { $0.hasSuffix("usage") }.count, 4)
     }
 
@@ -352,8 +434,14 @@ private actor UsageFixtureService {
     private var mismatchedIdentity: String?
     private var retryAfter = "600"
     private var bodyOverride: JSONValue?
+    private var profileOverride: JSONValue?
+    private var usageStatus: Int?
+    private var usageBody: JSONValue?
+    func setUsageStatus(_ value: Int) { usageStatus = value }
+    func setUsageBody(_ value: JSONValue) { usageBody = value }
     func setRetryAfter(_ value: String) { retryAfter = value }
     func setBody(_ value: JSONValue?) { bodyOverride = value }
+    func setProfile(_ value: JSONValue) { profileOverride = value }
     init(accounts: [String: String], organization: String) { self.accounts = accounts; self.organization = organization }
     func reject(_ account: String, status: Int?) { statuses[account] = status }
     func mismatch(_ value: String) { mismatchedIdentity = value }
@@ -363,16 +451,16 @@ private actor UsageFixtureService {
               let account = accounts[String(auth.dropFirst(7))] else { throw SwitchError.changed }
         paths.append(url.path)
         queries.append(url.query)
-        let status = statuses[account] ?? 200
+        let status = statuses[account] ?? (url.path.hasSuffix("/usage") ? usageStatus : nil) ?? 200
         let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Retry-After": retryAfter])!
         let body: JSONValue
         if url.path.hasSuffix("/profile") {
-            body = .object([
+            body = profileOverride ?? .object([
                 "account": .object(["uuid": .string(mismatchedIdentity == organization ? account : mismatchedIdentity ?? account)]),
                 "organization": .object(["uuid": .string(mismatchedIdentity == organization ? account : organization)])
             ])
         } else {
-            body = .object(["five_hour": .object(["utilization": .number(23)])])
+            body = usageBody ?? .object(["five_hour": .object(["utilization": .number(23)])])
         }
         return (try JSONEncoder().encode(bodyOverride ?? body), response)
     }

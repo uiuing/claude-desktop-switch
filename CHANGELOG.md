@@ -6,6 +6,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- Free accounts are distinguished from unknown plans. Each allowed quota refresh rechecks the profile, and verified plan changes update even when quota is unavailable. Old local caches cannot restore an outdated paid plan, and quota from a previous plan is cleared.
+
 ## [0.1.5] - 2026-10-15
 
 More reliable quota readings and account switching, with less background work.

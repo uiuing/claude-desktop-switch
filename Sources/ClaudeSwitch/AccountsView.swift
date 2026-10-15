@@ -143,7 +143,7 @@ struct AccountCard: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 7) {
                     Text(state.identity(account)).font(.system(size: 14, weight: .semibold)).lineLimit(1).truncationMode(.middle)
-                    if let plan = account.plan { StatusBadge(text: plan, color: .secondary) }
+                    StatusBadge(text: account.planTitle, color: .secondary)
                     if active { StatusBadge(text: L10n.tr("Active")) }
                     if invalid {
                         StatusBadge(text: L10n.tr("Expired"), color: Color(nsColor: .systemOrange))

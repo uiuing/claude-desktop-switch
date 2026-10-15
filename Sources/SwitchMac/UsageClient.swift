@@ -38,13 +38,6 @@ public actor ActiveUsageClient: UsageProvider {
     private var sessionInFlight: URLSession?
     private var cancellationGeneration: UInt64 = 0
     private var storageFailed = false
-    private struct Verified {
-        var account: Account
-        var plan: String?
-        var hasPlan: Bool
-        var observedAt: Date
-    }
-    private var verified: [String: Verified] = [:]
     private var verifiedAccount: Account?
     private var verifiedPlan: (accountID: String, organizationID: String, plan: String?, observedAt: Date)?
     public init(environment: MacEnvironment, vault: CredentialVault? = nil) {
@@ -141,29 +134,19 @@ public actor ActiveUsageClient: UsageProvider {
         defer { session.invalidateAndCancel(); sessionInFlight = nil }
         do {
             try checkCancellation(generation)
-            let key = token.quotaScope + ":" + token.tokenDigest
-            if let record = verified[key], now().timeIntervalSince(record.observedAt) >= 600 { verified[key] = nil }
-            if verified[key] == nil {
-                let request = try DesktopUsageProtocol.request(path: "/api/oauth/profile", token: token.value, codeVersion: version)
-                let profile = try await getJSON(session, request: request, token: token)
-                let owner = profile["account"]["uuid"].string ?? profile["account_uuid"].string ?? profile["accountUuid"].string
-                let org = profile["organization"]["uuid"].string ?? profile["organization_uuid"].string ?? profile["organizationUuid"].string
-                guard owner?.lowercased() == token.accountID, org?.lowercased() == token.organizationID else {
-                    denied[token.tokenDigest] = .identityMismatch; throw UsageFailure.identityMismatch
-                }
-                try await validate(token)
-                try checkCancellation(generation)
-                let email = profile["account"]["email_address"].string ?? profile["account"]["emailAddress"].string
-                let max = profile["account"]["has_claude_max"].bool, pro = profile["account"]["has_claude_pro"].bool
-                let tier = profile["organization"]["rate_limit_tier"].string
-                let plan = max == true ? DesktopProfile.plan(tier: tier, capabilities: ["claude_max"])
-                    : pro == true ? "Pro" : DesktopProfile.plan(tier: tier, capabilities: [])
-                if verified.count >= 32, let oldest = verified.min(by: { $0.value.observedAt < $1.value.observedAt })?.key { verified[oldest] = nil }
-                verified[key] = Verified(account: Account(id: token.accountID, email: email, organizationID: token.organizationID),
-                                         plan: plan, hasPlan: max != nil || pro != nil, observedAt: now())
+            let profileRequest = try DesktopUsageProtocol.request(path: "/api/oauth/profile", token: token.value, codeVersion: version)
+            let profile = try await getJSON(session, request: profileRequest, token: token)
+            let owner = profile["account"]["uuid"].string ?? profile["account_uuid"].string ?? profile["accountUuid"].string
+            let org = profile["organization"]["uuid"].string ?? profile["organization_uuid"].string ?? profile["organizationUuid"].string
+            guard owner?.lowercased() == token.accountID, org?.lowercased() == token.organizationID else {
+                denied[token.tokenDigest] = .identityMismatch; throw UsageFailure.identityMismatch
             }
             try await validate(token)
             try checkCancellation(generation)
+            // A verified plan remains useful when the subsequent usage endpoint denies a downgraded login.
+            let email = profile["account"]["email_address"].string ?? profile["account"]["emailAddress"].string
+            verifiedAccount = Account(id: token.accountID, email: email, organizationID: token.organizationID)
+            verifiedPlan = (token.accountID, token.organizationID, AccountPlan.profile(profile), now())
             guard token.expiresAt > now().addingTimeInterval(15) else { throw UsageNotReady(reason: .expiring) }
             let request = try DesktopUsageProtocol.request(path: "/api/oauth/usage", token: token.value, codeVersion: version)
             let root = try await getJSON(session, request: request, token: token)
@@ -171,16 +154,23 @@ public actor ActiveUsageClient: UsageProvider {
             try checkCancellation(generation)
             let windows = UsageResponseParser.windows(root, at: now())
             guard !windows.isEmpty else { throw UsageFailure.invalidResponse }
-            if let record = verified[key] {
-                verifiedAccount = record.account
-                if record.hasPlan { verifiedPlan = (token.accountID, token.organizationID, record.plan, record.observedAt) }
-            }
             failures[token.quotaScope] = nil
             return UsageSnapshot(accountID: accountID, organizationID: token.organizationID, observedAt: now(), origin: .live, windows: windows)
         } catch {
             if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                verifiedAccount = nil; verifiedPlan = nil
                 attemptedTokens[accountID] = nil
                 throw CancellationError()
+            }
+            if error is SwitchError {
+                verifiedAccount = nil; verifiedPlan = nil
+            } else if verifiedAccount != nil {
+                do { try await validate(token); try checkCancellation(generation) }
+                catch {
+                    verifiedAccount = nil; verifiedPlan = nil
+                    attemptedTokens[accountID] = nil
+                    throw error
+                }
             }
             if error is UsageCoolingDown || (error as? UsageFailure)?.isTransient == true || error is SwitchError {
                 attemptedTokens[accountID] = nil

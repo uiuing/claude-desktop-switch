@@ -436,5 +436,7 @@
   "Checking access…": "Verificando o acesso…",
   "Allow access to continue": "Permita o acesso para continuar",
   "Claude Switch needs access to Claude Safe Storage in Keychain.": "O Claude Switch precisa acessar o Claude Safe Storage nas Chaves.",
-  "Access is still unavailable. Allow access in the macOS dialog, or sign in to Claude Desktop first.": "O acesso ainda não está disponível. Permita-o no diálogo do macOS ou entre primeiro no Claude Desktop."
+  "Access is still unavailable. Allow access in the macOS dialog, or sign in to Claude Desktop first.": "O acesso ainda não está disponível. Permita-o no diálogo do macOS ou entre primeiro no Claude Desktop.",
+  "Free": "Grátis",
+  "Plan unknown": "Plano desconhecido"
 }

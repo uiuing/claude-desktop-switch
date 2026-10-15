@@ -329,6 +329,9 @@ final class AppState {
                     updated[index].loginInvalidAt = nil
                 }
             }
+            for account in updated where library.accounts.first(where: { $0.id == account.id })?.plan != account.plan {
+                library.usage[account.id] = nil; resetChecks[account.id] = nil
+            }
             if library.accounts != updated { library.accounts = updated; changed = true }
             recoveryIDs = try await engine.pendingRecovery()
             recoverableLogins = await engine.recoverableLogins()
@@ -584,28 +587,26 @@ final class AppState {
         do {
             guard !working, saved || activeID == accountID else { throw UsageNotReady(message: SwitchError.changed.localizedDescription) }
             let snapshot: UsageSnapshot
-            if saved { snapshot = try await usageClient.fetchSaved(accountID: accountID, allowKeychainPrompt: manual && allowKeychainPrompt) }
-            else { snapshot = try await usageClient.fetchCurrent(accountID: accountID, allowKeychainPrompt: manual && allowKeychainPrompt,
-                                                                onlyIfTokenChanged: automatic?.reason == .credentialsChanged) }
+            do {
+                if saved { snapshot = try await usageClient.fetchSaved(accountID: accountID, allowKeychainPrompt: manual && allowKeychainPrompt) }
+                else { snapshot = try await usageClient.fetchCurrent(accountID: accountID, allowKeychainPrompt: manual && allowKeychainPrompt,
+                                                                    onlyIfTokenChanged: automatic?.reason == .credentialsChanged) }
+            } catch {
+                await acceptVerifiedProfile(accountID: accountID, saved: saved)
+                throw error
+            }
             guard !working, saved || activeID == snapshot.accountID else { throw SwitchError.changed }
             guard library.accounts.contains(where: { $0.id == accountID && $0.hasSnapshot }) else { return nil }
             if !manual {
                 sampleDesktopActivity()
                 guard library.preferences.quotaRefresh.enabled, quotaSchedule.activity.permitsAutomaticReads else { return Date().addingTimeInterval(60) }
             }
+            await acceptVerifiedProfile(accountID: accountID, saved: saved)
             acceptUsage(snapshot)
             quotaSchedule.succeeded(snapshot)
             succeeded = true
             recoveryAccounts.remove(accountID)
             dismissUsageError(accountID); usageNotices[accountID] = nil
-            if let identity = await usageClient.identity(), let index = library.accounts.firstIndex(where: { $0.id == identity.id }) {
-                library.accounts[index].email = identity.email ?? library.accounts[index].email
-                if let organization = identity.organizationID { library.accounts[index].confirmOrganization(organization, at: Date()) }
-            }
-            if let verified = await usageClient.takeVerifiedPlan(),
-               let index = library.accounts.firstIndex(where: { $0.id == verified.accountID }) {
-                library.accounts[index].observePlan(verified.plan, organizationID: verified.organizationID, at: verified.observedAt)
-            }
             persist()
             return nil
         } catch is UsageUnchanged {
@@ -656,6 +657,22 @@ final class AppState {
             usageErrors[accountID] = display(error)
             return nil
         }
+    }
+    private func acceptVerifiedProfile(accountID: String, saved: Bool) async {
+        let identity = await usageClient.identity(), verified = await usageClient.takeVerifiedPlan()
+        guard !working, saved || activeID == accountID, identity?.id == accountID,
+              let index = library.accounts.firstIndex(where: { $0.id == accountID && $0.hasSnapshot }),
+              let organization = identity?.organizationID else { return }
+        let oldPlan = library.accounts[index].plan, oldOrganization = library.accounts[index].organizationID
+        library.accounts[index].email = identity?.email ?? library.accounts[index].email
+        library.accounts[index].confirmOrganization(organization, at: Date())
+        if let verified, verified.accountID == accountID, verified.organizationID == organization {
+            library.accounts[index].observePlan(verified.plan, organizationID: organization, at: verified.observedAt, verified: true)
+        }
+        if oldPlan != library.accounts[index].plan || oldOrganization != organization {
+            library.usage[accountID] = nil; resetChecks[accountID] = nil
+        }
+        persist()
     }
     /// The problem with this account's last live read, while it still applies.
     func usageError(for accountID: String) -> String? {

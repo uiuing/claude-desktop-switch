@@ -59,6 +59,33 @@ final class ScreenshotTests: XCTestCase {
 
     // MARK: Capture
 
+    func testRenderAccountPlans() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render account plans.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            state.inventory?.warnings = []
+            let free = state.library.accounts[0].id, unknown = state.library.accounts[1].id
+            for index in state.library.accounts.indices {
+                let id = state.library.accounts[index].id
+                if id == free { state.library.accounts[index].plan = "Free" }
+                if id == unknown { state.library.accounts[index].plan = nil }
+                if id == free || id == unknown { state.library.usage[id] = nil }
+            }
+            state.inventory?.accounts = state.library.accounts
+            try save(captureWorkbench(state, dark: false), "account-plans-\(language)", maxWidth: 1600)
+            try save(captureMenu(state, dark: false), "account-plans-menu-\(language)", maxWidth: 700)
+        }
+    }
+
     func testRenderUsageLayout() throws {
         guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
             throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render usage layouts.")

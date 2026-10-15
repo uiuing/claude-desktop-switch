@@ -17,6 +17,8 @@ Switch retains its own last successful online response for offline display. Read
 
 ### What is shown
 
+Account plan badges distinguish **Free** from **Plan unknown**. Each already permitted quota refresh first rechecks the profile, even if the access token has not changed. A profile whose account and organization match is applied even if the following quota query fails. A confirmed plan change clears quota from the previous plan; an ordinary query failure preserves it when the plan has not changed. Missing plan metadata clears an outdated label to unknown, while offline and authorization failures alone never imply Free or expired membership. Local cache timestamps cannot overwrite a server-confirmed plan. Membership end dates and renewal dates are not read or inferred.
+
 Every account always shows a session and a weekly row, even when one is unknown. Model-specific weekly limits are listed in addition when they exist.
 
 - Unknown values are shown as `—` with an empty track. `0%` is only shown when a window is truly used up.
@@ -66,7 +68,7 @@ Claude exit, system sleep or loss of connectivity pauses automatic queries and c
 An online refresh:
 
 - uses only `GET https://api.anthropic.com/api/oauth/profile` and `GET /api/oauth/usage?skip_spend=1`; manual and automatic quota reads skip spending statistics, which the quota display does not use;
-- verifies the account and organization before usage. This validation is cached only in memory for the same account, organization and actual access token, for at most ten minutes and 32 entries;
+- verifies the account and organization with a fresh profile response before each allowed usage read, so a plan change does not wait for token renewal;
 - reads the encrypted cache with **Claude Safe Storage**. It matches the supported client ID, exact audience, required and allowed scopes, account binding and a single organization. Conflicting equally suitable credentials stop the read; the latest expiry does not decide ownership;
 - checks the server-provided `expiresAt` rather than assuming an eight-hour token lifetime. Expired and soon-expiring tokens wait for Claude; malformed metadata, missing scope, Keychain errors and authorization failures have separate messages;
 - never uses refresh grants, web cookies or inference requests. Claude Desktop remains responsible for renewing its login. No saved login is restored merely to read quota.

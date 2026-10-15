@@ -52,7 +52,8 @@ The plaintext is a JSON object. Keys look like `<client>:<org>:https://api.anthr
 - Desktop stores no account name or avatar locally; the UUID is the identity.
 - `~/.claude.json` → `oauthAccount.accountUuid`, `emailAddress`, `organizationUuid` (the Claude Code login, which may differ from Desktop's: another account, or another organization of the same account, so its organization only fills a gap). Only `oauthAccount` is decoded; the file also holds project history. [`LocalReader`]
 - `IndexedDB/https_claude.ai_0.indexeddb.blob/…`: claude.ai's persisted query cache. Values are V8-serialized and usually Snappy-compressed (`FF 11 02` header). From it Claude Switch reads `account { uuid, email_address }`, each organization's `rate_limit_tier` and `capabilities`. Values are paired only with the `uuid` of the object that holds them, and parsing stops at unknown tags. [`DesktopProfile`]
-- Plan names come from `rate_limit_tier` (words `max` with an optional `5x`/`20x`, `pro`, `team`, `enterprise`), falling back to capabilities `claude_max` / `claude_pro`.
+- Plan names come from `rate_limit_tier` (words `max` with an optional `5x`/`20x`, `pro`, `team`, `enterprise`), falling back to capabilities `claude_max` / `claude_pro`. Known free tiers include `default_claude_ai` and `claude_free`. A complete `chat` capability list without paid, API or managed-team capabilities also identifies Free when the tier is absent. Missing flags, unknown tiers, mixed API/chat organizations and unsupported capability arrays stay unknown. A complete dense V8 string array is required for capability-based classification.
+- OAuth profile reads also use organization `capabilities` and `raven_type` to distinguish personal Free from Team/Enterprise. A verified profile replaces an earlier plan, including with unknown, independently of usage success. Server-confirmed plans take precedence over local file modification times; changing organization clears that confirmation. Token expiry and HTTP authorization failures do not themselves imply membership expiry.
 
 ## Quota
 
@@ -83,7 +84,7 @@ Used on the event triggers and configurable, staggered periodic schedule in [usa
 
 | Request | Fields read |
 | --- | --- |
-| `GET https://api.anthropic.com/api/oauth/profile` | `account.uuid`, `account.email_address`, `account.has_claude_max`, `account.has_claude_pro`, `organization.uuid`, `organization.rate_limit_tier` |
+| `GET https://api.anthropic.com/api/oauth/profile` | `account.uuid`, `account.email_address`, `account.has_claude_max`, `account.has_claude_pro`, `organization.uuid`, `organization.rate_limit_tier`, `organization.capabilities`, `organization.raven_type` |
 | `GET https://api.anthropic.com/api/oauth/usage?skip_spend=1` | `five_hour`, `seven_day`, `seven_day_sonnet`, `seven_day_opus`, `seven_day_oauth_apps`, `seven_day_cowork` → `utilization`, `resets_at`; `limits[]` with `kind == weekly_scoped` → optional `scope.model.id`, `scope.model.display_name`, `percent` or `utilization`, `resets_at` |
 
 The OAuth compatibility builder uses: `Authorization: Bearer <token>`, `anthropic-beta: oauth-2025-04-20`, `User-Agent: claude-code/<installed version>`. These fields do not establish transport equivalence with Electron. Desktop 2.37337.1 has both an OAuth usage path and a separate cookie-based organization-usage path. Switch uses only the OAuth compatibility path. Back-off and credential selection rules are in [usage-data.md](usage-data.md). [`ActiveUsageClient`]

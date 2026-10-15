@@ -436,5 +436,7 @@
   "Checking access…": "正在检查访问权限…",
   "Allow access to continue": "授权后继续",
   "Claude Switch needs access to Claude Safe Storage in Keychain.": "Claude Switch 需要访问钥匙串中的 Claude Safe Storage。",
-  "Access is still unavailable. Allow access in the macOS dialog, or sign in to Claude Desktop first.": "尚未获得访问权限。请在 macOS 弹窗中允许访问；如果尚未使用 Claude Desktop，请先登录。"
+  "Access is still unavailable. Allow access in the macOS dialog, or sign in to Claude Desktop first.": "尚未获得访问权限。请在 macOS 弹窗中允许访问；如果尚未使用 Claude Desktop，请先登录。",
+  "Free": "免费版",
+  "Plan unknown": "套餐未知"
 }

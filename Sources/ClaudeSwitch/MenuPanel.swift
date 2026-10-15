@@ -184,7 +184,7 @@ private struct MenuAccountRow: View {
         if state.usageNotices[account.id] != nil { return (L10n.tr("Waiting for Claude"), .orange) }
         if active {
             if let shortage { return (shortage.status, Color(nsColor: .systemOrange)) }
-            return (L10n.tr("Active"), Palette.green)
+            return (account.planTitle + " · " + L10n.tr("Active"), Palette.green)
         }
         if account.loginInvalidAt != nil { return (L10n.tr("Expired · click to sign in again"), Color(nsColor: .systemOrange)) }
         if let expiring {
@@ -193,7 +193,8 @@ private struct MenuAccountRow: View {
             return (status, Palette.brand)
         }
         if suggested { return (L10n.tr("Switch here"), Palette.brand) }
-        return ([account.plan, L10n.tr("Click to switch")].compactMap { $0 }.joined(separator: " · "), .secondary)
+        if account.plan == nil { return (account.planTitle, .secondary) }
+        return (account.planTitle + " · " + L10n.tr("Click to switch"), .secondary)
     }
     private var hint: String {
         var lines: [String] = []

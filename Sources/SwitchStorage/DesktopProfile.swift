@@ -71,16 +71,15 @@ public enum DesktopProfile {
         while let keyAt = find(tierKey, in: value, from: index) {
             index = keyAt + tierKey.count
             guard let org = owner(of: keyAt, in: value, within: 16 * 1024) else { continue }
+            guard result.observedAt[org] == nil else { continue }
             result.observedAt[org] = observedAt
             let tier = readOneByteString(value, at: index)
+            guard tier != nil || (index < value.count && value[index] == 0x30) else { continue }
             var capabilities: [String] = []
-            if let capAt = findLast(capabilitiesKey, in: value, from: max(0, keyAt - 512), before: keyAt) {
-                var cursor = capAt + capabilitiesKey.count
-                while cursor < keyAt {
-                    if let text = readOneByteString(value, at: cursor) {
-                        capabilities.append(text); cursor += 2 + text.utf8.count
-                    } else { cursor += 1 }
-                }
+            if let capAt = findLast(capabilitiesKey, in: value, from: max(0, keyAt - 512), before: keyAt),
+               owner(of: capAt, in: value, within: 16 * 1024) == org {
+                guard let parsed = readCapabilities(value, at: capAt + capabilitiesKey.count, before: keyAt) else { continue }
+                capabilities = parsed
             }
             if result.plans[org] == nil, let plan = plan(tier: tier, capabilities: capabilities) { result.plans[org] = plan }
         }
@@ -89,18 +88,24 @@ public enum DesktopProfile {
 
     /// Maps the organization's rate-limit tier to a plan name; capabilities are the fallback when the tier is generic.
     public static func plan(tier: String?, capabilities: [String]) -> String? {
-        let words = (tier ?? "").lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
-        if let max = words.firstIndex(of: "max") {
-            let next = words.indices.contains(max + 1) ? words[max + 1] : ""
-            return next.last == "x" && Int(next.dropLast()) != nil ? "Max " + next : "Max"
+        AccountPlan.resolve(tier: tier, capabilities: capabilities)
+    }
+
+    /// A complete V8 dense string array is required before absence of paid capabilities is meaningful.
+    private static func readCapabilities(_ bytes: [UInt8], at start: Int, before end: Int) -> [String]? {
+        guard start + 2 <= end, bytes[start] == 0x41, bytes[start + 1] < 0x80 else { return nil }
+        let count = Int(bytes[start + 1])
+        guard count <= 64 else { return nil }
+        var cursor = start + 2, result: [String] = []
+        for _ in 0..<count {
+            guard let text = readOneByteString(bytes, at: cursor) else { return nil }
+            cursor += 2 + text.utf8.count
+            guard cursor <= end else { return nil }
+            result.append(text)
         }
-        for (word, label) in [("pro", "Pro"), ("team", "Team"), ("enterprise", "Enterprise")] where words.contains(word) {
-            return label
-        }
-        for (capability, label) in [("claude_max", "Max"), ("claude_pro", "Pro")] where capabilities.contains(capability) {
-            return label
-        }
-        return nil
+        guard cursor + 3 <= end, bytes[cursor] == 0x24, bytes[cursor + 1] == 0,
+              bytes[cursor + 2] == UInt8(count) else { return nil }
+        return result
     }
 
     private static func owner(of keyAt: Int, in value: [UInt8], within distance: Int) -> String? {

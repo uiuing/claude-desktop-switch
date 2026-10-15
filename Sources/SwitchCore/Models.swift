@@ -66,10 +66,12 @@ public struct Account: Codable, Identifiable, Hashable, Sendable {
     /// When the server confirmed `organizationID` for this login's own token. Local files and Claude Code,
     /// which can use another organization of the same account, then no longer decide it.
     public var organizationVerifiedAt: Date?
-    /// Plan of the account's organization as Claude cached it, e.g. "Pro" or "Max 20x".
+    /// Organization plan, including explicit "Free"; nil means unknown.
     public var plan: String?
-    /// When `plan` was observed. Sources disagree after a plan change; the newest reading wins, even a nil one.
+    /// When `plan` was observed; nil plan readings explicitly replace an older known label.
     public var planObservedAt: Date?
+    /// A server-confirmed plan is not replaced by a local cache file's modification time.
+    public var planVerifiedAt: Date?
     public var hasSnapshot: Bool
     public var lastSavedAt: Date?
     /// Credential fingerprint and Claude version of the saved snapshot; a change means it must be saved again.
@@ -93,16 +95,22 @@ public struct Account: Codable, Identifiable, Hashable, Sendable {
     /// A plan is per organization, so it does not survive a change of organization.
     public mutating func setOrganization(_ organizationID: String) {
         guard organizationID != self.organizationID else { return }
-        self.organizationID = organizationID; plan = nil; planObservedAt = nil; organizationVerifiedAt = nil
+        self.organizationID = organizationID; plan = nil; planObservedAt = nil; planVerifiedAt = nil; organizationVerifiedAt = nil
     }
     public mutating func confirmOrganization(_ organizationID: String, at date: Date) {
         setOrganization(organizationID); organizationVerifiedAt = date
     }
-    /// Keeps whichever plan reading is newest; one for another organization is ignored.
-    public mutating func observePlan(_ plan: String?, organizationID: String, at date: Date) {
-        guard organizationID == self.organizationID, date >= (planObservedAt ?? .distantPast) else { return }
+    /// Server readings outrank local cache timestamps, including an explicitly unknown plan.
+    @discardableResult
+    public mutating func observePlan(_ plan: String?, organizationID: String, at date: Date, verified: Bool = false) -> Bool {
+        guard organizationID == self.organizationID, verified || planVerifiedAt == nil,
+              date >= ((verified ? planVerifiedAt : planObservedAt) ?? .distantPast) else { return false }
+        let changed = self.plan != plan
         self.plan = plan; planObservedAt = date
+        if verified { planVerifiedAt = date }
+        return changed
     }
+    public var planTitle: String { plan == "Free" ? L10n.tr("Free") : plan ?? L10n.tr("Plan unknown") }
     public var shortID: String { String(id.prefix(8)) }
     /// Claude has no account name or avatar locally; the email, or else the raw ID, is all that can be shown.
     public func identity(maskingEmail: Bool) -> String {

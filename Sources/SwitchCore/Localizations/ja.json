@@ -436,5 +436,7 @@
   "Checking access…": "アクセス権を確認中…",
   "Allow access to continue": "アクセスを許可して続行",
   "Claude Switch needs access to Claude Safe Storage in Keychain.": "Claude Switch には、キーチェーンの Claude Safe Storage へのアクセスが必要です。",
-  "Access is still unavailable. Allow access in the macOS dialog, or sign in to Claude Desktop first.": "まだアクセスできません。macOS のダイアログで許可するか、先に Claude Desktop にログインしてください。"
+  "Access is still unavailable. Allow access in the macOS dialog, or sign in to Claude Desktop first.": "まだアクセスできません。macOS のダイアログで許可するか、先に Claude Desktop にログインしてください。",
+  "Free": "無料",
+  "Plan unknown": "プラン不明"
 }
