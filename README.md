@@ -6,7 +6,7 @@
 
 **Every Claude Desktop account, one click away in your Mac's menu bar.**
 
-Save each login once, switch between them in a second, and see every account's session and weekly limits at a glance.
+Save your logins, see what quota is left, and bring your local Code conversations when you switch.
 
 [![Latest release](https://img.shields.io/github/v/release/uiuing/claude-desktop-switch?style=flat-square&color=C9653F&label=release)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/uiuing/claude-desktop-switch/total?style=flat-square&color=C9653F)](https://github.com/uiuing/claude-desktop-switch/releases)
@@ -33,15 +33,15 @@ Claude Switch keeps every login you use on your Mac, encrypted, and swaps them f
 
 ## Features
 
-- **One-click switching.** Pick an account in the menu bar. Claude quits normally, the saved login is put back in place, and Claude reopens already signed in.
-- **Limits at a glance.** Read session, weekly and model-specific limits and reset times directly from Claude online.
-- **Automatic refresh.** The current account follows conversation activity; other accounts refresh every 30 minutes by default. Adjust intervals in Settings. Refresh pauses when Claude closes.
-- **Smart suggestion.** When the current account is running low, the menu bar points to a saved account that still has room.
-- **Add accounts without signing out.** "Add account" moves the current login aside so Claude opens at its sign-in screen. The previous account stays signed in on the server and keeps working.
-- **Bring your Claude Code sessions along.** Move or copy local Claude Code sessions to another account, or let chosen sessions follow you whenever you switch.
-- **Usage statistics.** Tokens, models, an activity heatmap, streaks and daily charts, counted the same way as Claude Desktop's own statistics.
-- **Safe by design.** Encrypted snapshots, a strict allow-list of files, a journal that can roll back any interrupted switch, with network access limited to documented quota reads and configurable automatic refreshes. See [How it works](docs/how-it-works.md).
-- **Feels at home on macOS.** SwiftUI, light and dark mode, keyboard shortcuts, and 10 languages.
+- **Switch without signing in again.** Choose a saved account and confirm. Claude quits normally, the login is restored, and Claude reopens.
+- **Know what is left.** Session, weekly and model-specific limits come directly from Claude online, with reset times and the last update. Automatic refresh follows conversation activity and pauses when Claude closes.
+- **Find an account with room.** Accounts are ranked using their plan, remaining quota and confirmed reset times. The current account stays pinned; old readings never trigger a recommendation.
+- **Get a timely reminder.** A menu bar marker and optional macOS notifications point to a recommended account. Review the switch and any followed conversations before confirming.
+- **Keep your Code conversations.** Move, copy or follow local Claude Code sessions, including their modes, worktrees and preferences. After adding an account, a separate preview lets you bring followed sessions over.
+- **Add accounts without signing out.** Open Claude's sign-in screen while preserving the previous login. The new account is saved automatically once you sign in.
+- **See your local usage.** Token totals, models, an activity heatmap, streaks and daily charts. Usage statistics are separate from subscription quota.
+- **Stay in control.** Logins are encrypted on your Mac. Switches and transfers are journaled for recovery; account data and conversations are never sent to our own servers. See [How it works](docs/how-it-works.md).
+- **Made for macOS.** SwiftUI, light and dark mode, keyboard shortcuts, 10 languages, and a built-in version checker with manual installation.
 
 ## Screenshots
 
@@ -60,6 +60,16 @@ Claude Switch keeps every login you use on your Mac, encrypted, and swaps them f
         <img src="docs/images/usage-light.png" alt="Usage statistics with an activity heatmap and daily tokens per model">
       </picture>
       <p align="center"><b>Usage</b> · tokens, models, heatmap and streaks</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/images/switch-reminder-menu-en.png" width="330" alt="Switch reminders">
+      <p><b>Switch reminders</b> · review an account with quota before switching</p>
+    </td>
+    <td width="50%">
+      <img src="docs/images/new-account-follow-confirm-en.png" alt="Bring conversations along">
+      <p><b>Bring conversations along</b> · confirm moves and copies after adding an account</p>
     </td>
   </tr>
 </table>
@@ -86,15 +96,18 @@ Each release lists a SHA-256 checksum next to the download if you want to verify
 
 ### Updates
 
-Claude Switch **doesn't have remote or automatic updates yet**. To hear about new versions, watch this repository (**Watch → Custom → Releases**) or check the [Releases](https://github.com/uiuing/claude-desktop-switch/releases) page. Quit Claude Switch before replacing it in Applications; your saved accounts stay on your Mac. On launch, choose **Allow access** if shown, then approve access to **Claude Safe Storage** in the macOS Keychain dialog. macOS may also ask for access to Claude Switch's own vault key after an update. Choose **Always Allow** for these items.
+Claude Switch checks GitHub for a new version at most once per day while open. Use **Settings → Updates** to check manually or turn automatic checks off. **View latest version** opens the [release page](https://github.com/uiuing/claude-desktop-switch/releases/latest); download and installation are manual.
 
-When upgrading from 0.1.0, old locally estimated quota readings are removed. An account may show **—** until its next successful online refresh; saved logins and conversations are preserved.
+Quit Claude Switch before replacing it in Applications. On launch, choose **Allow access** if shown, then approve the macOS dialogs for **Claude Safe Storage** and **Claude Switch · Saved Logins**. Choose **Always Allow** to remember access for this app build.
 
 ## Getting started
 
 1. **Sign in to Claude Desktop** as usual, then open Claude Switch and allow Keychain access when asked. The signed-in account is saved automatically.
 2. **Add another account** with **Add account…** in the menu bar. Claude restarts at its sign-in screen; sign in with the other account and it is saved too.
 3. **Switch** from the menu bar or the Accounts window whenever you like.
+
+
+You can enable switch recommendations and operation-result notifications during setup or later in **Settings → Notifications**. Every switch still requires confirmation.
 
 > [!IMPORTANT]
 > To change accounts, use Claude Switch rather than Claude's **Log out** or Claude Code's `/login`.
@@ -107,7 +120,7 @@ Handy shortcuts in the main window: `⌘1` `⌘2` `⌘3` switch pages, `⌘K` se
 
 - **Everything stays on your Mac.** Saved logins are encrypted with AES-256-GCM. The key lives in your login Keychain and is never synced to iCloud, so a copy of the saved logins alone can't be read.
 - **No telemetry, no analytics, no servers of our own.**
-- **Limited network access.** Only account and quota queries go to Anthropic. Automatic refresh can be disabled; local conversations are never uploaded.
+- **Limited network access.** Account and quota queries go to Anthropic; version checks read public GitHub release metadata. Both automatic features can be disabled. Version checks send no account data, and local conversations are never uploaded.
 - **A narrow footprint.** Only Claude Desktop's login files are swapped. Claude Code's own login, your projects, MCP servers, skills and settings are left alone.
 - **Recoverable.** Every switch is journaled; if something interrupts it, Claude Switch can restore the previous state.
 

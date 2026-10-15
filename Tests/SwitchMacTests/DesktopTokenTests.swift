@@ -45,10 +45,10 @@ final class DesktopTokenTests: XCTestCase {
         XCTAssertEqual(token.credentialDigest, try IdentitySchema.fingerprint(auth))
     }
     func testRotatedStorageKeyRetriesSilentlyAndStillValidatesAccount() throws {
-        let access = QuotaKeyAccess()
+        let access = KeychainKeyCache()
         _ = try access.read(allowPrompt: true) { _ in Data("fixture-old-key".utf8) }
         var loads = 0
-        let token = try DesktopTokenReader.read(config: savedAuth(), expectedAccount: account, allowPrompt: true, access: access) { prompt in
+        let token = try DesktopTokenReader.read(config: savedAuth(), expectedAccount: account, allowPrompt: false, access: access) { prompt in
             XCTAssertFalse(prompt)
             loads += 1
             return Data("fixture-password".utf8)
@@ -57,6 +57,66 @@ final class DesktopTokenTests: XCTestCase {
         XCTAssertEqual(token.accountID, account)
         XCTAssertEqual(token.organizationID, org)
         XCTAssertTrue(access.available)
+    }
+
+    func testDamagedSnapshotDoesNotDiscardAccessOrRepeatKeyReads() throws {
+        let access = KeychainKeyCache()
+        _ = try access.read(allowPrompt: true) { _ in Data("fixture-password".utf8) }
+        let damaged: JSONValue = .object(["lastKnownAccountUuid": .string(account),
+            "oauth:tokenCacheV2": .string((Data("v10".utf8) + Data([0])).base64EncodedString())])
+        var loads = 0
+        for _ in 0..<3 {
+            XCTAssertThrowsError(try DesktopTokenReader.read(config: damaged, expectedAccount: account, allowPrompt: true, access: access) { _ in
+                loads += 1
+                return Data("fixture-password".utf8)
+            })
+            XCTAssertTrue(access.available)
+        }
+        XCTAssertEqual(loads, 1)
+        let token = try DesktopTokenReader.read(config: savedAuth(), expectedAccount: account, allowPrompt: false, access: access) { _ in
+            XCTFail("A damaged snapshot must not revoke access for a valid login")
+            throw UsageFailure.keychain
+        }
+        XCTAssertEqual(token.accountID, account)
+    }
+
+    func testFreshAuthorizationDoesNotImmediatelyReadTheKeyAgain() throws {
+        let access = KeychainKeyCache()
+        let damaged: JSONValue = .object(["lastKnownAccountUuid": .string(account),
+            "oauth:tokenCacheV2": .string((Data("v10".utf8) + Data([0])).base64EncodedString())])
+        var loads = 0
+        XCTAssertThrowsError(try DesktopTokenReader.read(config: damaged, expectedAccount: account, allowPrompt: true, access: access) { allowed in
+            XCTAssertTrue(allowed)
+            loads += 1
+            return Data("fixture-password".utf8)
+        })
+        XCTAssertEqual(loads, 1)
+        XCTAssertTrue(access.available)
+    }
+
+    func testDeniedKeyRecheckKeepsOtherLoginsUsableAndManualRefreshCanAuthorize() throws {
+        let access = KeychainKeyCache()
+        _ = try access.read(allowPrompt: true) { _ in Data("fixture-old-key".utf8) }
+        let auth = try savedAuth()
+        XCTAssertThrowsError(try DesktopTokenReader.read(config: auth, expectedAccount: account, allowPrompt: false, access: access) { allowed in
+            XCTAssertFalse(allowed)
+            throw UsageFailure.keychain
+        }) { XCTAssertEqual($0 as? UsageFailure, .keychain) }
+        XCTAssertTrue(access.available)
+        let old = try DesktopTokenReader.read(config: savedAuth(password: Data("fixture-old-key".utf8)), expectedAccount: account,
+                                              allowPrompt: false, access: access) { _ in
+            XCTFail("A denied recheck must leave the existing authorized key usable")
+            throw UsageFailure.keychain
+        }
+        XCTAssertEqual(old.accountID, account)
+        var approvals = 0
+        let renewed = try DesktopTokenReader.read(config: auth, expectedAccount: account, allowPrompt: true, access: access) { allowed in
+            XCTAssertTrue(allowed)
+            approvals += 1
+            return Data("fixture-password".utf8)
+        }
+        XCTAssertEqual(approvals, 1)
+        XCTAssertEqual(renewed.accountID, account)
     }
 
     func testSavedAuthRejectsWrongAccountBeforeReadingKey() throws {
@@ -114,13 +174,14 @@ final class DesktopTokenTests: XCTestCase {
         }
     }
 
-    private func savedAuth(expired: Bool = false, ambiguous: Bool = false, entries: [String: JSONValue]? = nil) throws -> JSONValue {
+    private func savedAuth(expired: Bool = false, ambiguous: Bool = false, entries: [String: JSONValue]? = nil,
+                           password: Data = Data("fixture-password".utf8)) throws -> JSONValue {
         let entry: JSONValue = .object(["token": .string("synthetic-access"),
                                        "expiresAt": .number(Date().addingTimeInterval(expired ? -60 : 3600).timeIntervalSince1970)])
         let suffix = ":https://api.anthropic.com:user:inference user:profile"
         var cache = ["acct:\(account)|\(client):\(org)" + suffix: entry]
         if ambiguous { cache["acct:\(account)|\(client):\(client)" + suffix] = entry }
-        let plain = try JSONEncoder().encode(JSONValue.object(entries ?? cache)), password = Data("fixture-password".utf8)
+        let plain = try JSONEncoder().encode(JSONValue.object(entries ?? cache))
         let salt = Data("saltysalt".utf8), iv = Data(repeating: 0x20, count: 16)
         var key = Data(count: 16)
         let derive = key.withUnsafeMutableBytes { output in

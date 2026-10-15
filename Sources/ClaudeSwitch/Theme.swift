@@ -146,6 +146,8 @@ extension View {
     func hoverSurface(radius: CGFloat = 6) -> some View {
         modifier(HoverSurface(radius: radius))
     }
+    func prominentHover() -> some View { modifier(ProminentHover()) }
+    func listRowHover(radius: CGFloat = 6) -> some View { modifier(ListRowHover(radius: radius)) }
     /// Hover tip. SwiftUI's `help` does not show in every hierarchy, so an AppKit tooltip sits behind it too.
     func hint(_ text: String?) -> some View {
         help(text ?? "").background(ToolTipHost(text: text))
@@ -161,16 +163,59 @@ struct SecondsTimeline<Content: View>: View {
     }
 }
 
+private struct ListRowHover: ViewModifier {
+    let radius: CGFloat
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .listRowBackground(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(Color.primary.opacity(hovering && enabled ? (contrast == .increased ? 0.16 : 0.08) : 0))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering && enabled)
+            )
+            .onHover { hovering = $0 }
+    }
+}
+
+private struct ProminentHover: ViewModifier {
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+    func body(content: Content) -> some View {
+        let highlighted = hovering && enabled
+        content
+            .overlay {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.black.opacity(highlighted ? 0.10 : 0))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(highlighted ? (contrast == .increased ? 0.5 : 0.22) : 0))
+                    }
+                    .allowsHitTesting(false)
+            }
+            .onHover { hovering = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: highlighted)
+    }
+}
+
 private struct HoverSurface: ViewModifier {
     let radius: CGFloat
     @State private var hovering = false
     @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
     func body(content: Content) -> some View {
         content
             .background(RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(Color.primary.opacity(hovering && enabled ? 0.08 : 0)))
+                .fill(Color.primary.opacity(hovering && enabled ? (contrast == .increased ? 0.16 : 0.08) : 0)))
             .onHover { hovering = $0 }
-            .animation(.easeOut(duration: 0.12), value: hovering)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering && enabled)
     }
 }
 
@@ -183,14 +228,17 @@ struct CardButtonStyle: ButtonStyle {
         let radius: CGFloat
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.colorSchemeContrast) private var contrast
         var body: some View {
+            let emphasis = enabled ? (configuration.isPressed ? 0.12 : hovering ? 0.07 : 0) : 0
             configuration.label
                 .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Color.primary.opacity(configuration.isPressed ? 0.08 : hovering && enabled ? 0.04 : 0))
+                    .fill(Color.primary.opacity(emphasis * (contrast == .increased ? 2 : 1)))
                     .allowsHitTesting(false))
                 .opacity(enabled ? 1 : 0.45)
                 .onHover { hovering = $0 }
-                .animation(.easeOut(duration: 0.12), value: hovering)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering && enabled)
         }
     }
 }
@@ -237,7 +285,7 @@ struct QuotaGauge: View {
     let row: QuotaReadout
     var now = Date()
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(row.title).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
                 Spacer(minLength: 4)
@@ -245,7 +293,8 @@ struct QuotaGauge: View {
                     .foregroundStyle(row.remainingPercent.map { $0 <= 10 ? Palette.quota($0) : .primary } ?? .secondary)
             }
             QuotaBar(row: row)
-            Text(Format.reset(row, now: now, showResetTime: showResetTime)).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            Text(Format.reset(row, now: now, showResetTime: showResetTime)).font(.system(size: 11)).foregroundStyle(.secondary)
+                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
         }
         .hint(Format.resetDetail(row))
         .accessibilityElement(children: .ignore)
@@ -317,7 +366,8 @@ enum Format {
     }
     static func quotaAccessibility(_ row: QuotaReadout, now: Date, showResetTime: Bool = true) -> String {
         let quota = row.remainingPercent == nil ? L10n.tr("Quota unknown") : L10n.tr("{0} remaining", row.percentageText)
-        return [row.title, quota, reset(row, now: now, showResetTime: showResetTime)].joined(separator: ", ")
+        let observed = row.observedAt.map { L10n.tr("Updated {0}", age($0, now: now)) }
+        return [row.title, quota, reset(row, now: now, showResetTime: showResetTime), observed].compactMap { $0 }.joined(separator: ", ")
     }
     private static func remaining(_ row: QuotaReadout, now: Date) -> Int? {
         guard let reset = row.resetsAt else { return nil }
@@ -327,12 +377,14 @@ enum Format {
     }
     static func reset(_ row: QuotaReadout, now: Date, showResetTime: Bool = true) -> String {
         if row.state == .unknown { return L10n.tr("No data yet") }
-        if row.state == .resetPending { return L10n.tr("Awaiting confirmation") }
-        if row.state == .stale { return L10n.tr("Updated {0}", row.observedAt.map { age($0, now: now) } ?? "—") }
+        if row.state == .resetPending {
+            guard showResetTime, let reset = row.resetsAt else { return L10n.tr("Reset passed · Awaiting sync") }
+            return L10n.tr("{0} · Awaiting sync", resetMoment(reset, now: now))
+        }
         if row.awaitingFirstUse { return L10n.tr("Starts on next use") }
         guard let minutes = remaining(row, now: now) else { return L10n.tr("Reset time unknown") }
         if showResetTime, let reset = row.resetsAt {
-            let moment = resetMoment(reset)
+            let moment = resetMoment(reset, now: now)
             return row.resetIsEstimate ? L10n.tr("Resets by {0}", moment) : L10n.tr("Resets at {0}", moment)
         }
         return row.resetIsEstimate
@@ -342,44 +394,57 @@ enum Format {
     /// Full reset date, including the estimate qualifier, or why there is none.
     static func resetDetail(_ row: QuotaReadout) -> String? {
         guard row.state != .unknown else { return nil }
-        if row.state == .resetPending { return L10n.tr("The expected reset time has passed. Refresh to confirm the current quota.") }
         let source = row.observedAt.map { L10n.tr("Updated {0}", date($0)) }
-        if row.awaitingFirstUse { return L10n.tr("This session hasn't started yet; it starts with your next message.") }
-        guard let reset = row.resetsAt else { return L10n.tr("Reset time unknown") }
-        let detail = row.resetIsEstimate ? L10n.tr("Resets by {0} at the latest (estimate)", date(reset)) : L10n.tr("quota.resetTooltip {0}", date(reset))
-        return [source, detail].compactMap { $0 }.joined(separator: " · ")
+        let previous = row.lastRecordedPercentageText.map { L10n.tr("Last recorded: {0}", $0) }
+        let detail: String
+        if row.awaitingFirstUse { detail = L10n.tr("This session hasn't started yet; it starts with your next message.") }
+        else if let reset = row.resetsAt {
+            detail = row.resetIsEstimate ? L10n.tr("Resets by {0} at the latest (estimate)", date(reset)) : L10n.tr("quota.resetTooltip {0}", date(reset))
+        } else { detail = L10n.tr("Reset time unknown") }
+        let pending = row.state == .resetPending ? L10n.tr("The expected reset time has passed. Refresh to confirm the current quota.") : nil
+        return [source, previous, detail, pending].compactMap { $0 }.joined(separator: " · ")
     }
     /// Show a time today, a localized tomorrow label, or a localized date and time.
-    private static func resetMoment(_ date: Date) -> String {
+    private static func resetMoment(_ date: Date, now: Date) -> String {
         let time = date.formatted(.dateTime.locale(L10n.locale).hour().minute())
         let calendar = Calendar.autoupdatingCurrent
-        if calendar.isDateInToday(date) { return time }
-        if calendar.isDateInTomorrow(date) { return L10n.tr("Tomorrow {0}", time) }
+        if calendar.isDate(date, inSameDayAs: now) { return time }
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) {
+            return L10n.tr("Tomorrow {0}", time)
+        }
         return date.formatted(.dateTime.locale(L10n.locale).month(.abbreviated).day().weekday(.abbreviated).hour().minute())
     }
     /// Like `reset`, but falls back to a duration when the moment is past tomorrow, so it fits a narrow column.
     static func compactReset(_ row: QuotaReadout, now: Date, showResetTime: Bool = true) -> String {
         let calendar = Calendar.autoupdatingCurrent
-        let near = row.resetsAt.map { calendar.isDateInToday($0) || calendar.isDateInTomorrow($0) } ?? false
+        let near = row.resetsAt.map { reset in
+            calendar.isDate(reset, inSameDayAs: now) || calendar.date(byAdding: .day, value: 1, to: now).map { calendar.isDate(reset, inSameDayAs: $0) } == true
+        } ?? false
         return reset(row, now: now, showResetTime: showResetTime && near)
     }
     /// The shortest reset label, for a table column: the time if today, else how long until it.
     /// A "tomorrow" label with a time does not fit the column in every language.
     static func tinyReset(_ row: QuotaReadout, now: Date, showResetTime: Bool = true) -> String {
-        if row.state == .resetPending { return L10n.tr("quota.pending") }
-        if row.state == .stale { return L10n.tr("quota.stale") }
-        if row.awaitingFirstUse { return L10n.tr("Not started") }
+        if row.state == .resetPending {
+            guard showResetTime, let reset = row.resetsAt else { return L10n.tr("quota.pending") }
+            return Calendar.autoupdatingCurrent.isDate(reset, inSameDayAs: now) ? resetMoment(reset, now: now)
+                : reset.formatted(.dateTime.locale(L10n.locale).month(.twoDigits).day(.twoDigits))
+        }
+        if row.awaitingFirstUse { return L10n.tr("quota.notStarted") }
         guard row.state != .unknown, let minutes = remaining(row, now: now), let reset = row.resetsAt else { return "—" }
-        if showResetTime, Calendar.autoupdatingCurrent.isDateInToday(reset) { return resetMoment(reset) }
+        if showResetTime, Calendar.autoupdatingCurrent.isDate(reset, inSameDayAs: now) { return resetMoment(reset, now: now) }
         if minutes < 60 { return L10n.tr("in {0}m", L10n.number(minutes)) }
         if minutes < 1440 { return L10n.tr("in {0}h", L10n.number((minutes + 59) / 60)) }
         return L10n.tr("in {0}d", L10n.number((minutes + 1439) / 1440))
     }
     static func shortReset(_ row: QuotaReadout, now: Date, showResetTime: Bool = true) -> String {
-        if row.state == .resetPending { return L10n.tr("quota.pending") }
-        if row.state == .stale { return L10n.tr("quota.stale") }
+        if row.state == .resetPending {
+            guard showResetTime, let reset = row.resetsAt else { return L10n.tr("quota.pending") }
+            return resetMoment(reset, now: now)
+        }
+        if row.awaitingFirstUse { return L10n.tr("Not started") }
         guard row.state != .unknown, let minutes = remaining(row, now: now) else { return "—" }
-        let value = showResetTime ? row.resetsAt.map(resetMoment) ?? duration(minutes, short: true) : duration(minutes, short: true)
+        let value = showResetTime ? row.resetsAt.map { resetMoment($0, now: now) } ?? duration(minutes, short: true) : duration(minutes, short: true)
         return row.resetIsEstimate ? L10n.tr("By {0}", value) : value
     }
 }

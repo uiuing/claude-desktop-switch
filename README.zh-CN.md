@@ -6,7 +6,7 @@
 
 **在 Mac 菜单栏里管理所有 Claude Desktop 账号，一键切换。**
 
-每个账号登录一次即可保存，之后随时秒切；每个账号的 5 小时额度和周额度一目了然。
+保存登录、查看剩余额度，切换账号时也能带上本地 Code 会话。
 
 [![最新版本](https://img.shields.io/github/v/release/uiuing/claude-desktop-switch?style=flat-square&color=C9653F&label=release)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
 [![下载量](https://img.shields.io/github/downloads/uiuing/claude-desktop-switch/total?style=flat-square&color=C9653F)](https://github.com/uiuing/claude-desktop-switch/releases)
@@ -27,21 +27,21 @@
 
 ## 为什么需要它
 
-Claude Desktop 同一时间只能登录一个账号。如果你同时有个人账号和工作账号，或者不同项目用不同套餐，换账号就得登出、再登录，还很难记住每个账号还剩多少额度。
+Claude Desktop 同一时间只能登录一个账号。如果你同时有个人账号和工作账号，或者不同项目用不同套餐，换账号就得退出登录、再登录，还很难记住每个账号还剩多少额度。
 
 Claude Switch 把你用到的每个登录加密保存在本机，并替你完成切换。它是原生 macOS 菜单栏应用，没有第三方依赖。
 
 ## 功能
 
-- **一键切换**：在菜单栏选一个账号，Claude 会正常退出、换上保存的登录，再自动打开并保持登录状态。
-- **额度一目了然**：从线上获取 **5 小时额度**、**周额度** 和重置时间，支持按模型区分的周额度。
-- **自动刷新**：当前账号随会话活动调整频率，其他账号默认每 30 分钟刷新；可在设置中调整，Claude 退出后暂停。
-- **智能推荐**：当前账号额度快用完时，菜单栏会把还有余量的已保存账号标出来。
-- **添加账号不用登出**：「添加账号」会把当前登录先移到一边，让 Claude 回到登录页；原账号在服务器端不会被登出，之后照常可用。
-- **Claude Code 会话跟着走**：把本机的 Claude Code 会话移动或复制到其他账号，也可以让指定会话在每次切换时自动跟随。
-- **用量统计**：Token、模型、活跃热力图、连续天数和每日图表，统计口径与 Claude Desktop 自带的统计一致。
-- **安全设计**：加密快照、严格的文件白名单、可回滚的操作日志。详见 [工作原理](docs/how-it-works.md)（英文）。
-- **原生 macOS 体验**：SwiftUI、浅色/深色模式、快捷键，支持 10 种界面语言。
+- **切换不用重新登录**：选一个已保存的账号并确认，Claude 会正常退出、恢复登录，再自动打开。
+- **剩余额度一目了然**：在线读取 5 小时、每周及模型专属额度，同时显示重置时间和上次更新时间。自动刷新随会话活动调整，Claude 退出后暂停。
+- **找到还有余量的账号**：结合套餐、剩余额度与已确认的重置时间排序，当前账号始终置顶；过期数据不会触发推荐。
+- **需要时提醒你**：菜单栏标记和可选的 macOS 通知提示推荐账号，确认切换前可以查看账号与跟随的会话。
+- **Code 会话跟着走**：移动、复制或跟随本地 Claude Code 会话，保留模式、工作树和偏好设置。添加账号后，也能在单独的预览中确认带入跟随会话。
+- **添加账号不用退出登录**：保留原账号的登录，让 Claude 打开登录页；新账号登录完成后自动保存。
+- **查看本地用量**：Token 总量、模型、活跃热力图、连续天数和每日图表；用量统计与订阅额度分别展示。
+- **数据由你掌握**：登录在本机加密保存，切换与转移都有可恢复的操作日志。没有自建服务器接收账号或会话数据。详见 [工作原理](docs/how-it-works.md)（英文）。
+- **原生 macOS 体验**：SwiftUI、浅色与深色模式、快捷键、10 种语言，并内置版本检查，下载与安装由你决定。
 
 ## 截图
 
@@ -60,6 +60,16 @@ Claude Switch 把你用到的每个登录加密保存在本机，并替你完成
         <img src="docs/images/usage-light.png" alt="用量统计：活跃热力图与按模型的每日 Token">
       </picture>
       <p align="center"><b>用量</b> · Token、模型、热力图与连续天数</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/images/switch-reminder-menu-zh-Hans.png" width="330" alt="切换提醒">
+      <p><b>切换提醒</b> · 先查看推荐账号的额度，再确认切换</p>
+    </td>
+    <td width="50%">
+      <img src="docs/images/new-account-follow-confirm-zh-Hans.png" alt="带上会话">
+      <p><b>带上会话</b> · 添加账号后确认移动或复制</p>
     </td>
   </tr>
 </table>
@@ -86,9 +96,9 @@ Claude Switch 把你用到的每个登录加密保存在本机，并替你完成
 
 ### 更新
 
-Claude Switch **目前还没有远程更新或自动更新**。想第一时间知道新版本，请在本仓库点 **Watch → Custom → Releases**，或关注 [Releases](https://github.com/uiuing/claude-desktop-switch/releases) 页面。替换「应用程序」中的旧版前，请先退出 Claude Switch；已保存的账号仍保留在本机。启动时若显示授权页面，点击 **允许访问**，再在 macOS 钥匙串对话框中允许访问 **Claude Safe Storage**。更新后，macOS 也可能询问是否允许访问 Claude Switch 自己的加密密钥；这些项目均可选择 **始终允许**。
+Claude Switch 运行时每天最多检查一次 GitHub 新版本。可在 **设置 → 版本更新** 中手动检查或关闭自动检查。**查看最新版本** 打开 [发布页](https://github.com/uiuing/claude-desktop-switch/releases/latest)，下载与安装由你手动完成。
 
-从 0.1.0 升级时，会移除旧的本地推估额度；账号可能暂时显示 **—**，直到下一次成功在线刷新。已保存的登录和会话不受影响。
+替换「应用程序」中的旧版前，先退出 Claude Switch。启动时若显示授权页面，点击 **允许访问**，再在 macOS 对话框中允许访问 **Claude Safe Storage** 和 **Claude Switch · 已保存的登录**。选择 **始终允许**，可记住对当前应用版本的授权。
 
 ## 快速上手
 
@@ -96,9 +106,12 @@ Claude Switch **目前还没有远程更新或自动更新**。想第一时间�
 2. 在菜单栏点 **添加账号…**。Claude 会重启到登录页，用另一个账号登录，它也会被自动保存。
 3. 之后随时在菜单栏或账号窗口里**切换**。
 
+
+可在首次设置或 **设置 → 通知** 中开启切换推荐和操作结果通知。每次切换仍需你确认。
+
 > [!IMPORTANT]
-> 换账号请用 Claude Switch，不要用 Claude 里的 **登出** 或 Claude Code 的 `/login`。
-> 登出会让这个登录在 Anthropic 那边失效，Claude Switch 保存的副本也就不能用了。
+> 换账号请用 Claude Switch，不要用 Claude 里的 **退出登录** 或 Claude Code 的 `/login`。
+> 退出登录会让这个登录在 Anthropic 那边失效，Claude Switch 保存的副本也就不能用了。
 > 如果 Claude 无法恢复登录，在 Claude 里重新登录一次即可重新保存。
 
 主窗口快捷键：`⌘1` `⌘2` `⌘3` 切换页面，`⌘K` 搜索账号和会话，`⌘R` 刷新本地账号和会话；额度使用各账号卡片上的刷新按钮。
@@ -107,7 +120,7 @@ Claude Switch **目前还没有远程更新或自动更新**。想第一时间�
 
 - **数据只在你的 Mac 上**：保存的登录用 AES-256-GCM 加密，密钥存放在登录钥匙串中，不会同步到 iCloud，单独复制保存的登录也无法读取。
 - **没有遥测、没有统计、没有我们自己的服务器。**
-- **有限的联网行为**：仅向 Anthropic 查询账号和额度，自动刷新可关闭，不上传本地会话。
+- **有限的联网行为**：向 Anthropic 查询账号和额度，向 GitHub 查询公开版本信息，两项自动检查均可关闭。版本检查不发送账号数据，也不上传本地会话。
 - **改动范围很小**：只替换 Claude Desktop 的登录文件；Claude Code 自己的登录、你的项目、MCP 服务、Skills 和设置都不会碰。
 - **可以恢复**：每次切换都有操作日志，中途被打断时可以恢复到切换前的状态。
 

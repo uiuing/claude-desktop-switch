@@ -1,6 +1,6 @@
 # Releasing
 
-Releases are built locally and published by hand on GitHub. Claude Switch doesn't have automatic or remote updates yet, so a GitHub release is how users learn about and get a new version.
+Releases are built locally and published by hand on GitHub. Claude Switch checks the project's public latest release, automatically at most once per day or on demand. Users download and install the app themselves through the stable `/releases/latest` link. Publish a non-draft, non-prerelease release with a stable `vX.Y.Z` tag and mark it latest when it is ready for users; a tag alone is not an update.
 
 `Resources/Info.plist` is the single source of the version. Versions follow [Semantic Versioning](https://semver.org).
 
@@ -62,6 +62,8 @@ Releases are built locally and published by hand on GitHub. Claude Switch doesn'
    or on the website: **Releases → Draft a new release**, choose the tag `vX.Y.Z`, set the title `Claude Switch X.Y.Z`, paste the output of `zsh scripts/release-notes.sh X.Y.Z` as the description, attach the zip and the `.sha256` file, keep **Set as the latest release** checked, and publish.
 
 `scripts/release-notes.sh` prints the version's `CHANGELOG.md` section followed by install and update instructions.
+
+To prepare and verify a replacement without overwriting an app that may be running from `dist/`, set `CLAUDE_SWITCH_DIST_DIR` to a separate staging directory when running `scripts/package.sh`. After verifying that package, quit only Claude Switch normally, retain the previous bundle for rollback, and replace the installed app. Claude Desktop does not need to be closed for this app update.
 
 ## Signing and notarization (optional)
 

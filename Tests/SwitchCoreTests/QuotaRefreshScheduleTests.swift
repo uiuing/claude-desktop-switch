@@ -2,6 +2,29 @@ import XCTest
 @testable import SwitchCore
 
 final class QuotaRefreshScheduleTests: XCTestCase {
+    func testPauseReasonTracksTheActualAutomaticReadGate() {
+        var schedule = QuotaRefreshSchedule()
+        for enabled in [false, true] {
+            for running in [false, true] {
+                for online in [false, true] {
+                    for awake in [false, true] {
+                        schedule.preferences.enabled = enabled
+                        schedule.activity = .init(running: running, online: online, awake: awake)
+                        XCTAssertEqual(schedule.pauseReason == nil, enabled && schedule.activity.permitsAutomaticReads)
+                    }
+                }
+            }
+        }
+        schedule.activity = .init(running: false, online: true)
+        XCTAssertEqual(schedule.pauseReason, .claudeClosed)
+        schedule.activity = .init(running: true, online: true)
+        XCTAssertNil(schedule.pauseReason)
+        schedule.activity = .init(running: true, online: false)
+        XCTAssertEqual(schedule.pauseReason, .offline)
+        schedule.preferences.enabled = false
+        XCTAssertEqual(schedule.pauseReason, .disabled)
+    }
+
     private let base = Date(timeIntervalSince1970: 1_800_000_000)
     private let a = "0a1b2c3d-1111-4aaa-8bbb-000000000001"
     private let b = "0a1b2c3d-2222-4aaa-8bbb-000000000002"

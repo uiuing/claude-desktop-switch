@@ -37,9 +37,9 @@ Please test changes to switching or transfers with a separate macOS user or dedi
 
 - **Writes are gated.** Anything that changes Claude's files or processes must call `BuildAccess.requireClaudeWrites()` and go through `SwitchEngine` and `FileTransaction`, so it is journaled and can be rolled back.
 - **Stay inside the allow-list.** Do not widen the set of files described in [docs/how-it-works.md](../docs/how-it-works.md) without discussing it first.
-- **No new network calls** beyond the documented quota and profile reads. Automatically refresh both logins involved in an account switch, and a newly saved login, once each; eligible saved logins also use the documented configurable, staggered periodic schedule while Claude is running. Current-account credential publication and stale/recovery lifecycle events may also trigger bounded reads. Automatic reads must respect account/organization back-off and never prompt for Keychain access. Never renew tokens or query logins known to be revoked.
+- **Keep network access bounded.** Account access uses only the documented quota and profile reads. Automatically refresh both logins involved in an account switch, and a newly saved login, once each; eligible saved logins also use the documented configurable, staggered periodic schedule while Claude is running. Current-account credential publication and stale/recovery lifecycle events may also trigger bounded reads. Automatic reads must respect account/organization back-off and never prompt for Keychain access. Never renew tokens or query logins known to be revoked. Update checks may read this project's public GitHub latest-release redirect, without credentials or local data, manually or at most once per day automatically. They never download or install a release.
 - **No secrets in output.** Tokens, cookies and emails must never reach logs, errors, the clipboard or shell arguments.
-- **Fail closed.** When a file format is unknown, stop and explain instead of guessing.
+- **Fail closed.** Unknown login formats, malformed records, identity conflicts, unsafe paths and changed fingerprints stop the operation. Session transfers preserve opaque Claude metadata while removing documented account and connection fields; see [session fields](../docs/session-fields.md).
 - Match the surrounding style: small types, clear names, comments only where the code cannot speak for itself.
 
 ## Working with AI coding assistants
@@ -61,6 +61,8 @@ zsh scripts/screenshots.sh
 ```
 
 Please regenerate them when a pull request changes the visible UI.
+
+The script publishes README and social-preview assets to `docs/images`. Additional language, error and narrow-layout captures stay in `.build/screenshots` for visual review.
 
 ## Pull requests
 

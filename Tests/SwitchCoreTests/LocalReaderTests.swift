@@ -47,6 +47,20 @@ final class LocalReaderTests: XCTestCase {
         XCTAssertEqual(found?.organizationID, codeOrganization)
     }
 
+    func testDesktopEmailCacheUpdatesThroughExistingScanAndOutranksCodeFallback() async throws {
+        let reader = try reader(sessionsIn: desktopOrganization)
+        let folder = await reader.desktop.appendingPathComponent(DesktopProfile.blobDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        func string(_ value: String) -> [UInt8] { [0x22, UInt8(value.utf8.count)] + Array(value.utf8) }
+        let file = folder.appendingPathComponent("1")
+        for email in ["al***ce@outlook.com", "sa***ra@gmail.com"] {
+            try Data(string("uuid") + string(account) + string("email_address") + string(email)).write(to: file)
+            let inventory = try await reader.scan()
+            XCTAssertEqual(inventory.accounts.first { $0.id == account }?.email, email)
+            XCTAssertEqual(inventory.desktopEmails[account], email)
+        }
+    }
+
     func testOrganizationConfirmedOnlineWins() async throws {
         let inventory = try await reader(sessionsIn: desktopOrganization).scan(verifiedOrganizations: [account: verifiedOrganization])
         XCTAssertEqual(inventory.accounts.first { $0.id == account }?.organizationID, verifiedOrganization)

@@ -8,9 +8,9 @@ public struct UsageNotReady: LocalizedError {
     public init(reason: Reason) {
         self.reason = reason
         switch reason {
-        case .updating: message = L10n.tr("Waiting for Claude to publish its login credentials.")
-        case .expired: message = L10n.tr("The access token has expired. Waiting for Claude to update it.")
-        case .expiring: message = L10n.tr("The access token expires shortly. Waiting for Claude to update it.")
+        case .updating: message = L10n.tr("Please check that you are signed in to this account in Claude, then refresh quota.")
+        case .expired: message = L10n.tr("Please check that you are signed in to this account in Claude, then refresh quota.")
+        case .expiring: message = L10n.tr("Please check that you are signed in to this account in Claude, then refresh quota.")
         }
     }
     public init(message: String) { reason = .updating; self.message = message }
@@ -30,12 +30,12 @@ public enum UsageFailure: String, LocalizedError {
     public var isTransient: Bool { self == .offline || self == .server }
     public var errorDescription: String? {
         switch self {
-        case .unauthorized: return L10n.tr("This access token was rejected. Waiting for Claude to update its credentials.")
+        case .unauthorized: return L10n.tr("Please check that you are signed in to this account in Claude, then refresh quota.")
         case .forbidden: return L10n.tr("Quota access was denied. Check this account's access in Claude.")
-        case .missingScopes: return L10n.tr("No supported quota credential was found. Open Claude's Code tab to check the login.")
-        case .invalidCredentials: return L10n.tr("The credential expiry or format is unsupported. The login has not been marked expired.")
-        case .ambiguousCredentials: return L10n.tr("Several quota credentials match. The request was stopped because their ownership is ambiguous.")
-        case .identityMismatch: return L10n.tr("The online identity does not match the selected login. Quota lookup was stopped.")
+        case .missingScopes: return L10n.tr("Open Claude's Code tab and check that you are signed in, then refresh quota.")
+        case .invalidCredentials: return L10n.tr("Could not read login data. Update Claude Switch and try again.")
+        case .ambiguousCredentials: return L10n.tr("Could not confirm which account the quota belongs to. Please check the login in Claude.")
+        case .identityMismatch: return L10n.tr("Could not confirm which account the quota belongs to. Please check the login in Claude.")
         case .offline: return L10n.tr("The quota service could not be reached. The last reading is retained.")
         case .server: return L10n.tr("The quota service is temporarily unavailable. The last reading is retained.")
         case .invalidResponse: return L10n.tr("The quota format has changed. The last reading is retained.")

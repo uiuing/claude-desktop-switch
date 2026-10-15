@@ -7,6 +7,7 @@ public enum QuotaReadingState: Equatable, Sendable {
 public struct QuotaReadout: Identifiable, Equatable, Sendable {
     public var id: String
     public var title: String
+    /// The last measured value stays visible even while freshness or a reset awaits confirmation.
     public var remainingPercent: Double?
     public var state: QuotaReadingState
     public var resetsAt: Date?
@@ -19,10 +20,21 @@ public struct QuotaReadout: Identifiable, Equatable, Sendable {
 
     /// An untouched five-hour window has no reset yet: it opens with the next request.
     public var awaitingFirstUse: Bool {
-        id == "five_hour" && state == .recorded && resetsAt == nil && resetKnownAbsent && remainingPercent == 100
+        id == "five_hour" && [.recorded, .stale].contains(state) && origin == .live &&
+            resetsAt == nil && resetKnownAbsent && remainingPercent == 100
     }
 
     public var shortTitle: String { L10n.quotaShortTitle(id) ?? title }
+
+    /// Freshness gates decisions separately from displaying the last measurement.
+    public var currentRemainingPercent: Double? {
+        state == .recorded || state == .estimated ? remainingPercent : nil
+    }
+
+    public var lastRecordedPercentageText: String? {
+        guard state == .stale || state == .resetPending, let remainingPercent else { return nil }
+        return (remainingPercent / 100).formatted(.percent.precision(.fractionLength(0)).locale(L10n.locale))
+    }
 
     public var percentageText: String {
         guard let remainingPercent else { return "—" }
@@ -36,7 +48,7 @@ public struct QuotaReadout: Identifiable, Equatable, Sendable {
             return .init(id: id, title: title, state: .unknown)
         }
         if let reset = window.resetsAt, now >= reset {
-            return .init(id: id, title: title, state: .resetPending, resetsAt: reset,
+            return .init(id: id, title: title, remainingPercent: 100 - window.usedPercent, state: .resetPending, resetsAt: reset,
                          resetIsEstimate: window.resetIsEstimate, observedAt: window.observedAt ?? snapshot.observedAt,
                          origin: window.origin ?? snapshot.origin)
         }
@@ -82,7 +94,7 @@ public enum AccountQuotaPresentation {
 public extension QuotaReadout {
     /// What would remain now had the window been used evenly since it opened.
     func evenRemaining(now: Date) -> Double? {
-        guard remainingPercent != nil, let reset = resetsAt, !resetIsEstimate,
+        guard currentRemainingPercent != nil, let reset = resetsAt, !resetIsEstimate,
               let length = ResetInference.lengths[id], reset > now else { return nil }
         let left = reset.timeIntervalSince(now)
         guard left < length else { return nil }
@@ -100,73 +112,6 @@ public struct SwitchAdvice: Equatable, Sendable {
     public var accountID: String
     public var reason: Reason
     public var fiveHour: QuotaReadout
-}
-
-public enum SwitchAdvisor {
-    private static let hour: TimeInterval = 3600
-
-    /// A shortage on the signed-in account comes first; otherwise quota another account is about to lose.
-    /// With neither, staying put is better than a switch.
-    public static func advice(active: [QuotaReadout], candidates: [(id: String, rows: [QuotaReadout])],
-                              now: Date = Date()) -> SwitchAdvice? {
-        // A slow display refresh does not make old measurements reliable enough for switching advice.
-        func recent(_ row: QuotaReadout) -> Bool { row.observedAt.map { (0...600).contains(now.timeIntervalSince($0)) } ?? false }
-        let active = active.filter(recent), candidates = candidates.map { (id: $0.id, rows: $0.rows.filter(recent)) }
-        return shortage(active: active, candidates: candidates, now: now) ?? expiring(active: active, candidates: candidates, now: now)
-    }
-
-    /// The five-hour window decides first; the weekly window only when it is nearly spent. A window that resets
-    /// shortly is waited out. A target must leave clearly more five-hour quota and enough weekly quota.
-    private static func shortage(active: [QuotaReadout], candidates: [(id: String, rows: [QuotaReadout])],
-                                 now: Date) -> SwitchAdvice? {
-        let five = window("five_hour", active), seven = window("seven_day", active)
-        let reason: SwitchAdvice.Reason
-        let floor: Double
-        if let five, let left = five.remainingPercent, left <= 20, !resets(five, within: 0.5 * hour, now: now) {
-            reason = .fiveHourLow(five.percentageText); floor = left + 20
-        } else if let seven, let left = seven.remainingPercent, left <= 10, !resets(seven, within: hour, now: now) {
-            reason = .sevenDayLow(seven.percentageText); floor = 30
-        } else { return nil }
-        let best = candidates.compactMap { candidate -> (String, QuotaReadout, Double)? in
-            guard let target = window("five_hour", candidate.rows), let left = target.remainingPercent,
-                  let weekly = window("seven_day", candidate.rows)?.remainingPercent,
-                  left >= max(30, floor), weekly >= 20 else { return nil }
-            return (candidate.id, target, weekly)
-        }.max { ($0.1.remainingPercent ?? 0, $0.2) < ($1.1.remainingPercent ?? 0, $1.2) }
-        return best.map { SwitchAdvice(accountID: $0.0, reason: reason, fiveHour: $0.1) }
-    }
-
-    /// Weekly quota resetting within a day, or a five-hour window within the hour, is lost unless spent now.
-    /// Not worth it when the signed-in account has as much of the same window lapsing by then.
-    private static func expiring(active: [QuotaReadout], candidates: [(id: String, rows: [QuotaReadout])],
-                                 now: Date) -> SwitchAdvice? {
-        let picks = candidates.compactMap { candidate -> (advice: SwitchAdvice, rank: Double)? in
-            guard let five = window("five_hour", candidate.rows), let fiveLeft = five.remainingPercent,
-                  let seven = window("seven_day", candidate.rows), let sevenLeft = seven.remainingPercent else { return nil }
-            if sevenLeft >= 20, fiveLeft >= 30, resets(seven, within: 24 * hour, now: now),
-               !lapses(window("seven_day", active), by: seven.resetsAt, floor: 20) {
-                return (SwitchAdvice(accountID: candidate.id, reason: .expiring(seven), fiveHour: five), 100 + sevenLeft)
-            }
-            if fiveLeft >= 50, sevenLeft >= 30, resets(five, within: hour, now: now),
-               !lapses(window("five_hour", active), by: five.resetsAt, floor: 50) {
-                return (SwitchAdvice(accountID: candidate.id, reason: .expiring(five), fiveHour: five), fiveLeft)
-            }
-            return nil
-        }
-        return picks.max { $0.rank < $1.rank }?.advice
-    }
-
-    private static func window(_ id: String, _ rows: [QuotaReadout]) -> QuotaReadout? {
-        rows.first { $0.id == id && $0.state == .recorded }
-    }
-    private static func resets(_ row: QuotaReadout, within interval: TimeInterval, now: Date) -> Bool {
-        guard let reset = row.resetsAt, !row.resetIsEstimate else { return false }
-        return reset > now && reset.timeIntervalSince(now) <= interval
-    }
-    private static func lapses(_ row: QuotaReadout?, by date: Date?, floor: Double) -> Bool {
-        guard let row, let left = row.remainingPercent, let reset = row.resetsAt, let date else { return false }
-        return reset <= date && left >= floor
-    }
 }
 
 public extension QuotaWindow {

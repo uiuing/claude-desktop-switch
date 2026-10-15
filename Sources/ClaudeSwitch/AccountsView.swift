@@ -16,9 +16,14 @@ struct AccountsView: View {
                 }
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 12) {
+                    LazyVStack(spacing: 10) {
+                        if state.showsNewAccountFollowUp {
+                            NewAccountFollowUpStatus().padding(16).frame(maxWidth: .infinity, alignment: .leading).card()
+                        }
                         if state.quotaAccessRequired || state.authorizingQuotaAccess {
                             QuotaAccessStatus().padding(16).frame(maxWidth: .infinity, alignment: .leading).card()
+                        } else if let reason = state.quotaRefreshPause {
+                            QuotaRefreshPauseStatus(reason: reason).padding(16).frame(maxWidth: .infinity, alignment: .leading).card()
                         }
                         if state.awaitingNewLogin && !state.activeUnsaved {
                             Label(L10n.tr("Waiting for a new sign-in in Claude…"), systemImage: "person.crop.circle.badge.questionmark")
@@ -36,12 +41,14 @@ struct AccountsView: View {
                                 Spacer(minLength: 8)
                                 Button(L10n.tr("Delete"), role: .destructive) { discarding = id }.controlSize(.small).disabled(state.working)
                                 Button(L10n.tr("Recover")) { Task { await state.restoreLogin(id) } }
-                                    .buttonStyle(.borderedProminent).controlSize(.small).disabled(state.working)
+                                    .buttonStyle(.borderedProminent).prominentHover().controlSize(.small).disabled(state.working)
                             }.font(.system(size: 12)).padding(16).frame(maxWidth: .infinity, alignment: .leading).card()
                         }
                         if state.activeUnsaved { LoginSaveStatus().padding(16).frame(maxWidth: .infinity, alignment: .leading).card() }
-                        ForEach(state.accounts) { AccountCard(account: $0) }
-                    }.padding(24)
+                        TimelineView(.periodic(from: .now, by: 30)) { context in
+                            ForEach(state.accountRanking(now: context.date).displayAccounts) { AccountCard(account: $0) }
+                        }
+                    }.padding(.horizontal, 24).padding(.vertical, 16)
                 }
             }
         }
@@ -62,6 +69,21 @@ struct AccountsView: View {
                 Button { state.showAddAccount = true } label: { Label(L10n.tr("Add account"), systemImage: "plus") }.help(L10n.tr("Add account"))
             }
         }
+    }
+}
+
+struct QuotaRefreshPauseStatus: View {
+    let reason: QuotaRefreshSchedule.PauseReason
+    var compact = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(reason.message, systemImage: "pause.circle")
+            if !compact, reason == .claudeClosed || reason == .disabled {
+                Text(L10n.tr("You can refresh each account manually.")).foregroundStyle(.secondary)
+            }
+        }
+        .font(.system(size: compact ? 11 : 12))
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -110,7 +132,7 @@ struct AccountCard: View {
     private var invalid: Bool { !active && account.loginInvalidAt != nil }
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
                 header(now: context.date)
                 HStack(alignment: .top, spacing: 28) {
                     ForEach(state.quotaRows(for: account.id, now: context.date)) { row in
@@ -132,7 +154,8 @@ struct AccountCard: View {
                 if state.usageStatus(for: account.id) != nil { UsageErrorLine(accountID: account.id) }
             }
         }
-        .padding(18)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
         .card(highlighted: active)
         .contextMenu { menuItems }
         .confirmationDialog(L10n.tr("Remove “{0}” from Claude Switch?", L10n.argument(state.identity(account))), isPresented: $removing) {
@@ -148,6 +171,9 @@ struct AccountCard: View {
                     Text(state.identity(account)).font(.system(size: 14, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                     StatusBadge(text: account.planTitle, color: .secondary)
                     if active { StatusBadge(text: L10n.tr("Active")) }
+                    else if state.switchAdvice(now: now)?.account.id == account.id {
+                        StatusBadge(text: L10n.tr("Recommended"), color: Palette.brand)
+                    }
                     if invalid {
                         StatusBadge(text: L10n.tr("Expired"), color: Color(nsColor: .systemOrange))
                             .hint(L10n.tr("The server voided this account's saved login, usually after changing accounts with /login or signing out in Claude. Sign in once more to fix it."))
@@ -172,7 +198,7 @@ struct AccountCard: View {
                 .buttonStyle(HoverRowStyle())
                 .disabled(state.usageRefreshingAccountID != nil || state.authorizingQuotaAccess || state.working || state.demo)
                 .accessibilityLabel(L10n.tr("Refresh quota"))
-                .hint(L10n.tr("Refreshes this account's quota and reset times without switching accounts. Reads for one login are at least 60 seconds apart."))
+                .hint(L10n.tr("Refreshes this account's quota and reset times. Wait at least 60 seconds between refreshes."))
             }
             if invalid {
                 Button { state.showAddAccount = true } label: {
@@ -185,6 +211,7 @@ struct AccountCard: View {
                     Label(L10n.tr("Switch"), systemImage: "arrow.left.arrow.right").labelStyle(.titleAndIcon)
                 }
                 .buttonStyle(.borderedProminent)
+                .prominentHover()
                 .disabled(state.working)
                 .hint(L10n.tr("Switch to this account"))
             }

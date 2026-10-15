@@ -27,7 +27,7 @@ In scope:
 
 - exposure of saved logins, tokens or cookies outside the encrypted vault,
 - writes to Claude files outside the documented allow-list,
-- network requests other than the documented manual and automatic quota and profile reads,
+- network requests other than the documented quota, profile and public GitHub release checks, or account data sent with a release check,
 - loss of data during a switch or a session transfer that the recovery flow cannot undo.
 
 Out of scope: issues that require an attacker who already runs code as your macOS user, and changes in Claude Desktop's private storage formats (please file those as regular bugs).

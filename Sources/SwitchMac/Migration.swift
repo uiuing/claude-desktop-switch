@@ -48,9 +48,9 @@ enum MigrationBuilder {
             let source = try SafeFiles.child(session.recordRelativePath, of: environment.desktop)
             let data = try SafeFiles.read(source, limit: 2 * 1024 * 1024)
             guard expectedDigests[session.id] == digest(data) else { throw SwitchError.changed }
-            let record = try JSONDecoder().decode(JSONValue.self, from: data)
-            guard record["sessionId"].string == session.sessionID, record["cliSessionId"].string == cli,
-                  let cwd = record["cwd"].string, cwd.hasPrefix("/") else {
+            guard let record = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  record["sessionId"] as? String == session.sessionID, record["cliSessionId"] as? String == cli,
+                  let cwd = record["cwd"] as? String, cwd.hasPrefix("/") else {
                 throw SwitchError.malformed(L10n.tr("The conversation record does not match the preview."))
             }
             var transcriptFound = false
@@ -61,24 +61,20 @@ enum MigrationBuilder {
                     transcriptFound = true; break
                 }
             }
-            guard transcriptFound else { throw SwitchError.missing(L10n.tr("The local transcript no longer exists. No unusable resume index will be created.")) }
+            guard transcriptFound else { throw SwitchError.missing(L10n.tr("This conversation's local history is missing, so it cannot be transferred.")) }
             let relative = try destinationRelative(session: session, target: target)
             guard seen.insert(relative).inserted else { throw SwitchError.malformed(L10n.tr("Duplicate transaction target.")) }
             let destination = try SafeFiles.child(relative, of: environment.desktop)
             guard let expected = destinations[relative], try expectation(at: destination) == expected else { throw SwitchError.changed }
             if expected != .absent {
-                let existing = try SafeFiles.json(destination, limit: 2 * 1024 * 1024)
-                guard existing["sessionId"].string == session.sessionID, existing["cliSessionId"].string == cli else {
+                let targetData = try SafeFiles.read(destination, limit: 2 * 1024 * 1024)
+                guard expected == .sha256(digest(targetData)) else { throw SwitchError.changed }
+                guard let existing = try JSONSerialization.jsonObject(with: targetData) as? [String: Any],
+                      existing["sessionId"] as? String == session.sessionID, existing["cliSessionId"] as? String == cli else {
                     throw SwitchError.blocked(L10n.tr("The target record points to a different conversation and cannot be replaced."))
                 }
             }
-            // Resume metadata is replaced, while permission grants, secrets and remote controls are never transferred.
-            let allowed: Set<String> = ["sessionId", "cliSessionId", "cwd", "originCwd", "createdAt", "lastActivityAt",
-                                       "lastFocusedAt", "title", "titleSource", "model", "effort", "isArchived"]
-            var clean = (record.object ?? [:]).filter { allowed.contains($0.key) }
-            clean["permissionMode"] = .string("default")
-            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-            updates.append(MigrationChange(relative: relative, data: try encoder.encode(JSONValue.object(clean)), expectation: expected))
+            updates.append(MigrationChange(relative: relative, data: try SessionTransferRecord.data(from: record), expectation: expected))
             if (modes[session.id] ?? .move) == .move {
                 removals.append(MigrationChange(relative: session.recordRelativePath, data: nil, expectation: .sha256(digest(data))))
             }

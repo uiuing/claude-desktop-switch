@@ -8,6 +8,8 @@ public final class QuotaRefreshQueue {
         public let accountID: String
         public let readinessDeadline: Date
         public let reason: Reason
+        /// Stable across retries; a successful profile read satisfies this switch event once.
+        public let profileRefreshID: UUID?
         var notBefore: Date
     }
     public var isPaused = false { didSet { startNext() } }
@@ -69,13 +71,16 @@ public final class QuotaRefreshQueue {
         if let index = pending.firstIndex(where: { $0.accountID == accountID }) {
             if afterSwitch {
                 let date = now()
-                pending[index] = Request(accountID: accountID, readinessDeadline: date.addingTimeInterval(120), reason: reason, notBefore: date)
+                let profileID = reason == .accountChanged ? UUID() : pending[index].profileRefreshID
+                pending[index] = Request(accountID: accountID, readinessDeadline: date.addingTimeInterval(120), reason: reason,
+                                         profileRefreshID: profileID, notBefore: date)
             }
             startNext(); return
         }
         guard afterSwitch || running?.accountID != accountID else { return }
         let date = now()
-        pending.append(Request(accountID: accountID, readinessDeadline: date.addingTimeInterval(120), reason: reason, notBefore: date))
+        pending.append(Request(accountID: accountID, readinessDeadline: date.addingTimeInterval(120), reason: reason,
+                               profileRefreshID: reason == .accountChanged ? UUID() : nil, notBefore: date))
         startNext()
     }
 

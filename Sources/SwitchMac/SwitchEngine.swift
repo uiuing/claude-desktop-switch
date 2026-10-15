@@ -17,14 +17,14 @@ public actor SwitchEngine: SwitchService {
         let signedIn = current != nil && environment.signedIn() != false
         let steps: [String]
         switch kind {
-        case .capture: steps = [L10n.tr("Quit Claude normally and wait for workers to finish"), L10n.tr("Encrypt and save the current login state"), L10n.tr("Reopen Claude")]
-        case .switchAccount: steps = [L10n.tr("Verify the target snapshot and current Claude version"), L10n.tr("Quit Claude normally and save the current account's latest login"),
-                                      L10n.tr("Write a recovery journal and replace the login container and OAuth cache"), L10n.tr("Bring followed conversations along, replacing older versions in the target account"), L10n.tr("Open Claude and let it verify the login")]
-        case .signOut: steps = [L10n.tr("Quit Claude normally and encrypt the current account's login"), L10n.tr("Move the login into Claude Switch without signing out on the server"),
+        case .capture: steps = [L10n.tr("Quit Claude normally and wait for workers to finish"), L10n.tr("Save the current account"), L10n.tr("Reopen Claude")]
+        case .switchAccount: steps = [L10n.tr("Check the saved account before switching"), L10n.tr("Close Claude and save the current account"),
+                                      L10n.tr("Switch to the selected account"), L10n.tr("Bring followed conversations along, replacing matching copies in the target account"), L10n.tr("Reopen Claude")]
+        case .signOut: steps = [L10n.tr("Close Claude and save the current account"), L10n.tr("Save the current account"),
                                 L10n.tr("Reopen Claude on its sign-in screen"), L10n.tr("After you sign in to the new account, Claude Switch saves it")]
-        case .migrate: steps = [L10n.tr("Quit Claude and verify the conversation records"), L10n.tr("Write the conversations to the target account, replacing older versions"),
+        case .migrate: steps = [L10n.tr("Quit Claude and verify the conversation records"), L10n.tr("Write the conversations to the target account, replacing matching copies"),
                                 L10n.tr("Remove or keep the conversations in the original account as selected"), L10n.tr("Reopen Claude")]
-        case .recover: throw SwitchError.blocked(L10n.tr("Choose an unfinished transaction to recover."))
+        case .recover: throw SwitchError.blocked(L10n.tr("Open Settings and choose Recover."))
         }
         if kind == .capture && target.id != current { throw SwitchError.changed }
         if kind == .signOut && (target.id != current || !signedIn) {
@@ -34,7 +34,7 @@ public actor SwitchEngine: SwitchService {
         var warnings = [L10n.tr("Ongoing work will be interrupted. Finish your work first.")]
         if kind == .switchAccount { warnings.append(L10n.tr("Switching the Desktop login does not change the separate Claude Code CLI login.")) }
         if kind == .signOut {
-            warnings = [L10n.tr("Nothing is signed out on the server; the current account can be switched back to at any time."), L10n.tr("Don't change accounts with /login or by signing out in Claude: that voids the saved login of the previous account.")]
+            warnings = [L10n.tr("Your saved accounts stay here so you can switch back later."), L10n.tr("Don't change accounts with /login or by signing out in Claude: that voids the saved login of the previous account.")]
         }
         var plan = OperationPlan(kind: kind, sourceAccountID: current, targetAccountID: target.id,
                                  configDigest: try environment.configDigest(), steps: steps,
@@ -230,17 +230,17 @@ public actor SwitchEngine: SwitchService {
     }
 
     public func execute(_ plan: OperationPlan, confirmedPlanID: UUID, target: Account,
-                        sessions: [Conversation]) async throws -> String {
+                        sessions: [Conversation]) async throws -> OperationResult {
         try BuildAccess.requireClaudeWrites()
         guard !busy else { throw SwitchError.busy }
-        guard plan.kind != .recover else { throw SwitchError.blocked(L10n.tr("Use the recovery entry point to recover operations.")) }
+        guard plan.kind != .recover else { throw SwitchError.blocked(L10n.tr("Open Settings and choose Recover.")) }
         guard confirmedPlanID == plan.id, target.id == plan.targetAccountID,
               target.organizationID == plan.targetOrganizationID,
               Set(sessions.map(\.id)) == Set(plan.conversationIDs) else { throw SwitchError.changed }
         busy = true; defer { busy = false }
         let operationLock = try OperationLock(root: environment.root)
         defer { withExtendedLifetime(operationLock) {} }
-        guard try pendingRecovery().isEmpty else { throw SwitchError.blocked(L10n.tr("An unfinished transaction exists. Recover it first.")) }
+        guard try pendingRecovery().isEmpty else { throw SwitchError.blocked(L10n.tr("An unfinished operation needs recovery in Settings first.")) }
         // Claude rewrites config.json while it runs. A switch re-checks the signed-in account below and
         // every followed session against its own digest, so only other kinds pin the whole file.
         let swapsLogin = plan.kind == .switchAccount || plan.kind == .signOut
@@ -264,8 +264,12 @@ public actor SwitchEngine: SwitchService {
         if plan.kind == .capture {
             let snapshot = try capture(version: version)
             try await vault.save(snapshot)
-            if wasRunning { try await desktop.launch(application) }
-            return L10n.tr("The current login snapshot has been encrypted and saved.")
+            var result = OperationResult()
+            if wasRunning {
+                do { try await desktop.launch(application) }
+                catch { result.needsManualOpen = true }
+            }
+            return result
         }
         // A signed-out login is worthless and must not replace the account's saved one.
         let sourceSignedIn = plan.sourceAccountID != nil && environment.signedIn() == true
@@ -313,7 +317,7 @@ public actor SwitchEngine: SwitchService {
         } catch {
             let reason = (error as? SwitchError)?.localizedDescription ?? error.localizedDescription
             do { try await transaction.rollback { try await desktop.waitUntilStopped() } }
-            catch { throw SwitchError.blocked(L10n.tr("The transaction is unfinished and needs manual recovery. Originals and the recovery journal are preserved. Use recovery in Settings.")) }
+            catch { throw SwitchError.blocked(L10n.tr("The operation did not finish. Use Recover in Settings before trying again.")) }
             try? await transaction.archive(vault: vault)
             // Every original is back in place, so the previous login is safe to reopen.
             if wasRunning, (try? await desktop.launch(application)) != nil {
@@ -321,19 +325,15 @@ public actor SwitchEngine: SwitchService {
             }
             throw SwitchError.blocked(L10n.tr("The operation stopped and the original files were restored. Reason: {0}. Please open Claude manually.", L10n.argument(reason)))
         }
-        var archiveNotice = ""
+        var result = OperationResult()
         do { try await transaction.archive(vault: vault) }
-        catch { archiveNotice = L10n.tr(" Recovery copies remain in the protected local transaction folder; encrypted archiving is not yet complete.") }
+        catch { result.backupIncomplete = true }
         prune(now: Date())
         if wasRunning || swapsLogin {
             do { try await desktop.launch(application) }
-            catch { return L10n.tr("Data was applied, but Claude could not reopen automatically. Recovery data is preserved. Open Claude manually and verify the login.") + archiveNotice }
+            catch { result.needsManualOpen = true }
         }
-        switch plan.kind {
-        case .migrate: return L10n.tr("Conversations transferred as selected. Confirm that they resume in Claude.") + archiveNotice
-        case .signOut: return L10n.tr("The previous account was saved and moved out of Claude. Sign in to the account to add in Claude; it will be saved.") + archiveNotice
-        default: return L10n.tr("The target login snapshot was loaded. Claude still needs to verify the login.") + archiveNotice
-        }
+        return result
     }
 
     public func recover(transactionID: String) async throws {
@@ -359,7 +359,7 @@ public actor SwitchEngine: SwitchService {
         let account = try environment.currentAccount()
         var files: [ArchiveFile] = [], directories: [String] = [], total = 0
         func visit(_ url: URL, relative: String, depth: Int) throws {
-            guard depth <= 16, files.count < 20_000 else { throw SwitchError.blocked(L10n.tr("The login container exceeds the safe scan limit.")) }
+            guard depth <= 16, files.count < 20_000 else { throw SwitchError.blocked(L10n.tr("Account data is too large to save. Nothing was changed.")) }
             try SafeFiles.validateAncestors(url)
             let info = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey])
             guard info.isSymbolicLink != true else { throw SwitchError.unsafePath }
@@ -373,7 +373,7 @@ public actor SwitchEngine: SwitchService {
                 guard info.isRegularFile == true else { throw SwitchError.unsafePath }
                 let data = try SafeFiles.read(url, limit: 64 * 1024 * 1024)
                 total += data.count
-                guard total <= 128 * 1024 * 1024 else { throw SwitchError.blocked(L10n.tr("The login snapshot exceeds 128 MB. Original data was not changed.")) }
+                guard total <= 128 * 1024 * 1024 else { throw SwitchError.blocked(L10n.tr("Account data is too large to save. Nothing was changed.")) }
                 files.append(ArchiveFile(path: relative, data: data, sha256: digest(data)))
             }
         }
@@ -382,7 +382,7 @@ public actor SwitchEngine: SwitchService {
             if FileManager.default.fileExists(atPath: url.path) { try visit(url, relative: name, depth: 0) }
         }
         guard let cookies = files.first(where: { $0.path == "Cookies" }), directories.contains("Local Storage") else {
-            throw SwitchError.blocked(L10n.tr("The login container does not match the current adapter. A recoverable snapshot cannot be created."))
+            throw SwitchError.blocked(L10n.tr("This Claude version is not supported yet. Update Claude Switch and try again."))
         }
         // Claude may keep committed login changes in the WAL while it is running.
         let wal = files.first { $0.path == "Cookies-wal" }?.data

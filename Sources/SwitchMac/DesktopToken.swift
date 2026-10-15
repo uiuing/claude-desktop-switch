@@ -15,7 +15,7 @@ struct DesktopAccessToken {
     var quotaScope: String { digest(Data((accountID + ":" + organizationID).utf8)) }
 }
 enum DesktopTokenReader {
-    static let access = QuotaKeyAccess()
+    static let access = KeychainKeyCache()
     private struct DecryptionFailure: Error {}
     static func read(environment: MacEnvironment, expectedAccount: String, allowPrompt: Bool) throws -> DesktopAccessToken {
         let config = try environment.liveConfig()
@@ -25,17 +25,30 @@ enum DesktopTokenReader {
         try read(config: config, expectedAccount: expectedAccount, allowPrompt: allowPrompt, access: access, load: safeStorageKey)
     }
     static func read(config: JSONValue, expectedAccount: String, allowPrompt: Bool,
-                     access: QuotaKeyAccess, load: (Bool) throws -> Data) throws -> DesktopAccessToken {
+                     access: KeychainKeyCache, load: (Bool) throws -> Data) throws -> DesktopAccessToken {
+        let credential = try IdentitySchema.fingerprint(config)
+        let unreadable = SwitchError.blocked(L10n.tr("Could not read login data. Update Claude Switch and try again."))
+        var usedKey: KeychainKeyCache.Key?
         do {
-            return try read(config: config, expectedAccount: expectedAccount) { try access.read(allowPrompt: allowPrompt, load: load) }
+            return try read(config: config, expectedAccount: expectedAccount) {
+                let key = try access.key(allowPrompt: allowPrompt, load: load)
+                guard !access.rejects(credential, using: key) else { throw unreadable }
+                usedKey = key
+                return key.data
+            }
         } catch is DecryptionFailure {
-            access.clear()
-            // A rotated key gets one silent retry; malformed credentials never cause another prompt.
+            guard let usedKey else { throw unreadable }
+            // A freshly authorized key is authoritative; a bad snapshot cannot revoke it.
+            if usedKey.freshlyRead {
+                access.reject(credential, using: usedKey)
+                throw unreadable
+            }
+            let replacement = try access.key(allowPrompt: allowPrompt, replacing: usedKey, load: load)
             do {
-                return try read(config: config, expectedAccount: expectedAccount) { try access.read(allowPrompt: false, load: load) }
+                return try read(config: config, expectedAccount: expectedAccount) { replacement.data }
             } catch is DecryptionFailure {
-                access.clear()
-                throw SwitchError.blocked(L10n.tr("Could not read the login cache. The adapter may need updating."))
+                access.reject(credential, using: replacement)
+                throw unreadable
             }
         }
     }
@@ -64,7 +77,7 @@ enum DesktopTokenReader {
                     output.bindMemory(to: UInt8.self).baseAddress, kCCKeySizeAES128)
             } }
         }
-        guard derive == kCCSuccess else { throw SwitchError.blocked(L10n.tr("Could not decrypt the current login cache.")) }
+        guard derive == kCCSuccess else { throw SwitchError.blocked(L10n.tr("Could not read this account's login. Please check the login in Claude.")) }
         defer { key.resetBytes(in: 0..<key.count) }
         let cipher = encrypted.dropFirst(3), iv = Data(repeating: 0x20, count: 16)
         var plain = Data(count: cipher.count + 16), written = 0
@@ -144,25 +157,13 @@ enum DesktopTokenReader {
             kSecAttrService as String: "Claude Safe Storage", kSecAttrAccount as String: "Claude Key",
             kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail]
-        var result: CFTypeRef?
-        // The process-wide legacy guard covers trusted-app ACLs as well as modern access-control items.
-        var old: DarwinBoolean = true
-        guard SecKeychainGetUserInteractionAllowed(&old) == errSecSuccess,
-              SecKeychainSetUserInteractionAllowed(false) == errSecSuccess else {
-            throw UsageFailure.keychain
+        let result = KeychainInteraction.shared.perform(allowPrompt: allowPrompt) { interactive in
+            if interactive { query.removeValue(forKey: kSecUseAuthenticationUI as String) }
+            var value: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &value)
+            return .init(status, data: value as? Data)
         }
-        var status = SecItemCopyMatching(query as CFDictionary, &result)
-        SecKeychainSetUserInteractionAllowed(old.boolValue)
-        if status != errSecSuccess && allowPrompt {
-            query.removeValue(forKey: kSecUseAuthenticationUI as String)
-            SecKeychainSetUserInteractionAllowed(true)
-            status = SecItemCopyMatching(query as CFDictionary, &result)
-            SecKeychainSetUserInteractionAllowed(old.boolValue)
-            if status == errSecUserCanceled || status == errSecAuthFailed {
-                throw UsageFailure.keychain
-            }
-        }
-        guard status == errSecSuccess, let password = result as? Data else {
+        guard result.status == errSecSuccess, let password = result.data else {
             throw UsageFailure.keychain
         }
         return password

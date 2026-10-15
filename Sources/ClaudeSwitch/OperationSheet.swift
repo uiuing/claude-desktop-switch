@@ -60,6 +60,10 @@ struct OperationSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
+            if current.newAccountFollowUpID != nil {
+                Text(L10n.tr("The new login is saved. These followed Code conversations have not been transferred yet."))
+                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             if !current.sessions.isEmpty { sessionsSection }
             stepsSection
             if !current.plan.warnings.isEmpty { warningsSection }
@@ -100,7 +104,8 @@ struct OperationSheet: View {
                         ForEach(SessionTransferMode.allCases, id: \.self) { mode in
                             Button(mode.title) { state.setPendingTransferMode(mode) }
                         }
-                    }.menuStyle(.borderlessButton).fixedSize().font(.system(size: 12)).disabled(state.working)
+                    }.menuStyle(.borderlessButton).fixedSize().font(.system(size: 12))
+                        .hoverSurface().disabled(state.working)
                 }
             }
             Group {
@@ -174,7 +179,7 @@ struct OperationSheet: View {
             if state.working { ProgressView().controlSize(.small) }
             Button(L10n.tr("Cancel")) { dismiss() }.keyboardShortcut(.cancelAction).disabled(state.working)
             Button(confirmTitle) { Task { await state.executePending() } }
-                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent).prominentHover().keyboardShortcut(.defaultAction)
                 .disabled(!state.canExecute || state.working)
         }.padding(.top, 2)
     }
@@ -199,18 +204,20 @@ struct AddAccountSheet: View {
                 Image(systemName: "person.crop.circle.badge.plus").font(.system(size: 40)).foregroundStyle(Palette.brand)
                     .symbolRenderingMode(.hierarchical)
                 Text(L10n.tr("Add account")).font(.system(size: 18, weight: .semibold))
-                Text(L10n.tr("No account is signed out on the server; saved accounts can be switched back to at any time."))
+                Text(L10n.tr("Your saved accounts stay here so you can switch back later."))
                     .font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             VStack(alignment: .leading, spacing: 12) {
                 if let account = state.activeAccount {
-                    step(1, L10n.tr("Save {0} and move its login out of Claude", L10n.argument(state.identity(account))))
+                    step(1, L10n.tr("Save {0} before adding another account", L10n.argument(state.identity(account))))
                     step(2, L10n.tr("Claude reopens on its sign-in screen"))
                     step(3, L10n.tr("Sign in to the account to add; Claude Switch saves it"))
                 } else {
                     step(1, L10n.tr("Sign in to the account to add on Claude's sign-in screen"))
                     step(2, L10n.tr("Claude Switch saves it; switch with one click afterwards"))
                 }
+                Text(L10n.tr("After sign-in, Code conversations marked to follow need your confirmation before they move or copy to the new account."))
+                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(16).frame(maxWidth: .infinity, alignment: .leading).card(radius: 10)
             Group {
                 if state.activeUnsaved {
@@ -237,7 +244,7 @@ struct AddAccountSheet: View {
                 Button(state.activeAccount == nil ? L10n.tr("Open Claude") : L10n.tr("Start")) {
                     Task { await state.addAccount() }
                 }
-                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent).prominentHover().keyboardShortcut(.defaultAction)
                 .disabled(!state.canExecute || state.activeUnsaved)
             }
         }.padding(24).frame(width: 440)

@@ -53,7 +53,7 @@ The plaintext is a JSON object. Keys look like `<client>:<org>:https://api.anthr
 - `~/.claude.json` → `oauthAccount.accountUuid`, `emailAddress`, `organizationUuid` (the Claude Code login, which may differ from Desktop's: another account, or another organization of the same account, so its organization only fills a gap). Only `oauthAccount` is decoded; the file also holds project history. [`LocalReader`]
 - `IndexedDB/https_claude.ai_0.indexeddb.blob/…`: claude.ai's persisted query cache. Values are V8-serialized and usually Snappy-compressed (`FF 11 02` header). From it Claude Switch reads `account { uuid, email_address }`, each organization's `rate_limit_tier` and `capabilities`. Values are paired only with the `uuid` of the object that holds them, and parsing stops at unknown tags. [`DesktopProfile`]
 - Plan names come from `rate_limit_tier` (words `max` with an optional `5x`/`20x`, `pro`, `team`, `enterprise`), falling back to capabilities `claude_max` / `claude_pro`. Known free tiers include `default_claude_ai` and `claude_free`. A complete `chat` capability list without paid, API or managed-team capabilities also identifies Free when the tier is absent. Missing flags, unknown tiers, mixed API/chat organizations and unsupported capability arrays stay unknown. A complete dense V8 string array is required for capability-based classification.
-- OAuth profile reads also use organization `capabilities` and `raven_type` to distinguish personal Free from Team/Enterprise. A verified profile replaces an earlier plan, including with unknown, independently of usage success. Server-confirmed plans take precedence over local file modification times; changing organization clears that confirmation. Token expiry and HTTP authorization failures do not themselves imply membership expiry.
+- OAuth profile reads also use organization `capabilities` and `raven_type` to distinguish personal Free from Team/Enterprise. A verified profile replaces an earlier plan, including with unknown, independently of usage success. Online-confirmed emails and plans take precedence over all local cache timestamps. The existing local scan updates unconfirmed Desktop information; Claude Code and saved snapshots only fill gaps. Changing organization clears its plan confirmation. Token expiry and HTTP authorization failures do not themselves imply membership expiry.
 
 ## Quota
 
@@ -63,8 +63,8 @@ Activity scheduling reads only modification times and sizes of Code transcripts/
 
 ## Claude Code sessions in Desktop
 
-- `claude-code-sessions/<account>/<org>/<sessionId>.json`: one index record per local Claude Code session shown in Desktop. Session IDs are UUIDs or `local_<UUID>`. Fields used: `sessionId`, `cliSessionId`, `title`, `titleSource`, `cwd`, `originCwd`, `model`, `effort`, `createdAt`, `lastActivityAt`, `lastFocusedAt`, `isArchived`, `permissionMode`, `remoteControl`.
-- When moving or copying a session, only the resume fields above are carried over; `permissionMode` is reset to `default`, and permission grants, secrets and remote control are dropped. [`MigrationBuilder`]
+- `claude-code-sessions/<account>/<org>/<sessionId>.json`: one index record per local Claude Code session shown in Desktop. Session IDs are UUIDs or `local_<UUID>`. The [session transfer field policy](session-fields.md) describes preserved metadata and excluded account state.
+- `SessionTransferRecord` removes evidenced account/cloud binding containers and live connection state, including pending-start remote-control intent and cloud task suggestions. Local metadata, execution targets and new fields are retained through Foundation JSON serialization without a complete schema or a mode enumeration. See the [exclusion rules](session-fields.md#excluded-data) for nested cloud bindings and local task handling. `MigrationBuilder` still validates session and transcript identities, paths, local transcript availability and expected file digests. Follow selection uses the current account's copy; an unrelated fallback cannot replace a copy already in the target. Explicit transfers use the previewed source without inferring authority from activity timestamps.
 - Organization folders can exist without sessions (for example holding only `scheduled-tasks.json`); they do not count as a destination.
 - `local-agent-mode-sessions/<account>/<org>/…`: Cowork sessions, as JSON files or folders with `manifest.json`. Listed only; Cowork carries sandbox and attachment state that cannot be transferred safely.
 
@@ -81,6 +81,8 @@ Installed Claude Code versions live in `claude-code/<version>/` (bundled with De
 ## Online endpoints
 
 Used on the event triggers and configurable, staggered periodic schedule in [usage-data.md](usage-data.md). Automatic queries pause when Claude is closed. The access token comes from Desktop or the selected encrypted vault snapshot; it is never renewed:
+
+The profile is read before usage only for a new token's first verification, both sides of an account switch, or a manual account-card refresh. Identity verification is cached in memory by account, organization and token digest until expiry. A switch event keeps its profile-read identity across usage retries. Reusing validation does not publish cached account metadata. There is no separate profile polling interval.
 
 | Request | Fields read |
 | --- | --- |

@@ -6,7 +6,7 @@
 
 **在 Mac 選單列管理所有 Claude Desktop 帳號，一鍵切換。**
 
-每個帳號登入一次就會保存，之後隨時秒切；每個帳號的 5 小時額度與週額度一目瞭然。
+保存登入、查看剩餘額度，切換帳號時也能帶上本機 Code 對話。
 
 [![最新版本](https://img.shields.io/github/v/release/uiuing/claude-desktop-switch?style=flat-square&color=C9653F&label=release)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
 [![下載次數](https://img.shields.io/github/downloads/uiuing/claude-desktop-switch/total?style=flat-square&color=C9653F)](https://github.com/uiuing/claude-desktop-switch/releases)
@@ -33,15 +33,15 @@ Claude Switch 會把你用到的每個登入加密保存在本機，並替你完
 
 ## 功能
 
-- **一鍵切換**：在選單列選一個帳號，Claude 會正常結束、換上保存的登入，再自動開啟並維持登入狀態。
-- **額度一目瞭然**：從線上取得 **5 小時額度**、**週額度** 與重置時間，支援依模型區分的週額度。
-- **自動更新**：目前帳號依對話活動調整頻率，其他帳號預設每 30 分鐘更新；可在設定中調整，Claude 結束後暫停。
-- **智慧推薦**：目前帳號額度快用完時，選單列會標出仍有餘裕的已保存帳號。
-- **新增帳號不必登出**：「新增帳號」會先把目前的登入移到一旁，讓 Claude 回到登入頁；原帳號在伺服器端不會被登出，之後照常可用。
-- **Claude Code 工作階段跟著走**：把本機的 Claude Code 工作階段移動或複製到其他帳號，也能讓指定的工作階段在每次切換時自動跟隨。
-- **用量統計**：Token、模型、活躍熱度圖、連續天數與每日圖表，統計方式與 Claude Desktop 內建的統計一致。
-- **安全設計**：加密快照、嚴格的檔案白名單、可回復的操作日誌。詳見 [運作原理](docs/how-it-works.md)（英文）。
-- **原生 macOS 體驗**：SwiftUI、淺色／深色模式、快速鍵，支援 10 種介面語言。
+- **切換不必重新登入**：選擇已保存的帳號並確認，Claude 會正常結束、還原登入，再自動開啟。
+- **剩餘額度一目瞭然**：從線上取得 5 小時、每週與模型專屬額度，同時顯示重置時間及上次更新時間。自動更新會配合對話活動調整，Claude 結束後暫停。
+- **找到還有餘裕的帳號**：依方案、剩餘額度與已確認的重置時間排序，目前帳號固定置頂；過期資料不會觸發推薦。
+- **需要時提醒你**：選單列標記與選用的 macOS 通知提示推薦帳號，確認切換前可先檢視帳號和跟隨的對話。
+- **Code 對話跟著走**：移動、複製或跟隨本機 Claude Code 對話，保留模式、工作樹與偏好設定。新增帳號後，也能在獨立的預覽中確認帶入跟隨對話。
+- **新增帳號不必登出**：保留原帳號的登入，讓 Claude 開啟登入頁；新帳號登入完成後會自動保存。
+- **查看本機用量**：Token 總量、模型、活躍熱度圖、連續天數與每日圖表；用量統計與訂閱額度分開呈現。
+- **資料由你掌握**：登入在本機加密保存，切換與轉移都有可回復的操作日誌。沒有自建伺服器接收帳號或對話資料。詳見 [運作原理](docs/how-it-works.md)（英文）。
+- **原生 macOS 體驗**：SwiftUI、淺色與深色模式、快速鍵、10 種語言，並內建版本檢查，下載與安裝由你決定。
 
 ## 截圖
 
@@ -60,6 +60,16 @@ Claude Switch 會把你用到的每個登入加密保存在本機，並替你完
         <img src="docs/images/usage-light.png" alt="用量統計：活躍熱度圖與各模型的每日 Token">
       </picture>
       <p align="center"><b>用量</b> · Token、模型、熱度圖與連續天數</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/images/switch-reminder-menu-zh-Hant.png" width="330" alt="切換提醒">
+      <p><b>切換提醒</b> · 先查看推薦帳號的額度，再確認切換</p>
+    </td>
+    <td width="50%">
+      <img src="docs/images/new-account-follow-confirm-zh-Hant.png" alt="帶上對話">
+      <p><b>帶上對話</b> · 新增帳號後確認移動或複製</p>
     </td>
   </tr>
 </table>
@@ -86,15 +96,18 @@ Claude Switch 會把你用到的每個登入加密保存在本機，並替你完
 
 ### 更新
 
-Claude Switch **目前還沒有遠端更新或自動更新**。想第一時間得知新版本，請在本儲存庫按 **Watch → Custom → Releases**，或關注 [Releases](https://github.com/uiuing/claude-desktop-switch/releases) 頁面。取代「應用程式」中的舊版前，請先結束 Claude Switch；已保存的帳號仍保留在本機。啟動時若顯示授權頁面，按 **允許存取**，再於 macOS 鑰匙圈對話框中允許存取 **Claude Safe Storage**。更新後，macOS 也可能詢問是否允許存取 Claude Switch 自己的加密金鑰；這些項目均可選擇 **永遠允許**。
+Claude Switch 執行時每天最多檢查一次 GitHub 新版本。可在 **設定 → 版本更新** 中手動檢查或關閉自動檢查。**查看最新版本** 會開啟 [發布頁](https://github.com/uiuing/claude-desktop-switch/releases/latest)，下載與安裝由你手動完成。
 
-從 0.1.0 升級時，會移除舊的本機推估額度；帳號可能暫時顯示 **—**，直到下一次成功在線上更新。已保存的登入和對話不受影響。
+取代「應用程式」中的舊版前，請先結束 Claude Switch。啟動時若顯示授權頁面，按 **允許存取**，再於 macOS 對話框中允許存取 **Claude Safe Storage** 與 **Claude Switch · 已儲存的登入**。選擇 **永遠允許**，可記住對目前 App 版本的授權。
 
 ## 快速上手
 
 1. 像平常一樣**登入 Claude Desktop**，然後開啟 Claude Switch，依提示允許存取鑰匙圈，目前的帳號會自動保存。
 2. 在選單列按 **新增帳號…**。Claude 會重新啟動到登入頁，用另一個帳號登入，它也會自動保存。
 3. 之後隨時在選單列或帳號視窗中**切換**。
+
+
+可在首次設定或 **設定 → 通知** 啟用切換推薦及操作結果通知。每次切換仍需你確認。
 
 > [!IMPORTANT]
 > 換帳號請使用 Claude Switch，不要用 Claude 裡的 **登出** 或 Claude Code 的 `/login`。
@@ -107,7 +120,7 @@ Claude Switch **目前還沒有遠端更新或自動更新**。想第一時間�
 
 - **資料只留在你的 Mac**：保存的登入以 AES-256-GCM 加密，金鑰存放在登入鑰匙圈中，不會同步到 iCloud，單獨複製保存的登入也無法讀取。
 - **沒有遙測、沒有統計、沒有我們自己的伺服器。**
-- **有限的連網行為**：僅向 Anthropic 查詢帳號與額度，可關閉自動更新，不上傳本機對話。
+- **有限的連網行為**：向 Anthropic 查詢帳號與額度，向 GitHub 查詢公開版本資訊，兩項自動檢查均可關閉。版本檢查不傳送帳號資料，也不上傳本機對話。
 - **影響範圍很小**：只替換 Claude Desktop 的登入檔案；Claude Code 本身的登入、你的專案、MCP 伺服器、Skills 與設定都不會動到。
 - **可以回復**：每次切換都有操作日誌，中途被打斷時可以回復到切換前的狀態。
 

@@ -7,6 +7,7 @@
 #
 # Environment:
 #   CODESIGN_IDENTITY   e.g. "Developer ID Application: Name (TEAMID)". Defaults to ad-hoc signing.
+#   CLAUDE_SWITCH_DIST_DIR   optional staging directory; defaults to dist/
 set -euo pipefail
 cd "${0:A:h:h}"
 
@@ -23,7 +24,7 @@ done
 swift build -c release "${arch[@]}" "${flags[@]}"
 product_dir="$(swift build -c release "${arch[@]}" "${flags[@]}" --show-bin-path)"
 
-bundle="$PWD/dist/Claude Switch.app"
+bundle="${CLAUDE_SWITCH_DIST_DIR:-$PWD/dist}/Claude Switch.app"
 rm -rf "$bundle"
 mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
 # L10n looks for this resource bundle in Contents/Resources before SwiftPM's build folder.

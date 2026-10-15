@@ -124,7 +124,7 @@ public enum SafeFiles {
             }
         }
         guard fsync(fd) == 0, renameat(dir, name, dir, url.lastPathComponent) == 0 else {
-            throw SwitchError.blocked(L10n.tr("The atomic write failed. Original or recovery data is preserved."))
+            throw SwitchError.blocked(L10n.tr("Could not save changes. Your data is preserved. Check available disk space and try again."))
         }
         installed = true
         guard fsync(dir) == 0 else { throw SwitchError.blocked(L10n.tr("Could not persist the directory. Check the disk.")) }

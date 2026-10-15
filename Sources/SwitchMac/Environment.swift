@@ -113,10 +113,10 @@ public enum IdentitySchema {
         guard let keys = value.object?.keys,
               value["lastKnownAccountUuid"].string.flatMap(UUID.init(uuidString:)) != nil,
               value["oauth:tokenCache"].string != nil || value["oauth:tokenCacheV2"].string != nil else {
-            throw SwitchError.malformed(L10n.tr("The current login is incomplete. No snapshot will be saved or overwritten."))
+            throw SwitchError.malformed(L10n.tr("Please finish signing in to Claude before saving this account."))
         }
         guard !keys.contains(where: { $0.hasPrefix("oauth:") && !configKeys.contains($0) }) else {
-            throw SwitchError.blocked(L10n.tr("A new OAuth storage format was found. Update the adapter before switching."))
+            throw SwitchError.blocked(L10n.tr("This Claude version is not supported yet. Update Claude Switch and try again."))
         }
     }
 }

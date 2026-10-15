@@ -85,7 +85,7 @@ public actor LocalReader: InventoryReader {
             }
         }
         let profile = desktopProfile()
-        for (id, email) in profile.emails where accounts[id] != nil && accounts[id]?.email == nil { accounts[id]?.email = email }
+        for (id, email) in profile.emails where accounts[id] != nil { accounts[id]?.email = email }
         // The live cache belongs to the signed-in login; entries left by earlier logins are not current for anyone else.
         if let active, let org = accounts[active]?.organizationID, let seen = profile.observedAt[org] {
             accounts[active]?.plan = profile.plans[org]; accounts[active]?.planObservedAt = seen
@@ -95,7 +95,8 @@ public actor LocalReader: InventoryReader {
         let signedIn = await loginState()
         return LocalInventory(activeAccountID: signedIn == false ? nil : active, accounts: accounts.values.sorted { $0.id < $1.id },
                               conversations: conversations, usage: nil, warnings: Array(Set(warnings)).sorted(),
-                              lastKnownAccountID: active, signedIn: signedIn)
+                              lastKnownAccountID: active, signedIn: signedIn,
+                              desktopEmails: profile.emails.filter { accounts[$0.key] != nil })
     }
 
     /// Re-read only when the file changed: Claude Code rewrites it often, and it can run to megabytes.

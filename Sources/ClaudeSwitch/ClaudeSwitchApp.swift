@@ -33,6 +33,14 @@ struct ClaudeSwitchApp: App {
                 Button(L10n.tr("Search…")) { state.showQuickFind = true }.keyboardShortcut("k").disabled(!state.startupAccess.isReady)
                 Button(L10n.tr("Refresh")) { Task { await state.refreshLocalRecords() } }.keyboardShortcut("r").disabled(!state.startupAccess.isReady)
             }
+            CommandGroup(replacing: .help) {
+                Button(L10n.tr("Report an issue")) { NSWorkspace.shared.open(ProjectLink.issues) }
+                Button(L10n.tr("View latest version")) { NSWorkspace.shared.open(ProjectLink.releases) }
+                Button(L10n.tr("Check for updates")) {
+                    Task { await state.updates.check(manual: true) }
+                    state.page = .settings; state.presentWorkbench?()
+                }.disabled(state.updates.isChecking || !state.startupAccess.isReady)
+            }
             CommandGroup(replacing: .appSettings) {
                 Button(L10n.tr("Settings…")) { state.page = .settings }.keyboardShortcut(",").disabled(!state.startupAccess.isReady)
             }
@@ -51,7 +59,7 @@ struct ClaudeSwitchApp: App {
 }
 
 /// Reads only what the status item shows, so other state changes leave it alone.
-private struct MenuBarLabel: View {
+struct MenuBarLabel: View {
     let state: AppState
     var body: some View {
         if state.startupAccess.isReady { quotaLabel }
@@ -65,7 +73,13 @@ private struct MenuBarLabel: View {
             // invalidating MenuBarExtra during launch. The local refresh already
             // updates this value once a minute without a separate rendering clock.
             Text(quota).monospacedDigit()
-        }.accessibilityLabel(L10n.tr("Claude Switch, current account session limit remaining: {0}", L10n.argument(quota)))
+            if let reminder = state.switchReminder, reminder.needsReview {
+                Image(systemName: reminder.kind == .expiring ? "arrow.left.arrow.right.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundStyle(reminder.exhausted ? .red : .orange)
+            }
+        }
+        .help(state.switchReminder?.needsReview == true ? L10n.tr("Recommendation available. Click to review the switch.") : L10n.tr("Claude Switch, current account session limit remaining: {0}", L10n.argument(quota)))
+        .accessibilityLabel(state.switchReminder?.needsReview == true ? L10n.tr("Recommendation available. Click to review the switch.") : L10n.tr("Claude Switch, current account session limit remaining: {0}", L10n.argument(quota)))
     }
 }
 
@@ -83,7 +97,7 @@ final class SwitchAppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     func applicationWillTerminate(_ notification: Notification) {
-        AppState.shared.clearQuotaAccess()
+        AppState.shared.clearKeychainAccess()
         WorkbenchLifecycle.shared.willTerminate()
     }
 }

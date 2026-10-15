@@ -14,7 +14,26 @@ That set is the **identity allow-list**. Switching accounts means replacing exac
 
 ## Startup access
 
-Claude Switch checks access to Claude Safe Storage before opening its main interface. If permission is missing, choose **Allow access** and approve the macOS dialog. Canceling leaves the authorization screen open for retry; no account scans or background tasks start before access is granted. If Claude Desktop has never been used, sign in there first.
+Claude Switch checks two separate Keychain items before opening its main interface:
+
+- **Claude Safe Storage** opens Claude's encrypted login credentials so Switch can query account quota.
+- **Claude Switch · Saved Logins** (`io.github.uiuing.claude-desktop-switch.local-vault`) encrypts and opens Switch's saved logins and recovery copies for account switching.
+
+The startup page explains both uses and shows which item is available. macOS can ask separately for each item; approving one does not authorize the other. Choose **Allow access**, then approve each required macOS dialog. Enter your Mac login password only in the system dialog; Switch receives the requested encryption key, not your Mac password. **Always Allow** remembers access for that app identity, while **Allow** can require another approval after cached keys are cleared. If Claude Desktop has never been used, sign in there first.
+
+Switch uses only the project Keychain identifier shown above. A new installation creates its key with the readable label during explicit setup. Existing items are not relabeled when the app language changes. If saved logins or recovery data remain but the project key is missing, setup reports the missing key and stops without replacing it or overwriting those files.
+
+Both Keychain checks must succeed before account scans, saved-login maintenance or background work starts. Canceling keeps the page open for retry. Keys are shared in memory across operations and cleared on sleep, session deactivation and exit; wake rechecks both items silently. A missing vault key is never replaced while saved logins or recovery data remain.
+
+The same startup flow introduces **switch notifications**, enabled in the setup choice by default. It explains completion notices and account recommendations before requesting macOS permission. The user can turn this choice off; declining notifications does not block account features. This introduction appears even if both Keychain permissions already work. A completed choice is remembered, and notifications can later be adjusted in **Settings → Notifications**.
+
+## Feedback and updates
+
+**Report an issue** opens this project's GitHub Issues page. **View latest version** opens the stable `/releases/latest` link. Both are available from the sidebar, menu bar panel and Help menu; Settings includes feedback and update controls as well. Opening feedback does not submit anything or attach local data.
+
+The separate update checker sends a HEAD request to `https://github.com/uiuing/claude-desktop-switch/releases/latest` and reads the stable version from its redirect target. It does not use the GitHub API quota. It starts with Switch, independently of the account-access gate, and does not read Claude or Keychain data. Automatic checks are enabled by default and run at most once per day while Switch is open; **Settings → Updates** lets users disable them or check manually. Checks across both app scenes share one request. The last attempt, latest stable version and endpoint-specific server cooldown are stored in Switch's preferences. Closely repeated manual checks do not send another request; GitHub rate limits are preserved across restarts. A network or parsing failure is shown as a failed check, never as proof that the app is current.
+
+Only stable numeric release tags are compared. The request carries no account credentials, cookies or local conversation data. The redirect must point to this exact project’s HTTPS release-tag page; other hosts, projects and unsupported tags are rejected. The redirect is not followed, and no page body or release asset is downloaded. The app does not download or install updates; users follow the release link and replace the app themselves. Tests and screenshot previews use injected release data and never contact GitHub.
 
 ## Saving logins
 
@@ -43,6 +62,16 @@ Every switch is planned first and executed only after you confirm it.
 
 After a successful switch, both the outgoing and incoming accounts are queued for an automatic quota refresh. These read-only requests do not affect the switch result; a failure on one account does not block the other, and each account keeps its own cooldown. See [usage-data.md](usage-data.md).
 
+Operation results identify the selected account, distinguish moved and copied conversations, and ask the user to check the result in Claude. Account-switch results include available fresh online quota; unknown, stale, reset-pending and estimated readings are omitted. The result describes the completed local change, not a new server-side login validation. Successful notices dismiss after five seconds, or sooner with their close button. Errors, manual-open guidance and backup warnings remain visible until dismissed or replaced.
+
+### Notifications and switch reminders
+
+In **Settings → Notifications**, enable macOS notifications and choose **Operation results**, **Switch recommendations**, or both. Permission is requested only when you enable them. If macOS blocks notifications, the settings page links to Notification Settings. System notifications are silent. Operation results identify the selected account using the same email-display preference as the account list, include the result and available quota, and direct the user to check Claude. Failures identify the account and link back to Claude Switch for details; raw errors that may contain file paths remain in the app. Recommendation notifications contain no account identities. When the workbench is visible and active, the in-app notice replaces the system banner to avoid showing the same reminder twice.
+
+Recommendations use the same fresh online quota and account ranking as the account list. A low limit produces one reminder per account, organization and quota window; exhaustion can produce one more. Receipts survive restarts and stale readings, and changing the recommended backup does not repeat a low-quota warning. Suggestions about another account's upcoming reset use distinct wording rather than claiming the current account is running out. Expired or withdrawn recommendations are removed from the interface and Notification Center, without fetching quota just for a reminder.
+
+An unreviewed recommendation marks the menu bar icon and shows a dismissible in-app reminder. The in-app reminder fades after twelve seconds while the menu bar mark stays until reviewed or dismissed. Clicking the marked icon or the notification opens the existing switch confirmation, including followed conversations and move/copy choices. The shortcut reevaluates the recommendation and verifies the source and target again after preparing the plan. A stale notification opens Accounts with an explanation; it cannot switch an old target. After reviewing or dismissing a reminder, the menu bar works normally and retains a recommendation shortcut while the recommendation is valid. No reminder opens a window on its own or executes a switch without confirmation.
+
 After a commit, the recovery copies are archived in encrypted form and read back for verification before the temporary folder is removed.
 Finished operations are kept while they are useful: the two newest switches that moved each account's login out of Claude, and everything else for a week. Unfinished operations are always kept.
 
@@ -55,6 +84,10 @@ If a switch is interrupted (power loss, crash, full disk), Claude Switch shows a
 **Add account** moves the current login out of Claude into the encrypted vault: it removes the identity allow-list from Claude's folder (the three `config.json` keys are removed structurally, everything else in the file stays), and reopens Claude at its sign-in screen. Sign in with another account and it is saved automatically.
 
 Nothing is signed out on the server, so the account you moved aside stays valid.
+
+Adding a login does not immediately transfer conversations. The Add account screen explains this before you start. Once the new login is saved and its organization is verified, Switch offers a separate transfer preview for Code conversations marked to follow. It prefers the account you just left when several copies exist and keeps each conversation's move/copy choice. Only confirming that preview quits Claude and transfers the indexes through the existing journaled transaction.
+
+Until then, Accounts and the menu show **Login saved · Conversations not transferred**. If organization confirmation is still pending, Accounts explains the wait and offers **Refresh quota**, using the existing manual quota/profile read. Canceling the preview leaves a **Review transfer** entry without repeatedly opening it. The pending step survives restarting Switch; signing back in to the original account, having no eligible followed conversations, or switching away ends it. Ordinary automatic login saves do not start this flow. Cowork and cloud Chat are not transferred.
 
 While waiting for a login, Switch checks publication metadata every second and observes changes to config and cookie files, including the cookie WAL. It scans immediately on entry, after a publication, and at least every five seconds while state is unchanged. An unsuccessful or busy scan never consumes a publication. Only a verified signed-in account with a matching saved fingerprint completes discovery; an account already saved before the watcher started can also complete it. Account saving does not wait for online quota or email retrieval.
 
@@ -73,14 +106,14 @@ Claude Desktop keeps a small index file per local Claude Code session under `cla
 
 - **Move** (default) writes the index into the target account, then moves the source index into the protected transaction folder, so the source account no longer lists it.
 - **Copy** writes the index into the target account and keeps the source.
-- If the target already has the same session (same `sessionId` and `cliSessionId`), it is updated with the current version. A different session with the same name stops the operation instead of being overwritten.
+- If the target already has the same session (same `sessionId` and `cliSessionId`), the preview shows that the selected source will replace that copy. Activity timestamps and file modification times do not override this choice. A different transcript with the same session ID stops the operation.
 - The index goes into the organization Claude Desktop uses for the target account. Claude Code can be signed in to another organization of the same account, so when that organization is only a guess and the target's sessions are elsewhere, the transfer stops; switching to the account once and refreshing its quota confirms it.
 
 Writes, the backup of the replaced target and the removal of the source are part of one file transaction, with the same journal and rollback as a switch. The transcript in `~/.claude/projects` is never moved or deleted.
 
-Only the fields needed to resume the session are carried over (title, timestamps, working directory, model, session IDs). Permission settings are reset to the default; MCP secrets, tool approvals, remote control and organization permissions are not transferred.
+The session record is carried over as a whole, except for the explicit account authorization, cloud bindings and live connection state in `SessionTransferRecord`. This includes cloud-session handoffs, cloud child tasks, Space and routine IDs, cloud publication links, remote dispatch parents and cloud process settings. Pending-start remote-control intent is removed too. Cloud task suggestions and their matching result entries are cleared, while local suggestions remain. Permission modes and their provenance, worktree and branch associations, local preferences, PR metadata and local session lineage remain intact. Switch validates the JSON object, session identity, transcript availability and destination; it does not interpret every Claude setting or enforce a per-version field schema. SSH/WSL targets are execution context and are retained. See [session transfer fields](session-fields.md) for the preservation and exclusion rules.
 
-**Follow** rules mark sessions that should come along whenever you switch accounts, using the same move-or-copy choice. They use a stable session ID, so they keep working after a session has been moved. Archived sessions are never followed.
+**Follow** rules mark sessions that should come along whenever you switch accounts, using the same move-or-copy choice. They use a stable session ID, so they keep working after a session has been moved. The current account's copy is authoritative, including preference-only changes that did not advance its activity time. If the current account has no copy and the target already does, no other account's copy overwrites it. A fallback is used only when the target has no copy. An archived current copy is not resurrected from another account. File fingerprints are rechecked before the transaction changes anything.
 
 Cowork sessions are listed for reference only, and cloud chats have no local file that could be transferred.
 
