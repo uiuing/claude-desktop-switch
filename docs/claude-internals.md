@@ -35,7 +35,7 @@ Any other `oauth:` key in `config.json` means the format changed; saving and swi
 
 ### Signed-in check
 
-`Cookies` is an SQLite database. A non-expired `sessionKey` cookie for host `.claude.ai` in table `cookies(host_key, name, expires_utc)` means Claude is signed in. [`LoginProbe`]
+`Cookies` is an SQLite database. Read a stable private copy together with committed WAL frames; never open the live database as immutable. A non-expired `sessionKey` cookie for host `.claude.ai` in table `cookies(host_key, name, expires_utc)` means Claude is signed in. [`LoginProbe`]
 
 ### Token cache encryption
 
@@ -45,20 +45,20 @@ Any other `oauth:` key in `config.json` means the format changed; saving and swi
 - key: PBKDF2-HMAC-SHA1, salt `saltysalt`, 1003 iterations, 16 bytes
 - cipher: AES-128-CBC, IV of 16 spaces (`0x20`), PKCS#7 padding
 
-The plaintext is a JSON object. Keys look like `<client>:<org>:https://api.anthropic.com:<scopes>`, or `acct:<account>|<client>:<org>:https://api.anthropic.com:<scopes>` when bound to an account. Values hold `token` and `expiresAt` (and a refresh token, which Claude Switch never reads or uses). Only entries with both `user:profile` and `user:inference` scopes can read usage. [`DesktopTokenReader`]
+The plaintext is a JSON object. Keys look like `<client>:<org>:https://api.anthropic.com:<scopes>`, or `acct:<account>|<client>:<org>:https://api.anthropic.com:<scopes>` when bound to an account. Values hold `token` and `expiresAt` (and a refresh token, which Claude Switch never selects or uses). Only entries with both `user:profile` and `user:inference` scopes can read usage. [`DesktopTokenReader`]
 
 ## Accounts, emails and plans
 
 - Desktop stores no account name or avatar locally; the UUID is the identity.
 - `~/.claude.json` → `oauthAccount.accountUuid`, `emailAddress`, `organizationUuid` (the Claude Code login, which may differ from Desktop's: another account, or another organization of the same account, so its organization only fills a gap). Only `oauthAccount` is decoded; the file also holds project history. [`LocalReader`]
-- `IndexedDB/https_claude.ai_0.indexeddb.blob/…`: claude.ai's persisted query cache. Values are V8-serialized and usually Snappy-compressed (`FF 11 02` header). From it Claude Switch reads `account { uuid, email_address }`, each organization's `rate_limit_tier` and `capabilities`, and `current_account.messageLimits[<org>]`. Values are paired only with the `uuid` of the object that holds them, and parsing stops at unknown tags. [`DesktopProfile`]
+- `IndexedDB/https_claude.ai_0.indexeddb.blob/…`: claude.ai's persisted query cache. Values are V8-serialized and usually Snappy-compressed (`FF 11 02` header). From it Claude Switch reads `account { uuid, email_address }`, each organization's `rate_limit_tier` and `capabilities`. Values are paired only with the `uuid` of the object that holds them, and parsing stops at unknown tags. [`DesktopProfile`]
 - Plan names come from `rate_limit_tier` (words `max` with an optional `5x`/`20x`, `pro`, `team`, `enterprise`), falling back to capabilities `claude_max` / `claude_pro`.
 
 ## Quota
 
-- `plan-usage-history.json` → `samples[]` with `t` (time), `org`, `u.fh` (session limit used, %) and `u.sd` (weekly limit used, %). No reset times. Samples from earlier logins can remain, so each sample must be matched to its organization. [`LocalReader.localUsage`]
-- `messageLimits[<org>]` (above) includes reset times only while a limit is near or hit: `resetsAt` for `representativeClaim`, plus `windows["5h" | "7d"].resets_at`.
-- Window identifiers and lengths: `five_hour` (5 hours, starts with the first message), `seven_day` (7 days), plus model-specific weekly windows such as `seven_day_opus` and `seven_day_sonnet`. [`ResetInference.lengths`]
+Quota percentages and reset times are read only from the online endpoints below. Desktop's `plan-usage-history.json`, cached `messageLimits` and transcript quota hints are not used for quota. Existing local/estimated measurements are filtered from Switch's library on load. Window identifiers include `five_hour` and `seven_day`, plus model-specific weekly windows.
+
+Activity scheduling reads only modification times and sizes of Code transcripts/subagent records and Cowork audit/transcript records. Cowork stores sessions under the account/organization directory, optionally under `agent/`; some Desktop versions shorten UUID directory names to eight characters. Shortened account/organization roots are used only when unambiguous among known identities. Missing or unsupported layouts remain unknown. This is scheduling evidence only; it never supplies quota or reset times.
 
 ## Claude Code sessions in Desktop
 
@@ -73,20 +73,20 @@ The plaintext is a JSON object. Keys look like `<client>:<org>:https://api.anthr
 
 - rows have `type` (`user`, `assistant`, …), `timestamp`, `sessionId`, `isSidechain`, `requestId`, `message.id`, `message.model`, and `message.usage` with `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`;
 - `<project>/<…>/subagents/agent-*.jsonl` hold subagent rows; files containing `.superseded-` are obsolete; the model `<synthetic>` is not real usage;
-- a reply that hit or neared a limit carries `quotaLimits { status: "rejected" | "allowed_warning", rateLimitType, resetsAt }`. Transcripts have no account UUID. [`TokenScanner`, `LimitLogScanner`]
+- a reply that hit or neared a limit carries `quotaLimits { status: "rejected" | "allowed_warning", rateLimitType, resetsAt }`. Transcripts have no account UUID. [`TokenScanner`; quota hints are ignored]
 
 Installed Claude Code versions live in `claude-code/<version>/` (bundled with Desktop) or `~/.local/share/claude/versions/<version>/`.
 
 ## Online endpoints
 
-Used only for the signed-in account, only on the triggers in [usage-data.md](usage-data.md), with the token Desktop already holds:
+Used on the event triggers and configurable, staggered periodic schedule in [usage-data.md](usage-data.md). Automatic queries pause when Claude is closed. The access token comes from Desktop or the selected encrypted vault snapshot; it is never renewed:
 
 | Request | Fields read |
 | --- | --- |
 | `GET https://api.anthropic.com/api/oauth/profile` | `account.uuid`, `account.email_address`, `account.has_claude_max`, `account.has_claude_pro`, `organization.uuid`, `organization.rate_limit_tier` |
-| `GET https://api.anthropic.com/api/oauth/usage` | `five_hour`, `seven_day`, `seven_day_sonnet`, `seven_day_opus` → `utilization`, `resets_at`; `limits[]` → `scope.model.display_name`, `percent` or `utilization`, `resets_at` |
+| `GET https://api.anthropic.com/api/oauth/usage?skip_spend=1` | `five_hour`, `seven_day`, `seven_day_sonnet`, `seven_day_opus`, `seven_day_oauth_apps`, `seven_day_cowork` → `utilization`, `resets_at`; `limits[]` with `kind == weekly_scoped` → optional `scope.model.id`, `scope.model.display_name`, `percent` or `utilization`, `resets_at` |
 
-Headers match Claude Code's `/usage`: `Authorization: Bearer <token>`, `anthropic-beta: oauth-2025-04-20`, `User-Agent: claude-code/<installed version>`. Back-off rules are in [usage-data.md](usage-data.md). [`ActiveUsageClient`]
+The OAuth compatibility builder uses: `Authorization: Bearer <token>`, `anthropic-beta: oauth-2025-04-20`, `User-Agent: claude-code/<installed version>`. These fields do not establish transport equivalence with Electron. Desktop 2.37337.1 has both an OAuth usage path and a separate cookie-based organization-usage path. Switch uses only the OAuth compatibility path. Back-off and credential selection rules are in [usage-data.md](usage-data.md). [`ActiveUsageClient`]
 
 ## Process behavior
 

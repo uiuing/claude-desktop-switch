@@ -29,17 +29,18 @@ Save each login once, switch between them in a second, and see every account's s
 
 Claude Desktop signs in to one account at a time. If you use a personal and a work account, or several plans for different projects, changing accounts means signing out, signing in again and losing track of how much quota each one has left.
 
-Claude Switch keeps every login you use on your Mac, encrypted, and swaps them for you. It is a native menu bar app: no Electron, no background service, no third-party dependencies.
+Claude Switch keeps every login you use on your Mac, encrypted, and swaps them for you. It is a native macOS menu bar app with no third-party dependencies.
 
 ## Features
 
 - **One-click switching.** Pick an account in the menu bar. Claude quits normally, the saved login is put back in place, and Claude reopens already signed in.
-- **Limits at a glance.** Every account shows how much of its **session limit** and **weekly limit** is left and when each one resets, plus model-specific weekly limits when your plan has them.
+- **Limits at a glance.** Read session, weekly and model-specific limits and reset times directly from Claude online.
+- **Automatic refresh.** The current account follows conversation activity; other accounts refresh every 30 minutes by default. Adjust intervals in Settings. Refresh pauses when Claude closes.
 - **Smart suggestion.** When the current account is running low, the menu bar points to a saved account that still has room.
 - **Add accounts without signing out.** "Add account" moves the current login aside so Claude opens at its sign-in screen. The previous account stays signed in on the server and keeps working.
 - **Bring your Claude Code sessions along.** Move or copy local Claude Code sessions to another account, or let chosen sessions follow you whenever you switch.
 - **Usage statistics.** Tokens, models, an activity heatmap, streaks and daily charts, counted the same way as Claude Desktop's own statistics.
-- **Safe by design.** Encrypted snapshots, a strict allow-list of files, a journal that can roll back any interrupted switch, and no network traffic unless you ask for it. See [How it works](docs/how-it-works.md).
+- **Safe by design.** Encrypted snapshots, a strict allow-list of files, a journal that can roll back any interrupted switch, with network access limited to documented quota reads and configurable automatic refreshes. See [How it works](docs/how-it-works.md).
 - **Feels at home on macOS.** SwiftUI, light and dark mode, keyboard shortcuts, and 10 languages.
 
 ## Screenshots
@@ -96,15 +97,15 @@ Claude Switch **doesn't have remote or automatic updates yet**. To hear about ne
 > [!IMPORTANT]
 > To change accounts, use Claude Switch rather than Claude's **Log out** or Claude Code's `/login`.
 > Signing out revokes that login on Anthropic's side, and the copy Claude Switch saved stops working.
-> If that happens, the account is marked **Expired**; sign in to it once more and it is saved again.
+> If Claude cannot restore the login, sign in once more and it is saved again.
 
-Handy shortcuts in the main window: `⌘1` `⌘2` `⌘3` switch pages, `⌘K` searches accounts and sessions, `⌘R` re-reads local data.
+Handy shortcuts in the main window: `⌘1` `⌘2` `⌘3` switch pages, `⌘K` searches accounts and sessions, `⌘R` refreshes the current account’s quota online.
 
 ## Privacy and security
 
 - **Everything stays on your Mac.** Saved logins are encrypted with AES-256-GCM. The key lives in your login Keychain and is never synced to iCloud, so a copy of the saved logins alone can't be read.
 - **No telemetry, no analytics, no servers of our own.**
-- **Network access only when you ask.** Refreshing the signed-in account's limits sends the same read-only request Claude Code's `/usage` command sends, directly to Anthropic. Other accounts are never contacted. Reading the local records needs no network at all.
+- **Limited network access.** Only account and quota queries go to Anthropic. Automatic refresh can be disabled; local conversations are never uploaded.
 - **A narrow footprint.** Only Claude Desktop's login files are swapped. Claude Code's own login, your projects, MCP servers, skills and settings are left alone.
 - **Recoverable.** Every switch is journaled; if something interrupts it, Claude Switch can restore the previous state.
 
@@ -115,7 +116,7 @@ Details: [How it works](docs/how-it-works.md) · [Quota and usage data](docs/usa
 <details>
 <summary><b>Why does macOS ask to let Claude Switch use "Claude Safe Storage"?</b></summary>
 
-Claude encrypts its login tokens with a key stored in that Keychain item. Claude Switch only needs it to read the signed-in account's current limits online, and only asks when you press refresh yourself. Choose **Always Allow** to avoid repeated prompts. Everything else works without it.
+Claude encrypts its login tokens with a key stored in that Keychain item. Claude Switch only needs it to read the selected account's current limits online, and only asks when you press refresh yourself. Choose **Always Allow** to avoid repeated prompts. Everything else works without it.
 </details>
 
 <details>
@@ -127,7 +128,7 @@ No. Claude Switch switches Claude Desktop. The Claude Code command-line tool kee
 <details>
 <summary><b>Why do some accounts show "—" or an older reading?</b></summary>
 
-Limits come from records Claude Desktop keeps on your Mac. An account you have not used recently has no fresh reading, and usage from other devices is not visible locally. Each reading shows when it was taken.
+A failed refresh keeps the last successful reading and its timestamp; “—” means no reading is available yet. If the saved access token has expired, switch to that account and let Claude update its login.
 </details>
 
 <details>

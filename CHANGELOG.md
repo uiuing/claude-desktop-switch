@@ -6,7 +6,20 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Configurable automatic quota refresh: the current account follows conversation activity, other accounts default to 30 minutes, and queries are staggered. Automatic refresh pauses when Claude closes.
+
+- Manual quota refresh for each saved account without switching Claude Desktop.
+
 ### Changed
+
+- Quota and reset times now come exclusively from online responses. Legacy local estimates are removed; failed reads keep the last successful online measurement. Menu refresh and Command-R now refresh current-account quota online.
+
+- Current-account quota follows credential publication, including late renewal after switching. Incoming accounts have priority; startup, wake and network recovery can refresh stale readings.
+- Quota windows retain their own source and timestamp. Elapsed reset times show pending confirmation instead of fabricated full quota, and stale readings no longer drive switch suggestions.
+
+- Switching accounts automatically refreshes both the outgoing and incoming accounts once. Queued reads survive concurrent work and per-login cooldowns, duplicate discovery notifications are coalesced, and a failure on one account does not stop the other. Automatic reads never show a Keychain prompt.
 
 - Claude Code running in a terminal or an editor no longer blocks switching. Only Claude Desktop's helpers and the Claude Code sessions it started are waited for.
 - Old recovery copies are cleaned up: the two newest switches of each account and a week of other finished operations are kept. Unfinished operations are always kept.
@@ -14,7 +27,13 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
-- The "Quota was just read" notice no longer stays on an account card forever: it counts down and disappears when the wait is over. Quota notices can be dismissed, and they are cleared when another account is signed in.
+- Token rejection, account/organization cooldowns and encrypted-cache changes use separate identities. Server retry delays survive token renewal and restarts without a one-hour cap.
+- Login detection includes committed SQLite WAL data through private copies; missing cookies no longer mark saved logins permanently expired, and old cookie-based invalid flags are cleared. Pending credential journals wait for publication.
+- Credential expiry, scope, Keychain, authorization, network and server failures have distinct recovery states. Profile validation is cached briefly; quota windows are parsed by their supported kind.
+
+- Online quota cooldowns and rejected credentials stay tracked separately for every login, including across app restarts and refreshes of other accounts.
+
+- The "Quota was just read" notice no longer stays on an account card forever: it counts down and disappears when the wait is over. Quota notices can be dismissed, and they are cleared when that account is refreshed successfully.
 - Saved accounts can be switched to again after Claude Desktop updates itself. Only a login saved by a newer Claude than the one installed is refused.
 - An account that uses one organization in Claude Desktop and another in Claude Code keeps its organization, plan and quota steady, and a conversation moved to it no longer lands in an organization Claude Desktop doesn't show.
 - Saving the signed-in login tries again by itself when Claude was writing its data at that moment, and the message no longer mentions a preview.

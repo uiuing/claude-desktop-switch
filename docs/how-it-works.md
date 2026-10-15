@@ -37,6 +37,8 @@ Every switch is planned first and executed only after you confirm it.
 7. **Roll back on failure.** If any step fails, the transaction is reversed while Claude is still closed. If a safe rollback cannot be confirmed, all data is kept and Settings shows a recovery entry; Claude is not reopened in a mixed state.
 8. **Commit and reopen.** Only after a successful commit is Claude reopened. Whether the login is still valid is decided by Claude itself: for 36 seconds after the switch, Claude Switch watches whether Claude stays signed in.
 
+After a successful switch, both the outgoing and incoming accounts are queued for an automatic quota refresh. These read-only requests do not affect the switch result; a failure on one account does not block the other, and each account keeps its own cooldown. See [usage-data.md](usage-data.md).
+
 After a commit, the recovery copies are archived in encrypted form and read back for verification before the temporary folder is removed.
 Finished operations are kept while they are useful: the two newest switches that moved each account's login out of Claude, and everything else for a week. Unfinished operations are always kept.
 
@@ -51,11 +53,11 @@ If a switch is interrupted (power loss, crash, full disk), Claude Switch shows a
 Nothing is signed out on the server, so the account you moved aside stays valid.
 
 > [!WARNING]
-> Do not change accounts with Claude's own **Log out** or Claude Code's `/login`. Both revoke the current login on the server, and the copy Claude Switch saved stops working. If that happens, the account is marked **Expired** and you only need to sign in to it once more.
+> Do not change accounts with Claude's own **Log out** or Claude Code's `/login`. Both revoke the current login on the server, and the copy Claude Switch saved stops working. If Claude cannot restore the login, sign in to it once more. Local cookie absence alone does not establish server revocation.
 
 ## Revoked logins
 
-Claude Switch reads the `sessionKey` cookie for `claude.ai` to tell whether Claude is signed in. When Claude is signed out of an account that was in use, that account is marked **Expired**, it is not shown as active, and the app asks you to sign in to it again. A revoked login can only be detected once Claude tries to use it.
+Claude Switch checks session-cookie metadata in a private, stable copy of the cookie database and its WAL. A missing cookie means the account is not currently shown as active; an unreadable or changing store remains unknown. Neither condition marks a saved login permanently expired. Switch waits for Claude to publish updated credentials and shows guidance if login needs attention. An OAuth access-token rejection blocks that token only.
 
 ## Moving and copying Claude Code sessions
 
