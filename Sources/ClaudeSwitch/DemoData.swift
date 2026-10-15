@@ -27,14 +27,14 @@ enum DemoData {
                   resetsAt: seconds.map { now.addingTimeInterval($0) }, resetKnownAbsent: seconds == nil)
         }
         let usage: [UsageSnapshot] = [
-            UsageSnapshot(accountID: personal.id, observedAt: now.addingTimeInterval(-120), origin: .live,
+            UsageSnapshot(accountID: personal.id, organizationID: personal.organizationID, observedAt: now.addingTimeInterval(-120), origin: .live,
                           windows: [window("five_hour", left: 14, resetsIn: 6_700), window("seven_day", left: 58, resetsIn: 262_000),
                                     window("seven_day_opus", left: 71, resetsIn: 262_000)]),
-            UsageSnapshot(accountID: studio.id, observedAt: now.addingTimeInterval(-240), origin: .live,
+            UsageSnapshot(accountID: studio.id, organizationID: studio.organizationID, observedAt: now.addingTimeInterval(-240), origin: .live,
                           windows: [window("five_hour", left: 92, resetsIn: 15_100), window("seven_day", left: 83, resetsIn: 431_000)]),
-            UsageSnapshot(accountID: team.id, observedAt: now.addingTimeInterval(-360), origin: .live,
+            UsageSnapshot(accountID: team.id, organizationID: team.organizationID, observedAt: now.addingTimeInterval(-360), origin: .live,
                           windows: [window("five_hour", left: 67, resetsIn: 9_800), window("seven_day", left: 41, resetsIn: 128_000)]),
-            UsageSnapshot(accountID: research.id, observedAt: now.addingTimeInterval(-480), origin: .live,
+            UsageSnapshot(accountID: research.id, organizationID: research.organizationID, observedAt: now.addingTimeInterval(-480), origin: .live,
                           windows: [window("five_hour", left: 100, resetsIn: nil), window("seven_day", left: 12, resetsIn: 64_000)]),
         ]
 

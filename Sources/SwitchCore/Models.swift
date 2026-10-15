@@ -62,6 +62,8 @@ public struct Account: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     /// Only set from a source that reported it for this exact account UUID; never derived or guessed.
     public var email: String?
+    /// A server-confirmed email cannot be overwritten by local Desktop or Code caches.
+    public var emailVerifiedAt: Date?
     public var organizationID: String?
     /// When the server confirmed `organizationID` for this login's own token. Local files and Claude Code,
     /// which can use another organization of the same account, then no longer decide it.
@@ -100,11 +102,23 @@ public struct Account: Codable, Identifiable, Hashable, Sendable {
     public mutating func confirmOrganization(_ organizationID: String, at date: Date) {
         setOrganization(organizationID); organizationVerifiedAt = date
     }
+    @discardableResult
+    public mutating func observeEmail(_ email: String?, verifiedAt date: Date? = nil, fillOnly: Bool = false) -> Bool {
+        guard let email, !fillOnly || self.email == nil else { return false }
+        if let date {
+            guard date >= (emailVerifiedAt ?? .distantPast) else { return false }
+            emailVerifiedAt = date
+        } else if emailVerifiedAt != nil { return false }
+        let changed = self.email != email
+        self.email = email
+        return changed
+    }
     /// Server readings outrank local cache timestamps, including an explicitly unknown plan.
     @discardableResult
     public mutating func observePlan(_ plan: String?, organizationID: String, at date: Date, verified: Bool = false) -> Bool {
         guard organizationID == self.organizationID, verified || planVerifiedAt == nil,
               date >= ((verified ? planVerifiedAt : planObservedAt) ?? .distantPast) else { return false }
+        if !verified, planObservedAt != nil, self.plan == plan { return false }
         let changed = self.plan != plan
         self.plan = plan; planObservedAt = date
         if verified { planVerifiedAt = date }
@@ -193,6 +207,7 @@ public struct LibraryState: Codable, Sendable {
     public var usage: [String: UsageSnapshot] = [:]
     public var usageHistory: [String: [UsageSnapshot]] = [:]
     public var follows: [FollowRule] = []
+    public var newAccountFollowUp: NewAccountFollowUp?
     public var preferences = Preferences()
     public init() {}
 }
@@ -205,6 +220,8 @@ public struct LocalInventory: Sendable {
     /// nil when the login state could not be read.
     public var signedIn: Bool?
     public var accounts: [Account]
+    /// Emails explicitly attributed to account UUIDs in Desktop's cache; Code only fills gaps.
+    public var desktopEmails: [String: String]
     public var conversations: [Conversation]
     public var usage: UsageSnapshot?
     public var cachedUsage: [String: UsageSnapshot]
@@ -212,8 +229,9 @@ public struct LocalInventory: Sendable {
     public var scannedAt: Date
     public init(activeAccountID: String?, accounts: [Account], conversations: [Conversation],
                 usage: UsageSnapshot?, warnings: [String], scannedAt: Date = Date(), cachedUsage: [String: UsageSnapshot] = [:],
-                lastKnownAccountID: String? = nil, signedIn: Bool? = nil) {
+                lastKnownAccountID: String? = nil, signedIn: Bool? = nil, desktopEmails: [String: String] = [:]) {
         self.activeAccountID = activeAccountID; self.accounts = accounts; self.conversations = conversations
+        self.desktopEmails = desktopEmails
         self.lastKnownAccountID = lastKnownAccountID ?? activeAccountID; self.signedIn = signedIn
         self.usage = usage; self.warnings = warnings; self.scannedAt = scannedAt; self.cachedUsage = cachedUsage
     }
@@ -247,7 +265,7 @@ public protocol AccountVault: Sendable { func contains(accountID: String) async 
 public protocol TranscriptReader: Sendable { func scan(since: Date) async throws -> TokenReport }
 public protocol SwitchService: Sendable {
     func prepare(kind: OperationKind, target: Account, sessions: [Conversation], transferModes: [String: SessionTransferMode]) async throws -> OperationPlan
-    func execute(_ plan: OperationPlan, confirmedPlanID: UUID, target: Account, sessions: [Conversation]) async throws -> String
+    func execute(_ plan: OperationPlan, confirmedPlanID: UUID, target: Account, sessions: [Conversation]) async throws -> OperationResult
     func pendingRecovery() async throws -> [String]
     func recover(transactionID: String) async throws
 }

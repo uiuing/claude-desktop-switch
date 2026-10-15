@@ -58,7 +58,6 @@ final class LocalizationTests: XCTestCase {
             XCTAssertFalse(value.isEmpty, key)
         }
         XCTAssertEqual(english["Messages"], english["analytics.messageCount"])
-        XCTAssertEqual(english["Requests"], english["analytics.requestCount"])
         XCTAssertEqual(english["Resets at {0}"], english["quota.resetTooltip {0}"])
     }
 

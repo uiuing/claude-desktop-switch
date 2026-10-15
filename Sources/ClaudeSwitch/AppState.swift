@@ -25,6 +25,7 @@ struct PendingOperation: Identifiable {
     var plan: OperationPlan
     var target: Account
     var sessions: [Conversation]
+    var newAccountFollowUpID: UUID?
 }
 
 /// Views redraw only for the properties they read, so a statistics scan does not redraw the menu bar.
@@ -45,6 +46,7 @@ final class AppState {
     var usageErrors: [String: String] = [:]
     var quotaAccessRequired = false
     var authorizingQuotaAccess = false
+    var quotaRefreshPause: QuotaRefreshSchedule.PauseReason?
     /// A manual read that came within the per-login back-off; its notice counts down and clears itself.
     private(set) var usageCooldowns: [String: UsageCoolingDown] = [:]
     /// Recovery guidance stays visible until a successful read replaces it.
@@ -52,10 +54,29 @@ final class AppState {
     var scanningTokens = false
     var working = false { didSet {
         updateQuotaRefreshPause()
-        if working { Task { await usageClient.cancelCurrentRead() } }
+        if working {
+            updateSwitchReminder()
+            Task { await usageClient.cancelCurrentRead() }
+        }
     } }
-    var message: String?
+    var message: String? { didSet {
+        if message != operationFeedback?.text { operationFeedback = nil }
+        scheduleMessageDismissal()
+    } }
+    @ObservationIgnored private var messageDismissal: Task<Void, Never>?
+    let notifications: AppNotifications
+    let updates: AppUpdates
+    var operationFeedback: OperationFeedback?
+    var switchReminder: SwitchReminder?
+    var reviewingReminder = false
+    @ObservationIgnored var reminderPolicy = SwitchReminderPolicy()
+    @ObservationIgnored var reminderExpiration: Task<Void, Never>?
+    @ObservationIgnored var notificationDestination: NotificationDestination?
+    @ObservationIgnored var servicesLoaded = false
     var pending: PendingOperation?
+    var newAccountFollowError: String?
+    var preparingNewAccountFollowUp = false
+    @ObservationIgnored var presentWorkbench: (() -> Void)?
     var search = ""
     var selectedSessionIDs = Set<String>()
     var sessionFilter: SessionKind?
@@ -101,6 +122,8 @@ final class AppState {
     init(demo: Bool = ProcessInfo.processInfo.arguments.contains("--demo"), startupAccess: StartupAccess? = nil) {
         self.demo = demo
         self.startupAccess = startupAccess ?? StartupAccess(ready: demo)
+        notifications = AppNotifications(demo: demo)
+        updates = AppUpdates(demo: demo)
         let env = MacEnvironment()
         store = LibraryStore(root: env.root)
         reader = LocalReader(desktop: env.desktop, codeConfig: env.codeConfig, projects: env.projects)
@@ -110,7 +133,11 @@ final class AppState {
         self.vault = vault
         engine = SwitchEngine(environment: env, vault: vault)
         usageClient = ActiveUsageClient(environment: env, vault: vault)
+        if !demo, let data = UserDefaults.standard.data(forKey: "switchReminderReceipts"),
+           let saved = try? JSONDecoder().decode(SwitchReminderPolicy.self, from: data) { reminderPolicy = saved }
+        notifications.onOpen = { [weak self] id in await self?.openNotification(id) }
         if demo {
+            quotaSchedule.activity = .init(running: true, online: true)
             let data = DemoData.make()
             library = data.library; inventory = data.inventory; analytics = data.analytics
             tokenScanDone = true
@@ -119,17 +146,30 @@ final class AppState {
     }
     var activeID: String? { inventory?.activeAccountID }
     /// Accounts saved in Switch. Claude's local data only decides which of them is signed in.
-    var accounts: [Account] { knownAccounts.filter(\.hasSnapshot) }
+    var accounts: [Account] { accountRanking().displayAccounts }
+    func accountRanking(now: Date = Date()) -> AccountRankingResult {
+        let saved = mergedAccounts.filter(\.hasSnapshot)
+        return AccountRanking.evaluate(saved.map { account in
+            let rows = quotaRows(for: account.id, now: now)
+            return (account, rows)
+        }, activeID: activeID, now: now)
+    }
     /// The Claude Desktop login is known but Switch has not saved it (yet).
     var activeUnsaved: Bool { activeID != nil && activeAccount == nil }
     /// Claude shows its sign-in screen, whether Switch moved the login out or the server rejected it.
     var claudeSignedOut: Bool { !demo && inventory?.signedIn == false }
     /// Every account Claude Desktop has left on this Mac. Only used to attribute sessions.
     var knownAccounts: [Account] {
+        let saved = accountRanking().displayAccounts
+        let all = saved + mergedAccounts.filter { !$0.hasSnapshot }
+        return all.filter { $0.id == activeID } + all.filter { $0.id != activeID }
+    }
+    private var mergedAccounts: [Account] {
         var merged = Dictionary(library.accounts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for discovered in inventory?.accounts ?? [] {
             if var stored = merged[discovered.id] {
-                stored.email = discovered.email ?? stored.email
+                if let email = inventory?.desktopEmails[discovered.id] { stored.observeEmail(email, fillOnly: discovered.id != activeID) }
+                else { stored.observeEmail(discovered.email, fillOnly: true) }
                 if let organization = discovered.organizationID {
                     if stored.organizationVerifiedAt == nil { stored.setOrganization(organization) }
                     if let seen = discovered.planObservedAt {
@@ -159,33 +199,37 @@ final class AppState {
         return SessionLibrary.sorted(filtered, order: library.preferences.sessionSort, accounts: knownAccounts)
     }
     var canExecute: Bool { startupAccess.isReady && BuildAccess.allowsClaudeWrites && !demo && !working && libraryReadable }
-    var currentUsage: UsageSnapshot? { activeID.flatMap { library.usage[$0] } }
+    var currentUsage: UsageSnapshot? { activeID.flatMap { quotaSnapshot(for: $0) } }
+    private func quotaSnapshot(for accountID: String) -> UsageSnapshot? {
+        guard let account = mergedAccounts.first(where: { $0.id == accountID }), let organization = account.organizationID,
+              let snapshot = library.usage[accountID], snapshot.accountID == accountID,
+              snapshot.organizationID == organization else { return nil }
+        return snapshot
+    }
     func quotaRows(for accountID: String, now: Date = Date()) -> [QuotaReadout] {
-        AccountQuotaPresentation.rows(accountID: accountID, snapshot: library.usage[accountID], active: accountID == activeID,
+        AccountQuotaPresentation.rows(accountID: accountID, snapshot: quotaSnapshot(for: accountID), active: accountID == activeID,
                                       now: now, freshFor: quotaFreshness(for: accountID, now: now))
     }
     private func quotaFreshness(for accountID: String, now: Date) -> TimeInterval {
         max(600, quotaSchedule.interval(for: accountID, current: activeID, now: now) + 60)
     }
     func quotaUpdated(for accountID: String, now: Date = Date()) -> String {
-        guard let snapshot = library.usage[accountID], snapshot.accountID == accountID else { return L10n.tr("No quota data yet") }
+        guard let snapshot = quotaSnapshot(for: accountID) else { return L10n.tr("No quota data yet") }
         guard snapshot.observedAt <= now.addingTimeInterval(60) else { return L10n.tr("Update time unknown") }
         return L10n.tr("Updated {0}", Format.age(snapshot.observedAt, now: now))
     }
     /// A saved account to move to when the signed-in one is about to run out.
     func switchAdvice(now: Date = Date()) -> (account: Account, advice: SwitchAdvice)? {
-        guard let activeID else { return nil }
-        let others = accounts.filter { $0.id != activeID && $0.hasSnapshot && $0.loginInvalidAt == nil }
-        guard let advice = SwitchAdvisor.advice(active: quotaRows(for: activeID, now: now),
-                                                candidates: others.map { ($0.id, quotaRows(for: $0.id, now: now)) }, now: now),
-              let account = others.first(where: { $0.id == advice.accountID }) else { return nil }
+        let ranking = accountRanking(now: now)
+        guard let advice = ranking.advice,
+              let account = ranking.ranked.first(where: { $0.account.id == advice.accountID })?.account else { return nil }
         return (account, advice)
     }
     var fiveHourQuota: QuotaReadout? {
         activeID.flatMap { id in quotaRows(for: id).first { $0.id == "five_hour" } }
     }
     func extraQuotaRows(for accountID: String, now: Date) -> [QuotaReadout] {
-        guard let snapshot = library.usage[accountID], snapshot.accountID == accountID else { return [] }
+        guard let snapshot = quotaSnapshot(for: accountID) else { return [] }
         return snapshot.windows.filter { !["five_hour", "seven_day"].contains($0.id) }.map { window in
             QuotaReadout.make(id: window.id, title: L10n.quotaTitle(window.id, fallback: window.title), window: window, snapshot: snapshot,
                 active: accountID == activeID, now: now, freshFor: quotaFreshness(for: accountID, now: now))
@@ -235,17 +279,35 @@ final class AppState {
 
     func start() async {
         guard !demo else { return }
-        await startupAccess.check(using: { try await self.usageClient.authorizeQuotaAccess(allowPrompt: $0) },
+        updates.start()
+        await notifications.refreshAccess()
+        await startupAccess.check(using: authorizeKeychainItem,
+                                  notificationChoice: {
+                                      await self.notifications.refreshAccess()
+                                      return self.notifications.needsStartupChoice
+                                  },
                                   start: { await self.startAuthorizedServices() })
     }
     func authorizeStartupAccess() async {
         guard !demo else { return }
-        await startupAccess.authorize(using: { try await self.usageClient.authorizeQuotaAccess(allowPrompt: $0) },
+        await startupAccess.authorize(using: authorizeKeychainItem,
+                                      configureNotifications: { await self.notifications.setEnabled($0) },
                                       start: { await self.startAuthorizedServices() })
+    }
+    private func authorizeKeychainItem(_ item: StartupAccess.Item, allowPrompt: Bool) async throws {
+        switch item {
+        case .quota: try await usageClient.authorizeQuotaAccess(allowPrompt: allowPrompt)
+        case .vault: try await vault.authorizeAccess(allowPrompt: allowPrompt)
+        }
     }
     private func startAuthorizedServices() async {
         guard startupAccess.isReady else { return }
-        guard !started else { return }; started = true
+        if started {
+            await refresh()
+            sampleDesktopActivity(); resumeQuotaAfterAccess(); scheduleQuotaReads()
+            return
+        }
+        started = true
         guard !demo else { return }
         do { library = try await store.load() }
         catch { libraryReadable = false; message = L10n.tr("Could not read the Switch library. Settings changed in this session will not be saved.") }
@@ -263,6 +325,7 @@ final class AppState {
                 do { try await Task.sleep(nanoseconds: 60_000_000_000) } catch { return }
                 guard let self else { return }
                 self.sampleDesktopActivity()
+                self.updateSwitchReminder()
                 guard self.quotaSchedule.activity.running, self.desktopAwake else { continue }
                 await self.refresh()
                 await self.sampleSessionActivity()
@@ -273,6 +336,8 @@ final class AppState {
                 }
             }
         }
+        servicesLoaded = true
+        await openPendingNotification()
     }
     /// Statistics only show on the Usage page; while it is off screen the cache is kept current far less often.
     private static let backgroundScanInterval: TimeInterval = 600
@@ -287,7 +352,7 @@ final class AppState {
     func refresh(triggerQuotaEvents: Bool = true) async -> Bool {
         guard startupAccess.isReady, !refreshing, !working else { return false }
         if demo { return false }
-        refreshing = true; defer { refreshing = false }
+        refreshing = true; defer { refreshing = false; updateSwitchReminder() }
         var scanned = false
         do {
             let verified = Dictionary(library.accounts.compactMap { account in
@@ -314,8 +379,9 @@ final class AppState {
                 let id = updated[index].id
                 if updated[index].hasSnapshot, id != activeID, updated[index].email == nil || updated[index].planObservedAt == nil,
                    profileLookups.insert(id).inserted, let profile = await engine.savedProfile(accountID: id) {
-                    updated[index].email = updated[index].email ?? profile.emails[id]
-                    if let org = updated[index].organizationID, let seen = profile.observedAt[org] {
+                    updated[index].observeEmail(profile.emails[id], fillOnly: true)
+                    if updated[index].plan == nil, updated[index].planObservedAt == nil,
+                       let org = updated[index].organizationID, let seen = profile.observedAt[org] {
                         updated[index].observePlan(profile.plans[org], organizationID: org, at: seen)
                     }
                 }
@@ -323,7 +389,7 @@ final class AppState {
             // Cookie absence is local evidence, not proof that a saved login was revoked by the server.
             if let id = result.lastKnownAccountID, let index = updated.firstIndex(where: { $0.id == id }) {
                 if result.signedIn == false {
-                    usageNotices[id] = L10n.tr("Verify the login in Claude. Switch will resume when updated credentials are available.")
+                    usageNotices[id] = L10n.tr("Please check that you are signed in to this account in Claude, then refresh quota.")
                     recoveryAccounts.insert(id)
                 }
                 if result.signedIn == true, updated[index].snapshotFingerprint != (try? await engine.currentLoginFingerprint()) {
@@ -342,7 +408,9 @@ final class AppState {
         } catch { message = display(error) }
         await saveCurrentLogin(triggerQuotaEvents: triggerQuotaEvents)
         synchronizeQuotaSchedule()
-        if scanned, switchLoginWatch == nil, claudeSignedOut || activeUnsaved { watchForNewLogin() }
+        let discoveringFollowTarget = library.newAccountFollowUp.map { $0.targetAccountID == nil } ?? false
+        if scanned, switchLoginWatch == nil, claudeSignedOut || activeUnsaved || discoveringFollowTarget { watchForNewLogin() }
+        if scanned { await advanceNewAccountFollowUp() }
         return scanned
     }
     /// Keeps the signed-in account's saved login current. Only Switch's own vault is written.
@@ -416,6 +484,7 @@ final class AppState {
         persist()
     }
     func persist() {
+        updateSwitchReminder()
         guard startupAccess.isReady, !demo, libraryReadable else { return }
         let state = library
         Task { do { try await store.save(state) } catch { message = L10n.tr("Could not save settings.") } }
@@ -426,6 +495,7 @@ final class AppState {
     }
     private func synchronizeQuotaSchedule() {
         quotaSchedule.preferences = library.preferences.quotaRefresh.normalized
+        quotaRefreshPause = quotaSchedule.pauseReason
         quotaSchedule.synchronize(accounts: accounts.filter { $0.loginInvalidAt == nil }, snapshots: library.usage, now: Date())
         quotaSchedule.selectCurrent(activeID, now: Date())
         if quotaSchedule.accountsAwaitingAccess.isEmpty { quotaAccessRequired = false }
@@ -441,6 +511,7 @@ final class AppState {
     private func sampleDesktopActivity() {
         guard !demo else { return }
         quotaSchedule.activity = DesktopUsageObserver.activity(online: networkAvailable, awake: desktopAwake)
+        quotaRefreshPause = quotaSchedule.pauseReason
         updateQuotaRefreshPause()
         if !quotaSchedule.activity.permitsAutomaticReads || !library.preferences.quotaRefresh.enabled, let token = automaticReadToken {
             Task {
@@ -465,15 +536,17 @@ final class AppState {
     private func observeDesktop(_ event: DesktopUsageObserver.Event) async {
         guard !demo else { return }
         switch event {
-        case .sleep: desktopAwake = false; clearQuotaAccess()
-        case .wake: desktopAwake = true
+        case .sleep: desktopAwake = false; clearKeychainAccess()
+        case .wake:
+            desktopAwake = true
+            await startupAccess.recheck(using: authorizeKeychainItem, start: { await self.startAuthorizedServices() })
         case .networkRestored: networkAvailable = true
         case .networkUnavailable: networkAvailable = false
         default: break
         }
         sampleDesktopActivity()
         if event == .wake || event == .launched { loginDiscovery?.resume() }
-        guard !working, quotaSchedule.activity.running, desktopAwake else { return }
+        guard startupAccess.isReady, !working, quotaSchedule.activity.running, desktopAwake else { return }
         if event != .networkUnavailable {
             let signature = await loginSignature()
             if signature != observedLoginSignature || event == .launched {
@@ -500,7 +573,7 @@ final class AppState {
         await refresh(triggerQuotaEvents: false)
         if page == .usage { await scanTokens() }
     }
-    func clearQuotaAccess() { usageClient.clearQuotaAccess() }
+    func clearKeychainAccess() { usageClient.clearQuotaAccess(); vault.clearAccess() }
     /// One explicit approval retries all accounts held for the same shared permission.
     func authorizeQuotaAccess() async {
         guard startupAccess.isReady, !demo, !working, !authorizingQuotaAccess, usageRefreshingAccountID == nil else { return }
@@ -573,6 +646,7 @@ final class AppState {
             if manual { quotaRefreshQueue.completedManualRead(accountID: accountID, succeeded: succeeded) }
             resumeQuotaAfterAccess()
             usageRefreshingAccountID = nil
+            updateSwitchReminder()
         }
         if manual {
             dismissUsageError(accountID); usageNotices[accountID] = nil
@@ -587,10 +661,13 @@ final class AppState {
         do {
             guard !working, saved || activeID == accountID else { throw UsageNotReady(message: SwitchError.changed.localizedDescription) }
             let snapshot: UsageSnapshot
+            let profileRefreshID = manual ? UUID() : automatic?.profileRefreshID
             do {
-                if saved { snapshot = try await usageClient.fetchSaved(accountID: accountID, allowKeychainPrompt: manual && allowKeychainPrompt) }
+                if saved { snapshot = try await usageClient.fetchSaved(accountID: accountID, allowKeychainPrompt: manual && allowKeychainPrompt,
+                                                                      profileRefreshID: profileRefreshID) }
                 else { snapshot = try await usageClient.fetchCurrent(accountID: accountID, allowKeychainPrompt: manual && allowKeychainPrompt,
-                                                                    onlyIfTokenChanged: automatic?.reason == .credentialsChanged) }
+                                                                    onlyIfTokenChanged: automatic?.reason == .credentialsChanged,
+                                                                    profileRefreshID: profileRefreshID) }
             } catch {
                 await acceptVerifiedProfile(accountID: accountID, saved: saved)
                 throw error
@@ -618,7 +695,7 @@ final class AppState {
         } catch SwitchError.changed {
             recoveryAccounts.insert(accountID)
             dismissUsageError(accountID)
-            usageNotices[accountID] = L10n.tr("Waiting for Claude to publish its login credentials.")
+            usageNotices[accountID] = L10n.tr("Please check that you are signed in to this account in Claude, then refresh quota.")
             if Date() >= deadline { quotaSchedule.suspend(accountID) }
             return Date() < deadline ? Date().addingTimeInterval(10) : nil
         } catch let notReady as UsageNotReady {
@@ -633,7 +710,7 @@ final class AppState {
             return manual ? nil : cooling.until
         } catch let failure as UsageFailure {
             usageCooldowns[accountID] = nil
-            if failure == .keychain {
+            if failure == .keychain && !usageClient.quotaAccessAvailable {
                 quotaSchedule.suspend(accountID, awaitingAccess: true)
                 quotaAccessRequired = true
                 usageErrors[accountID] = nil; usageNotices[accountID] = nil
@@ -664,15 +741,16 @@ final class AppState {
               let index = library.accounts.firstIndex(where: { $0.id == accountID && $0.hasSnapshot }),
               let organization = identity?.organizationID else { return }
         let oldPlan = library.accounts[index].plan, oldOrganization = library.accounts[index].organizationID
-        library.accounts[index].email = identity?.email ?? library.accounts[index].email
-        library.accounts[index].confirmOrganization(organization, at: Date())
         if let verified, verified.accountID == accountID, verified.organizationID == organization {
+            library.accounts[index].observeEmail(identity?.email, verifiedAt: verified.observedAt)
+            library.accounts[index].confirmOrganization(organization, at: verified.observedAt)
             library.accounts[index].observePlan(verified.plan, organizationID: organization, at: verified.observedAt, verified: true)
         }
         if oldPlan != library.accounts[index].plan || oldOrganization != organization {
             library.usage[accountID] = nil; resetChecks[accountID] = nil
         }
         persist()
+        await advanceNewAccountFollowUp()
     }
     /// The problem with this account's last live read, while it still applies.
     func usageError(for accountID: String) -> String? {
@@ -734,33 +812,38 @@ final class AppState {
         let following = SessionLibrary.followedSessions(inventory?.conversations ?? [], rules: library.follows,
             activeAccountID: activeID, targetAccountID: target.id)
         let candidates = explicitSessions ?? (kind == .switchAccount ? following : [])
+        message = nil
+        do { pending = try await makeOperation(kind, target: target, sessions: candidates) }
+        catch { message = display(error) }
+    }
+    func makeOperation(_ kind: OperationKind, target: Account, sessions candidates: [Conversation]) async throws -> PendingOperation {
         var seen = Set<String>()
         let transfers = candidates.sorted {
             if ($0.accountID == activeID) != ($1.accountID == activeID) { return $0.accountID == activeID }
             return $0.modifiedAt > $1.modifiedAt
         }.filter { $0.accountID != target.id && !$0.archived && seen.insert($0.sessionID).inserted }
         let modes = Dictionary(uniqueKeysWithValues: transfers.map { ($0.id, transferMode($0)) })
-        message = nil
-        do {
-            var plan: OperationPlan
-            if demo {
-                plan = OperationPlan(kind: kind, sourceAccountID: activeID, targetAccountID: target.id, configDigest: "demo",
-                    steps: kind == .switchAccount
-                        ? [L10n.tr("Quit Claude normally"), L10n.tr("Replace the target login state"), L10n.tr("Bring followed conversations along, replacing older versions in the target account"), L10n.tr("Reopen Claude")]
-                        : [L10n.tr("Quit Claude normally"), L10n.tr("Write the conversations to the target account, replacing older versions"), L10n.tr("Remove or keep the conversations in the original account as selected"), L10n.tr("Reopen Claude")],
-                    conversationIDs: transfers.map(\.id), warnings: [L10n.tr("This is an interface demo. No accounts will be changed.")])
-                plan.transferModes = modes; plan.targetOrganizationID = target.organizationID
-            } else { plan = try await engine.prepare(kind: kind, target: target, sessions: transfers, transferModes: modes) }
-            pending = PendingOperation(plan: plan, target: target, sessions: transfers)
-        } catch { message = display(error) }
+        var plan: OperationPlan
+        if demo {
+            plan = OperationPlan(kind: kind, sourceAccountID: activeID, targetAccountID: target.id, configDigest: "demo",
+                steps: kind == .switchAccount
+                    ? [L10n.tr("Quit Claude normally"), L10n.tr("Switch to the selected account"), L10n.tr("Bring followed conversations along, replacing matching copies in the target account"), L10n.tr("Reopen Claude")]
+                    : [L10n.tr("Quit Claude normally"), L10n.tr("Write the conversations to the target account, replacing matching copies"), L10n.tr("Remove or keep the conversations in the original account as selected"), L10n.tr("Reopen Claude")],
+                conversationIDs: transfers.map(\.id), warnings: [L10n.tr("This is an interface demo. No accounts will be changed.")])
+            plan.transferModes = modes; plan.targetOrganizationID = target.organizationID
+        } else { plan = try await engine.prepare(kind: kind, target: target, sessions: transfers, transferModes: modes) }
+        return PendingOperation(plan: plan, target: target, sessions: transfers)
     }
     func executePending() async {
         guard canExecute, let operation = pending else { return }
         working = true
         var signedIn: String?
         do {
-            message = try await engine.execute(operation.plan, confirmedPlanID: operation.id,
-                                               target: operation.target, sessions: operation.sessions)
+            let result = try await engine.execute(operation.plan, confirmedPlanID: operation.id,
+                                                  target: operation.target, sessions: operation.sessions)
+            showOperationFeedback(OperationFeedback.completed(plan: operation.plan, target: identity(operation.target),
+                                                              quota: quotaRows(for: operation.target.id), result: result))
+            completeNewAccountFollowUp(operation)
             // Follow the logical session after either transfer. A move changes its index owner;
             // the stable session ID also survives a restart between commit and this preference save.
             for session in operation.sessions {
@@ -782,7 +865,9 @@ final class AppState {
             }
             if [.capture, .switchAccount].contains(operation.plan.kind) { signedIn = operation.target.id }
             persist()
-        } catch { message = display(error) }
+        } catch {
+            showOperationFeedback(OperationFeedback.failed(kind: operation.plan.kind, target: identity(operation.target), reason: display(error)))
+        }
         if let signedIn {
             if operation.plan.kind == .switchAccount {
                 quotaRefreshQueue.switched(from: operation.plan.sourceAccountID, to: signedIn)
@@ -824,6 +909,7 @@ final class AppState {
         message = nil
         guard let activeID, let account = knownAccounts.first(where: { $0.id == activeID }) else {
             // Claude already shows its sign-in screen; there is no login to move out.
+            beginNewAccountFollowUp(sourceAccountID: nil)
             showAddAccount = false
             if let app = environment.application {
                 _ = try? await NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
@@ -834,13 +920,15 @@ final class AppState {
         working = true
         do {
             let plan = try await engine.prepare(kind: .signOut, target: account)
-            message = try await engine.execute(plan, confirmedPlanID: plan.id, target: account, sessions: [])
+            let result = try await engine.execute(plan, confirmedPlanID: plan.id, target: account, sessions: [])
+            showOperationFeedback(OperationFeedback.completed(plan: plan, target: identity(account), quota: [], result: result))
+            beginNewAccountFollowUp(sourceAccountID: account.id)
             showAddAccount = false; working = false
             WorkbenchLifecycle.shared.closeWorkbench()
             await refresh()
             watchForNewLogin()
             return
-        } catch { message = display(error) }
+        } catch { showOperationFeedback(OperationFeedback.failed(kind: .signOut, target: identity(account), reason: display(error))) }
         working = false
         await refresh()
     }
@@ -869,6 +957,7 @@ final class AppState {
                 if discovery.completed, let account = self.activeAccount {
                     self.awaitingNewLogin = false; self.loginDiscovery = nil; self.loginWatch = nil
                     self.message = L10n.tr("Saved {0}. You can now switch with one click.", L10n.argument(self.identity(account)))
+                    await self.acceptNewAccountLogin(account)
                     return
                 }
                 do { try await Task.sleep(nanoseconds: UInt64(discovery.pollingInterval * 1_000_000_000)) } catch { return }
@@ -900,7 +989,7 @@ final class AppState {
                 guard let self else { return }
                 await self.refreshOnLoginChange(since: &seen)
                 if self.inventory?.signedIn == false {
-                    self.usageNotices[accountID] = L10n.tr("Verify the login in Claude. Switch will resume when updated credentials are available.")
+                    self.usageNotices[accountID] = L10n.tr("Please check that you are signed in to this account in Claude, then refresh quota.")
                     self.recoveryAccounts.insert(accountID)
                 }
             }
@@ -912,11 +1001,27 @@ final class AppState {
     func recover(_ id: String) async {
         guard canExecute else { return }
         working = true
-        do { try await engine.recover(transactionID: id); message = L10n.tr("The unfinished transaction was recovered. Open Claude manually.") }
+        do { try await engine.recover(transactionID: id); message = L10n.tr("Recovery complete. Open Claude to check.") }
         catch { message = display(error) }
         working = false; await refresh()
     }
-    private func display(_ error: Error) -> String {
+    private func scheduleMessageDismissal() {
+        messageDismissal?.cancel()
+        messageDismissal = nil
+    }
+    func showOperationFeedback(_ feedback: OperationFeedback) {
+        operationFeedback = feedback
+        message = feedback.text
+        Task { await notifications.showOperationResult(feedback) }
+        guard !feedback.requiresAttention else { return }
+        messageDismissal = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            guard !Task.isCancelled else { return }
+            self?.message = nil
+        }
+    }
+
+    func display(_ error: Error) -> String {
         (error as? SwitchError)?.localizedDescription ?? L10n.tr("Could not read: {0}", L10n.argument(error.localizedDescription))
     }
 }

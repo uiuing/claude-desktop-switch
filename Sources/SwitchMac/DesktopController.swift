@@ -21,10 +21,10 @@ enum ProcessTable {
 
     static func snapshot() throws -> [ProcessEntry] {
         let estimate = Int(proc_listallpids(nil, 0))
-        guard estimate > 0 else { throw SwitchError.blocked(L10n.tr("Could not verify Claude's worker processes. Stopped.")) }
+        guard estimate > 0 else { throw SwitchError.blocked(L10n.tr("Could not confirm that Claude is closed. Close Claude and try again.")) }
         var pids = [pid_t](repeating: 0, count: estimate + 256)
         let count = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size)))
-        guard count > 0 else { throw SwitchError.blocked(L10n.tr("Could not verify Claude's worker processes. Stopped.")) }
+        guard count > 0 else { throw SwitchError.blocked(L10n.tr("Could not confirm that Claude is closed. Close Claude and try again.")) }
         var path = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
         return pids.prefix(min(count, pids.count)).compactMap { pid in
             var info = proc_bsdinfo()

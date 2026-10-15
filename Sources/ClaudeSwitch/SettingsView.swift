@@ -9,11 +9,11 @@ struct SettingsView: View {
     @AppStorage(Format.showResetTimeKey) private var showResetTime = true
     @State private var recovery: String?
     @AppStorage(WorkbenchLifecycle.showInMenuBarKey) private var showInMenuBar = true
-    private var version: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-    }
     var body: some View {
         Form {
+            Section(L10n.tr("Updates")) {
+                UpdateSettingsView(updates: state.updates)
+            }
             Section(L10n.tr("Appearance")) {
                 Picker(L10n.tr("Theme"), selection: $theme) {
                     ForEach(AppTheme.allCases) { theme in
@@ -56,6 +56,36 @@ struct SettingsView: View {
                 Text(L10n.tr("Automatic refresh pauses when Claude quits. Accounts refresh one at a time; server cooldowns always apply."))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
+            Section(L10n.tr("Notifications")) {
+                Toggle(L10n.tr("macOS notifications"), isOn: Binding(get: { state.notifications.enabled }, set: { enabled in
+                    Task {
+                        if enabled { await state.enableNotifications() }
+                        else { await state.notifications.setEnabled(false) }
+                    }
+                })).disabled(state.notifications.requesting || state.demo || state.notifications.access == .unavailable)
+                Toggle(L10n.tr("Operation results"), isOn: Bindable(state.notifications).completions)
+                    .disabled(!state.notifications.enabled)
+                Toggle(L10n.tr("Switch recommendations"), isOn: Binding(get: { state.notifications.recommendations }, set: { enabled in
+                    state.notifications.recommendations = enabled
+                    state.updateSwitchReminder(notify: false)
+                    if enabled, let reminder = state.switchReminder, reminder.needsReview {
+                        Task { await state.notifications.showRecommendation(reminder) }
+                    }
+                }))
+                    .disabled(!state.notifications.enabled)
+                Text(L10n.tr("Remind once when quota is low, and again if it runs out. Click a notification or the marked menu bar icon to review a switch. Switching always requires confirmation."))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(L10n.tr("Menu bar and in-app reminders remain available without notification permission."))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if state.notifications.access == .denied {
+                    Text(L10n.tr("Notifications are blocked in macOS Settings.")).font(.caption).foregroundStyle(.secondary)
+                    Button(L10n.tr("Open Notification Settings")) { state.notifications.openSettings() }
+                }
+                if state.notifications.failed {
+                    Text(L10n.tr("Could not enable or deliver notifications. Menu bar reminders are still available."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
             Section(L10n.tr("Menu bar")) {
                 Toggle(L10n.tr("Show in menu bar"), isOn: $showInMenuBar)
                 Toggle(L10n.tr("Mask email addresses (keep first and last characters)"), isOn: preference(\.maskEmail))
@@ -70,7 +100,7 @@ struct SettingsView: View {
                 }
             }
             Section(L10n.tr("About")) {
-                LabeledContent(L10n.tr("Version"), value: version)
+                Link(L10n.tr("Report an issue"), destination: ProjectLink.issues)
                 LabeledContent(L10n.tr("Source code")) {
                     Link(destination: ProjectLink.repository) {
                         HStack(spacing: 4) {
@@ -82,12 +112,14 @@ struct SettingsView: View {
                 LabeledContent(L10n.tr("Data")) {
                     Button(L10n.tr("Show in Finder")) { NSWorkspace.shared.activateFileViewerSelecting([state.environment.root]) }
                 }
-                Text(L10n.tr("Claude Switch doesn't have remote or automatic updates yet. Follow the project on GitHub for new releases."))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
         .navigationTitle(L10n.tr("Settings"))
+        .task { await state.notifications.refreshAccess() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await state.notifications.refreshAccess() }
+        }
         .alert(L10n.tr("Recover this unfinished operation?"), isPresented: Binding(get: { recovery != nil }, set: { if !$0 { recovery = nil } })) {
             Button(L10n.tr("Cancel"), role: .cancel) { recovery = nil }
             Button(L10n.tr("Recover")) { if let id = recovery { Task { await state.recover(id) } }; recovery = nil }

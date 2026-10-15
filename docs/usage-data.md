@@ -17,23 +17,67 @@ Switch retains its own last successful online response for offline display. Read
 
 ### What is shown
 
-Account plan badges distinguish **Free** from **Plan unknown**. Each already permitted quota refresh first rechecks the profile, even if the access token has not changed. A profile whose account and organization match is applied even if the following quota query fails. A confirmed plan change clears quota from the previous plan; an ordinary query failure preserves it when the plan has not changed. Missing plan metadata clears an outdated label to unknown, while offline and authorization failures alone never imply Free or expired membership. Local cache timestamps cannot overwrite a server-confirmed plan. Membership end dates and renewal dates are not read or inferred.
+Account plan badges distinguish **Free** from **Plan unknown**. A matching online profile is authoritative for the email, organization and plan, even if the following quota query fails. Local Desktop scans update emails and plans that have not been confirmed online, and fill missing email information. Desktop's email cache takes precedence over Claude Code's fallback; saved snapshots and Code only fill gaps. Local files never overwrite an online-confirmed email or plan, regardless of file timestamps. Unchanged local plan values do not advance their observation time. A confirmed plan change clears quota from the previous plan; an ordinary query failure preserves it when the plan has not changed. Missing online plan metadata clears an outdated label to unknown, while offline and authorization failures alone never imply Free or expired membership. Membership end dates and renewal dates are not read or inferred.
 
 Every account always shows a session and a weekly row, even when one is unknown. Model-specific weekly limits are listed in addition when they exist.
 
+Account cards keep vertical spacing compact while retaining full-size text, controls and reset times. The list scrolls when saved accounts exceed the available window height.
+
 - Unknown values are shown as `—` with an empty track. `0%` is only shown when a window is truly used up.
 - Remaining quota is `100 − utilization`. Quota is never decreased over time by guesswork.
-- When a reset time passes, the row shows **Awaiting confirmation** and an unknown percentage. The original measurement and reset timestamp remain intact; no 100% value or future weekly reset is invented. A fresh server reading of zero usage with no session reset can show "Starts on next use".
-- Every window keeps its own source and observation time. Display freshness follows the refresh interval plus a one-minute allowance, with a ten-minute minimum. Switch suggestions still require measurements no older than ten minutes, without estimates or pending resets. A failed query preserves the previous measurement and its timestamp.
+- Cached readings keep their normal percentage, progress bar and reset display even when stale. The account's update time and the tooltip identify the last successful measurement; freshness never hides an existing value. A confirmed zero-usage session with an explicitly absent reset keeps "Starts on next use" when cached.
+- When a reset time passes, the row keeps the previous percentage and reset timestamp with an **Awaiting sync** qualifier. Relative-time mode shows **Reset passed · Awaiting sync**. No 100% value or future weekly reset is invented. A successful server response replaces the cached reading and may confirm that the next session starts on next use.
+- Cards, menu rows, status items, timestamps and ranking all require the reading to match the account and its known organization. A mismatched or missing organization yields unknown quota.
+- The account page and menu show one shared notice when automatic refresh is disabled or paused because Claude is closed, the Mac is asleep or connectivity is unavailable. Cached values and account metadata stay visible during the pause and while waiting for resumed reads. Opening Claude resumes eligible reads, prioritizing the current account and preserving server cooldowns. Manual refresh remains a separate action; opening a view or relaunching Switch does not advance cached timestamps.
+- Every window keeps its own source and observation time. Freshness classification follows the refresh interval plus a one-minute allowance, with a ten-minute minimum, independently of display. Switch suggestions still require measurements no older than ten minutes, without estimates or pending resets. A failed query preserves the previous measurement and its timestamp.
 
-### Suggested account
+### Account order and switch suggestions
 
-When the signed-in account's session limit drops to 20% or less (or its weekly limit to 10% or less) and will not reset within the next half hour (an hour for the weekly limit), the menu bar highlights the saved account with the most session quota left, provided it has clearly more left and at least 20% of its weekly limit. Without a shortage, it may instead point to an account whose unused quota is about to reset. The suggestion is only a hint; nothing switches on its own.
+`AccountRanking` supplies the account page, menu, quick search and account selectors. The current account is pinned first only for display; its score is evaluated normally. Fresh usable accounts come first, followed by readings needing confirmation, confirmed exhausted accounts and unavailable logins. A refresh error or HTTP 429 is not evidence that subscription quota is exhausted.
+
+Within the same availability group, accounts with known session multipliers use this **ranking index**:
+
+```text
+base = session multiplier x session remaining fraction x min(1, weekly remaining percent / 20)
+score = base x (1 + reset bonus)
+```
+
+Pro uses 1, Max 5x uses 5 and Max 20x uses 20. These are nominal per-session multipliers, not weekly-capacity multipliers ([Max plan](https://support.claude.com/en/articles/11049741-what-is-the-max-plan)). Weekly quota below 20% discounts the base index; either window at zero prevents a usable ranking. This reserve is a conservative policy parameter, not an estimate of tokens, time or absolute weekly capacity. Equal final indices favor more weekly headroom, then stable account IDs.
+
+Reset time participates in the main score across the entire session (five-hour) and weekly (seven-day) periods:
+
+```text
+urgency = max(0, 1 - time until reset / window length)
+opportunity = clamp((time until reset - 5 minutes) / 15 minutes, 0, 1)
+window priority = remaining fraction x urgency x opportunity
+reset bonus = 10% x max(session priority, weekly priority)
+```
+
+Only fresh usable accounts with confirmed reset times receive this bonus. An unknown, estimated or elapsed reset contributes nothing; stale readings and exhausted or unavailable accounts receive no bonus. Five minutes are reserved for switching. With less than another fifteen minutes available, the opportunity factor fades to zero rather than rewarding a deadline that cannot usefully be reached. These are bounded policy parameters, not measurements of switching time or predicted work. The two window priorities are not added because one request consumes both limits. The bonus is at most 10%: it can reorder close accounts, but cannot overturn a base-score advantage greater than 10% within the same ranking group.
+
+For example, with Pro accounts at 80% weekly remaining and six days until weekly reset, 80% session remaining with a reset in thirty minutes scores 0.8576; 82% remaining with a reset in four hours scores 0.833448. The sooner-resetting account ranks first. At 90% remaining and a reset in four hours, the score is 0.9162 and the larger reserve still wins. The current account receives the same reset calculation before display pinning.
+
+Free, unknown Max tiers, Team without a confirmed seat type, Enterprise and unknown plans have no assumed multiplier. They follow mapped plans within their availability group and are ordered relative to each other using the same reserve policy. They can still be manually selected. No local token totals or historical capacity fitting enter this first implementation. Old online readings retain a last-recorded display order, but cannot supply a recommendation. Elapsed resets remain unknown until confirmed.
+
+The best backup is the first fresh usable non-current account in this ranking. Suggestions examine that one backup, never choose a different account using separate expiry or percentage rules:
+
+- If the current account has a freshly confirmed exhausted window, a fresh usable backup can be suggested immediately, even when a reset is close or its plan multiplier is unknown.
+- Before exhaustion, both plans need known multipliers. The target must retain at least 20% weekly quota and improve the index by at least both 25% and 0.2. Different plan multipliers additionally require that the target's weekly percentage is no lower than the current account's; weekly capacities have no verified conversion.
+- A session shortage of 20% or less triggers a suggestion only if it will not reset within half an hour. A weekly shortage of 10% or less similarly waits when its reset is within an hour. This waiting rule never suppresses a confirmed exhaustion.
+- An expiry suggestion requires the same known multiplier, a final score no lower than the current account's, and no reduction in either remaining percentage. A session reset must be within an hour, or a weekly reset within a day, with at least five minutes left. The current account must have a confirmed later reset for that window, or an untouched session that starts on next use; an unknown or estimated current reset cannot establish an expiry advantage. A reset bonus may change the best backup without making it worth interrupting a healthy current account. No work rate is inferred.
+
+Every relevant percentage must be an online measurement no older than ten minutes, with a non-future timestamp and no pending reset. Account and organization ownership must match. An unavailable or uncertain best backup does not silently cause the advisor to pick a lower-ranked account with a different scoring rule.
+
+This is general account advice using the session and all-model weekly windows. Model-specific windows are still shown separately; the app does not infer the current model from historical sessions or claim that every model is usable. Context-specific ranking and learned capacity conversion are deferred.
+
+Open menus freeze row positions and the suggested account identity. Readings continue updating; a withdrawn or changed suggestion disappears until the next opening. Newly saved accounts append, removed accounts disappear, and clicks remain bound to account IDs. The suggestion is only a hint; nothing switches on its own. Ranking adds no network requests or credential access.
 - Online readings include the account’s server totals, including other devices. Saved accounts retain their last successful reading when their credentials expire.
 
 ### Refreshing online
 
 The refresh button on **each saved account’s card** reads that account's quota. The current account always comes from Desktop's published credentials, with no fallback to its saved snapshot. Existing manual reads of other saved logins remain available. After a successful or observed account switch the incoming account is prioritized, then the outgoing saved login is read once. A newly saved login is also read once; eligible saved accounts also use the periodic schedule below.
+
+Profile GETs have exactly three triggers: the first use of an access token for its account and organization, the incoming and outgoing reads after a switch, and the refresh button on an individual account's card. Each triggered read gets the profile before usage; overlapping triggers share one profile GET. Switch retries reuse a successfully read profile for that switch event, while a new manual refresh requests it again. Ordinary automatic reads reuse the token's verified identity until expiry, without a timed profile refresh. Verification is held only in memory, so the first read after an app restart verifies again. Cached verification never republishes old email or plan information. Email and plan discovery continues through the existing local scan; no additional timer or scheduler is added.
 
 The current account additionally gets a bounded read on:
 
@@ -68,7 +112,7 @@ Claude exit, system sleep or loss of connectivity pauses automatic queries and c
 An online refresh:
 
 - uses only `GET https://api.anthropic.com/api/oauth/profile` and `GET /api/oauth/usage?skip_spend=1`; manual and automatic quota reads skip spending statistics, which the quota display does not use;
-- verifies the account and organization with a fresh profile response before each allowed usage read, so a plan change does not wait for token renewal;
+- verifies the account and organization on the three profile triggers above; other reads directly request usage with the same valid, verified token. The usage request uses its bearer credential independently; the profile response is an identity check, not a separate authorization grant;
 - reads the verified account's email from `account.email`, with `email_address` and `emailAddress` as compatibility fields. A verified profile fills in missing emails for new and existing saved accounts even if the following quota read fails. An unavailable email remains unknown; addresses from other objects are never borrowed;
 - reads the encrypted cache with **Claude Safe Storage**. It matches the supported client ID, exact audience, required and allowed scopes, account binding and a single organization. Conflicting equally suitable credentials stop the read; the latest expiry does not decide ownership;
 - checks the server-provided `expiresAt` rather than assuming an eight-hour token lifetime. Expired and soon-expiring tokens wait for Claude; malformed metadata, missing scope, Keychain errors and authorization failures have separate messages;
@@ -80,11 +124,11 @@ An online refresh:
 
 A saved access token that has expired retains its last reading and asks the user to switch to the account so Claude can update the login. Non-current accounts are not actively renewed. Cancellation of a switch does not enqueue a switch refresh; an in-flight quota read is canceled when a file operation starts, and changed credentials discard the response.
 
-**Keychain access.** Every normal launch first checks Claude Safe Storage access silently, before loading the library or starting background tasks. If access is unavailable, both app surfaces show an authorization screen; canceling keeps the app blocked with a retry option. This check tests permission only, without reading tokens or querying quota. Demo mode skips it. Only an explicit authorization action or manual quota refresh may request macOS approval. One shared notice covers accounts waiting for access. The authorized Safe Storage key is held only in memory, shared across accounts, and cleared on sleep, session deactivation or exit. A decryption failure discards it and permits one silent reread. Successful access resumes only permission-blocked accounts, preserving credential blocks and server cooldowns; the authorization action retries them 15 seconds apart while Claude is running. Background recovery stays silent. Ad-hoc builds can require approval again after an update.
+**Keychain access.** Every normal launch first checks Claude Safe Storage and Switch's own `io.github.uiuing.claude-desktop-switch.local-vault` access silently, before loading the library or starting background tasks. These are separate permissions: the former opens quota credentials; the latter protects saved logins and recovery copies. Both must be available. The startup page also introduces notifications with an enabled-by-default choice before requesting the optional system permission. If access is unavailable, both app surfaces show an authorization screen; canceling keeps the app blocked with a retry option. This check tests permission only, without reading tokens or querying quota. Demo mode skips it. Only an explicit authorization action or manual quota refresh may request macOS approval. One shared notice covers accounts waiting for access. Both authorized keys are held only in memory, shared across their operations, and cleared on sleep, session deactivation or exit. Wake silently rechecks both. `KeychainInteraction` serializes all reads and creation with the process-wide legacy interaction guard; only an explicitly authorized action can enable a system prompt. Vault encryption and decryption reuse its cached key, rather than querying Keychain for every snapshot or recovery copy. A decryption failure keeps the existing key while checking for a replacement; only a successful Keychain read replaces it. A key obtained during that request is not immediately read again. Concurrent rechecks share their result, and a bounded in-memory set remembers credential fingerprints that still fail with the freshly read key, until the key changes or is cleared. A failed replacement read affects only that account while the existing key remains available; manual refresh can request the needed authorization, while automatic rechecks stay silent. Sleep or session deactivation cancels a late approval result instead of reporting access that was not retained. Successful access resumes only permission-blocked accounts, preserving credential blocks and server cooldowns; the authorization action retries them 15 seconds apart while Claude is running. Background recovery stays silent. Ad-hoc builds can require approval again after an update.
 
 **Retry state** is persisted in Switch's own private directory, using an exclusive lock to serialize reservations across app instances:
 
-- one lookup cycle per account and organization per 60 seconds; an uncached cycle may contain one profile GET and one usage GET;
+- one lookup cycle per account and organization per 60 seconds; a cycle contains one usage GET, preceded by one profile GET when required by a profile trigger;
 - `429`: honor the complete `Retry-After` duration or HTTP date, with a five-minute fallback. A new token or app restart cannot shorten it;
 - `401`: wait for a different actual access token; `403` is an authorization/scope failure, not a rate-limit response, and also stops automatic reuse of that token;
 - temporary network and server failures: exponential delay from one minute to one hour, respecting longer server delays. Automatic retry bursts are bounded by readiness checks; later recovery is event-driven;

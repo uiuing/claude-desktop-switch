@@ -32,5 +32,5 @@ Requires macOS 14 or later, Apple silicon or Intel. To verify the download: \`sh
 
 ### Updating
 
-Claude Switch doesn't have remote or automatic updates yet. Watch this repository (**Watch → Custom → Releases**) to hear about new versions. Quit Claude Switch before replacing it in Applications; saved accounts stay on your Mac. On launch, choose **Allow access** if shown, then approve access to **Claude Safe Storage** in the macOS Keychain dialog. macOS may also ask for access to Claude Switch's own vault key after an update. Choose **Always Allow** for these items.
+Claude Switch checks for new versions at most once per day while open. You can check manually or disable automatic checks in **Settings → Updates**. Downloading and installing remain manual. Quit Claude Switch before replacing it in Applications. On launch, choose **Allow access** if shown, then approve the macOS dialogs for **Claude Safe Storage** and **Claude Switch · Saved Logins**. Choose **Always Allow** to remember access for this app build.
 EOF

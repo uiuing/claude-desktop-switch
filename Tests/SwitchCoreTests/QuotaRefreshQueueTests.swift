@@ -91,6 +91,45 @@ final class QuotaRefreshQueueTests: XCTestCase {
         queue.isPaused = true
     }
 
+    func testSwitchProfileRefreshSurvivesCredentialCoalescingAndUsageRetry() async {
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        var requests: [QuotaRefreshQueue.Request] = []
+        let queue = QuotaRefreshQueue(minimumSpacing: 0, now: { now }) { request in
+            requests.append(request)
+            return requests.count == 1 ? now.addingTimeInterval(60) : nil
+        }
+        queue.isPaused = true
+        queue.observedAccount(accountA)
+        queue.observedCredential(accountID: accountB, signature: "first")
+        queue.switched(from: accountA, to: accountB)
+        queue.observedCredential(accountID: accountB, signature: "renewed")
+        queue.enqueuePeriodic(accountB)
+        queue.isPaused = false
+        await drainTasks()
+        XCTAssertEqual(requests.map(\.accountID), [accountB, accountA])
+        XCTAssertNotNil(requests[0].profileRefreshID)
+        XCTAssertNotNil(requests[1].profileRefreshID)
+        XCTAssertNotEqual(requests[0].profileRefreshID, requests[1].profileRefreshID)
+        queue.isPaused = true
+        now.addTimeInterval(60); queue.isPaused = false
+        await drainTasks()
+        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(requests[2].profileRefreshID, requests[0].profileRefreshID)
+        queue.isPaused = true
+    }
+
+    func testOrdinaryRefreshEventsNeverForceProfile() async {
+        var requests: [QuotaRefreshQueue.Request] = []
+        let queue = QuotaRefreshQueue(minimumSpacing: 0) { requests.append($0); return nil }
+        for reason in [QuotaRefreshQueue.Reason.periodic, .lifecycle, .reset, .recovery, .credentialsChanged, .savedLogin] {
+            queue.enqueueCurrent(accountA, reason: reason)
+            await drainTasks()
+        }
+        XCTAssertEqual(requests.count, 6)
+        XCTAssertTrue(requests.allSatisfy { $0.profileRefreshID == nil })
+        queue.isPaused = true
+    }
+
     func testObservedSwitchRefreshesBothButInitialScanDoesNot() async {
         var reads: [String] = []
         let queue = QuotaRefreshQueue(minimumSpacing: 0) { reads.append($0.accountID); return nil }

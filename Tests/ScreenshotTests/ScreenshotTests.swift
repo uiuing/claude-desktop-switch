@@ -14,6 +14,73 @@ final class ScreenshotTests: XCTestCase {
     private static var windows: [NSWindow] = []
     private var output: URL!
 
+    func testRenderOperationFeedback() async throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render operation results.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            state.inventory?.warnings = []
+            let target = state.library.accounts[1]
+            var plan = OperationPlan(kind: .switchAccount, sourceAccountID: state.activeID,
+                                     targetAccountID: target.id, configDigest: "demo", steps: [])
+            let previousAccount = state.activeID
+            state.inventory?.activeAccountID = target.id
+            let success = OperationFeedback.completed(plan: plan, target: state.identity(target),
+                                                      quota: state.quotaRows(for: target.id), result: .init())
+            state.operationFeedback = success; state.message = success.text
+            try save(captureWorkbench(state, dark: false), "operation-switch-\(language)", maxWidth: 1600)
+            plan.kind = .migrate; plan.conversationIDs = ["fixture-a", "fixture-b"]
+            plan.transferModes = ["fixture-b": .copy]
+            let transferred = OperationFeedback.completed(plan: plan, target: state.identity(target), quota: [], result: .init())
+            state.operationFeedback = transferred; state.message = transferred.text
+            try save(captureWorkbench(state, dark: false), "operation-transfer-\(language)", maxWidth: 1600)
+            state.inventory?.activeAccountID = previousAccount
+            let failure = OperationFeedback.failed(kind: .switchAccount, target: state.identity(target),
+                reason: L10n.tr("The operation did not finish. Use Recover in Settings before trying again."))
+            state.operationFeedback = failure; state.message = failure.text
+            try save(captureWorkbench(state, dark: false), "operation-failed-\(language)", maxWidth: 1600)
+            try save(captureWorkbench(state, dark: true, size: NSSize(width: 860, height: 660)),
+                     "operation-failed-narrow-\(language)", maxWidth: 1400)
+        }
+    }
+
+    func testRenderUpdateSettings() async throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render update settings.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let info = try PropertyListSerialization.propertyList(from: Data(contentsOf: root.appendingPathComponent("Resources/Info.plist")), format: nil) as! [String: Any]
+        let version = info["CFBundleShortVersionString"] as! String
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            for available in [false, true] {
+                let suite = "ClaudeSwitchUpdateScreenshots." + UUID().uuidString
+                let defaults = UserDefaults(suiteName: suite)!
+                defer { defaults.removePersistentDomain(forName: suite) }
+                let updates = AppUpdates(demo: false, currentVersion: available ? "0.1.0" : version, defaults: defaults,
+                                         fetch: { ReleaseVersion(version)! })
+                await updates.check(manual: true)
+                let view = Form {
+                    Section(L10n.tr("Updates")) { UpdateSettingsView(updates: updates) }
+                    Section(L10n.tr("About")) { Link(L10n.tr("Report an issue"), destination: ProjectLink.issues) }
+                }.formStyle(.grouped).padding(12).frame(width: 540, height: 460)
+                try save(captureSheet(view), "update-settings-\(available ? "available" : "current")-\(language)", maxWidth: 1100)
+            }
+        }
+    }
+
     func testRenderReadmeImages() throws {
         guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
             throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to an output folder to render the README images.")
@@ -49,15 +116,192 @@ final class ScreenshotTests: XCTestCase {
                 state.page = .usage
                 try save(captureWorkbench(state, dark: dark, size: NSSize(width: 1080, height: 980), settle: 2),
                          "usage-\(mode)", maxWidth: 1600)
-                if !dark {
-                    try save(render(SocialPreview(menu: menu), size: NSSize(width: 1280, height: 640), scale: 1),
-                             "social-preview", maxWidth: 1280)
-                }
             }
         }
     }
 
     // MARK: Capture
+
+    func testRenderSocialPreview() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render the social preview.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        let previousReset = UserDefaults.standard.object(forKey: Format.showResetTimeKey) as? Bool ?? true
+        UserDefaults.standard.register(defaults: [L10n.preferenceKey: "en", Format.showResetTimeKey: false])
+        defer { UserDefaults.standard.register(defaults: [Format.showResetTimeKey: previousReset]) }
+        let state = AppState(demo: true)
+        state.inventory?.warnings = []
+        let menu = try captureMenu(state, dark: false)
+        try save(render(SocialPreview(menu: menu), size: NSSize(width: 1280, height: 640), scale: 1),
+                 "social-preview", maxWidth: 1280)
+    }
+
+    func testRenderSwitchReminders() async throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render switch reminders.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans", "zh-Hant", "ja"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            state.inventory?.warnings = []
+            state.updateSwitchReminder()
+            let reminder = try XCTUnwrap(state.switchReminder)
+            try save(captureWorkbench(state, dark: false), "switch-reminder-\(language)", maxWidth: 1600)
+            try save(captureMenu(state, dark: false), "switch-reminder-menu-\(language)", maxWidth: 700)
+            try save(render(MenuBarLabel(state: state).padding(8).background(Color.white), size: NSSize(width: 150, height: 34)),
+                     "switch-reminder-status-\(language)", maxWidth: 300)
+            state.presentWorkbench = nil
+            await state.reviewSwitchReminder(reminder.id)
+            let operation = try XCTUnwrap(state.pending)
+            try save(captureSheet(OperationSheet(operation: operation).environment(state)),
+                     "switch-reminder-confirm-\(language)", maxWidth: 1100)
+            state.pending = nil; state.page = .settings
+            try save(captureWorkbench(state, dark: false, size: NSSize(width: 1080, height: 1320)),
+                     "notification-settings-\(language)", maxWidth: 1600)
+        }
+    }
+
+    func testRenderNewAccountFollowUp() async throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render the new-account follow-up.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans", "zh-Hant", "ja"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            try save(captureSheet(AddAccountSheet().environment(state)),
+                     "add-account-follow-\(language)", maxWidth: 1000)
+            state.beginNewAccountFollowUp(sourceAccountID: state.activeID)
+            let target = state.library.accounts[1]
+            state.inventory?.activeAccountID = target.id
+            state.inventory?.warnings = []
+            await state.acceptNewAccountLogin(target)
+            try save(captureWorkbench(state, dark: false), "new-account-follow-waiting-\(language)", maxWidth: 1600)
+            try save(captureMenu(state, dark: false), "new-account-follow-menu-\(language)", maxWidth: 700)
+            state.library.accounts[1].confirmOrganization(try XCTUnwrap(target.organizationID), at: Date())
+            await state.advanceNewAccountFollowUp()
+            let operation = try XCTUnwrap(state.pending)
+            try save(captureSheet(OperationSheet(operation: operation).environment(state)),
+                     "new-account-follow-confirm-\(language)", maxWidth: 1100)
+            state.pending = nil
+            try save(captureWorkbench(state, dark: false), "new-account-follow-review-\(language)", maxWidth: 1600)
+        }
+    }
+
+    func testRenderRankedAccounts() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render ranked accounts.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            state.inventory?.warnings = []
+            try save(captureWorkbench(state, dark: false, size: NSSize(width: 920, height: 900)),
+                     "ranked-accounts-\(language)", maxWidth: 1600)
+            try save(captureMenu(state, dark: false), "ranked-menu-\(language)", maxWidth: 700)
+        }
+    }
+
+    func testRenderResetRankedAccounts() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render reset-aware ranking.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true), now = Date()
+            state.inventory?.warnings = []
+            for (index, left, reset) in [(1, 80.0, 1800.0), (3, 82.0, 14400.0)] {
+                let account = state.library.accounts[index], organization = try XCTUnwrap(account.organizationID)
+                state.library.accounts[index].observePlan("Max 5x", organizationID: organization, at: now, verified: true)
+                state.library.usage[account.id] = UsageSnapshot(accountID: account.id, organizationID: organization,
+                    observedAt: now, origin: .live, windows: [
+                        QuotaWindow(id: "five_hour", title: L10n.quotaTitle("five_hour", fallback: "five_hour"),
+                                    usedPercent: 100-left, resetsAt: now.addingTimeInterval(reset)),
+                        QuotaWindow(id: "seven_day", title: L10n.quotaTitle("seven_day", fallback: "seven_day"),
+                                    usedPercent: 20, resetsAt: now.addingTimeInterval(6*86400))])
+            }
+            state.inventory?.accounts = state.library.accounts
+            let ranking = state.accountRanking(now: now)
+            XCTAssertEqual(ranking.bestBackup?.account.id, state.library.accounts[1].id)
+            XCTAssertEqual(ranking.advice?.accountID, state.library.accounts[1].id)
+            try save(captureWorkbench(state, dark: false, size: NSSize(width: 920, height: 900)),
+                     "reset-ranked-accounts-\(language)", maxWidth: 1600)
+            try save(captureMenu(state, dark: false), "reset-ranked-menu-\(language)", maxWidth: 700)
+        }
+    }
+
+    func testRenderPausedStaleQuota() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render paused quota refresh.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true), now = Date()
+            state.inventory?.warnings = []
+            state.quotaRefreshPause = .claudeClosed
+            for (index, account) in state.library.accounts.enumerated() {
+                var snapshot = try XCTUnwrap(state.library.usage[account.id])
+                snapshot.observedAt = now.addingTimeInterval(-10800)
+                for i in snapshot.windows.indices {
+                    snapshot.windows[i].observedAt = snapshot.observedAt
+                    if index == 2, snapshot.windows[i].id == "five_hour" {
+                        snapshot.windows[i].resetsAt = now.addingTimeInterval(-1800)
+                    }
+                }
+                state.library.usage[account.id] = snapshot
+            }
+            XCTAssertNil(state.switchAdvice())
+            XCTAssertTrue(state.library.accounts.allSatisfy { account in
+                state.quotaRows(for: account.id).allSatisfy { $0.percentageText != "—" }
+            })
+            try save(captureWorkbench(state, dark: false, size: NSSize(width: 920, height: 1050)),
+                     "quota-paused-\(language)", maxWidth: 1600)
+            try save(captureMenu(state, dark: false), "quota-paused-menu-\(language)", maxWidth: 700)
+            if language == "zh-Hans" {
+                let cached = state.library.usage
+                state.quotaRefreshPause = nil
+                try save(captureWorkbench(state, dark: false, size: NSSize(width: 920, height: 1050)),
+                         "quota-resumed-cache-\(language)", maxWidth: 1600)
+                try save(captureMenu(state, dark: false), "quota-resumed-cache-menu-\(language)", maxWidth: 700)
+                XCTAssertEqual(state.library.usage, cached)
+            }
+        }
+    }
 
     func testRenderMissingAccountEmail() throws {
         guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
@@ -176,17 +420,22 @@ final class ScreenshotTests: XCTestCase {
             UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
             let access = StartupAccess()
             let state = AppState(demo: true, startupAccess: access)
-            await access.check(using: { _ in throw CancellationError() }, start: { XCTFail("Startup must stay blocked") })
+            await access.check(using: { item, _ in if item == .vault { throw CancellationError() } }, notificationChoice: { true }, start: { XCTFail("Startup must stay blocked") })
             let window = try captureWorkbench(state, dark: false)
             XCTAssertEqual(window.size.width, Self.windowSize.width, accuracy: 1)
             XCTAssertEqual(window.size.height, Self.windowSize.height, accuracy: 1)
             try save(window, "startup-access-\(language)", maxWidth: 1600)
             try save(captureMenu(state, dark: false), "startup-access-menu-\(language)", maxWidth: 700)
-            await access.authorize(using: { _ in throw CancellationError() }, start: { XCTFail("Startup must stay blocked") })
+            await access.authorize(using: { item, _ in if item == .vault { throw CancellationError() } }, start: { XCTFail("Startup must stay blocked") })
             let retry = try captureWorkbench(state, dark: false)
             XCTAssertEqual(retry.size.width, Self.windowSize.width, accuracy: 1)
             XCTAssertEqual(retry.size.height, Self.windowSize.height, accuracy: 1)
             try save(retry, "startup-access-retry-\(language)", maxWidth: 1600)
+            let notifications = StartupAccess()
+            let notificationState = AppState(demo: true, startupAccess: notifications)
+            await notifications.check(using: { _, _ in }, notificationChoice: { true }, start: { XCTFail("Notification choice must be shown") })
+            XCTAssertTrue(notifications.wantsNotifications)
+            try save(captureWorkbench(notificationState, dark: false), "startup-notifications-\(language)", maxWidth: 1600)
         }
     }
 
@@ -233,7 +482,7 @@ final class ScreenshotTests: XCTestCase {
                 }
                 state.library.usage[account.id] = snapshot
             }
-            if let id = state.activeID { state.usageNotices[id] = L10n.tr("Waiting for Claude to publish its login credentials.") }
+            if let id = state.activeID { state.usageNotices[id] = L10n.tr("Please check that you are signed in to this account in Claude, then refresh quota.") }
             try save(captureWorkbench(state, dark: false), "quota-states-\(language)", maxWidth: 1600)
             try save(captureMenu(state, dark: false), "quota-menu-\(language)", maxWidth: 700)
             state.quotaAccessRequired = true
@@ -262,8 +511,25 @@ final class ScreenshotTests: XCTestCase {
         return try capture(window)
     }
 
+    /// Native segmented controls need a hosting window; ImageRenderer cannot draw their AppKit views.
+    private func captureSheet<Content: View>(_ content: Content) throws -> NSImage {
+        let view = NSHostingView(rootView: content.environment(\.locale, L10n.locale)
+            .environment(\.controlActiveState, .key).environment(\.colorScheme, .light))
+        let window = ActiveWindow(contentRect: NSRect(x: -6000, y: 200, width: 480, height: 700),
+                                  styleMask: [.titled], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .aqua)
+        window.contentView = view
+        window.setContentSize(view.fittingSize)
+        window.orderFrontRegardless()
+        Self.windows.append(window)
+        defer { window.orderOut(nil) }
+        spin(0.6)
+        window.display()
+        return try capture(window)
+    }
+
     private func captureMenu(_ state: AppState, dark: Bool) throws -> NSImage {
-        let content = MenuPanel().environment(state).environment(\.locale, L10n.locale)
+        let content = MenuPanel(automaticallyReviewReminders: false).environment(state).environment(\.locale, L10n.locale)
             .background(VisualEffect()).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         let view = NSHostingView(rootView: content)
         let window = NSWindow(contentRect: NSRect(x: -6000, y: 200, width: 400, height: 400), styleMask: [.borderless],
@@ -411,25 +677,58 @@ private struct HeroImage: View {
 /// 1280 × 640 card for the repository's social preview.
 private struct SocialPreview: View {
     let menu: NSImage
+    private let ink = Color(hex: 0x29231F)
     var body: some View {
-        ZStack {
-            Backdrop(dark: false)
-            HStack(spacing: 48) {
-                VStack(alignment: .leading, spacing: 20) {
+        ZStack(alignment: .topLeading) {
+            Color(hex: 0xF7F4EE)
+            RoundedRectangle(cornerRadius: 200)
+                .fill(Color(hex: 0xE7B99F)).frame(width: 550, height: 900)
+                .rotationEffect(.degrees(18)).offset(x: 800, y: -130)
+            Circle().stroke(.white.opacity(0.35), lineWidth: 1)
+                .frame(width: 650, height: 650).offset(x: 720, y: -90)
+            Circle().stroke(.white.opacity(0.3), lineWidth: 1)
+                .frame(width: 800, height: 800).offset(x: 645, y: -165)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 14) {
                     if let icon = NSApplication.shared.applicationIconImage {
-                        Image(nsImage: icon).resizable().frame(width: 136, height: 136).padding(.leading, -12)
+                        Image(nsImage: icon).resizable().frame(width: 76, height: 76)
                     }
-                    Text("Claude Switch").font(.system(size: 66, weight: .bold, design: .rounded)).foregroundStyle(Color(hex: 0x2A1A14))
-                    Text("Every Claude Desktop account,\none click away in your menu bar.")
-                        .font(.system(size: 28, weight: .medium)).foregroundStyle(Color(hex: 0x5B463D)).lineSpacing(4)
-                    Text("Free & open source · macOS 14+").font(.system(size: 20, weight: .semibold)).foregroundStyle(Palette.brand)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Claude Switch").font(.system(size: 28, weight: .bold))
+                        Text("Claude Desktop, in your menu bar.")
+                            .font(.system(size: 18)).foregroundStyle(ink.opacity(0.65))
+                    }
                 }
-                Spacer(minLength: 0)
-                Image(nsImage: menu).resizable().aspectRatio(contentMode: .fit).frame(height: 548)
-                    .shadow(color: .black.opacity(0.22), radius: 22, y: 10)
+                .padding(.leading, -8)
+                Spacer().frame(height: 46)
+                Text("Switch accounts.")
+                    .font(.system(size: 62, weight: .bold)).tracking(-2)
+                Text("Keep your flow.")
+                    .font(.system(size: 62, weight: .bold)).tracking(-2)
+                    .foregroundStyle(Color(hex: 0xB45532))
+                Spacer().frame(height: 24)
+                Text("Live quotas. Timely reminders.\nCode conversations that follow you.")
+                    .font(.system(size: 24, weight: .regular))
+                    .foregroundStyle(ink.opacity(0.72)).lineSpacing(5)
+                Spacer()
+                HStack(spacing: 12) {
+                    Text("macOS 14+").font(.system(size: 17, weight: .semibold))
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(ink.opacity(0.06), in: Capsule())
+                    Text("Free & open source").font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(ink.opacity(0.65))
+                }
             }
-            .padding(.horizontal, 72)
+            .foregroundStyle(ink)
+            .frame(width: 680, height: 528, alignment: .leading)
+            .offset(x: 64, y: 52)
+            Image(nsImage: menu).resizable().aspectRatio(contentMode: .fit)
+                .frame(width: 350, height: 558)
+                .shadow(color: Color(hex: 0x592B1B).opacity(0.24), radius: 24, x: 0, y: 18)
+                .offset(x: 842, y: 41)
         }
+        .frame(width: 1280, height: 640, alignment: .topLeading)
+        .clipped()
         .environment(\.colorScheme, .light)
     }
 }

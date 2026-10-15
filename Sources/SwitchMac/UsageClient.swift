@@ -38,6 +38,11 @@ public actor ActiveUsageClient: UsageProvider {
     private var sessionInFlight: URLSession?
     private var cancellationGeneration: UInt64 = 0
     private var storageFailed = false
+    private struct VerifiedToken {
+        var expiresAt: Date
+        var completedRefreshes = Set<UUID>()
+    }
+    private var verifiedTokens: [String: VerifiedToken] = [:]
     private var verifiedAccount: Account?
     private var verifiedPlan: (accountID: String, organizationID: String, plan: String?, observedAt: Date)?
     public init(environment: MacEnvironment, vault: CredentialVault? = nil) {
@@ -72,9 +77,10 @@ public actor ActiveUsageClient: UsageProvider {
     public func fetchCurrent(accountID: String) async throws -> UsageSnapshot {
         try await fetchCurrent(accountID: accountID, allowKeychainPrompt: false)
     }
-    public func fetchCurrent(accountID: String, allowKeychainPrompt: Bool, onlyIfTokenChanged: Bool = false) async throws -> UsageSnapshot {
+    public func fetchCurrent(accountID: String, allowKeychainPrompt: Bool, onlyIfTokenChanged: Bool = false,
+                             profileRefreshID: UUID? = nil) async throws -> UsageSnapshot {
         let environment = environment
-        return try await fetch(accountID: accountID, onlyIfTokenChanged: onlyIfTokenChanged, readToken: {
+        return try await fetch(accountID: accountID, onlyIfTokenChanged: onlyIfTokenChanged, profileRefreshID: profileRefreshID, readToken: {
             guard try environment.currentAccount() == accountID, environment.signedIn() == true else {
                 throw UsageNotReady(reason: .updating)
             }
@@ -86,10 +92,10 @@ public actor ActiveUsageClient: UsageProvider {
                   try environment.credentialDigest() == token.credentialDigest else { throw SwitchError.changed }
         })
     }
-    public func fetchSaved(accountID: String, allowKeychainPrompt: Bool = false) async throws -> UsageSnapshot {
+    public func fetchSaved(accountID: String, allowKeychainPrompt: Bool = false, profileRefreshID: UUID? = nil) async throws -> UsageSnapshot {
         let vault = vault
         do {
-            return try await fetch(accountID: accountID, readToken: {
+            return try await fetch(accountID: accountID, profileRefreshID: profileRefreshID, readToken: {
                 let snapshot = try await vault.load(accountID: accountID)
                 return try await Self.readOffThread {
                     try DesktopTokenReader.read(config: .object(snapshot.auth), expectedAccount: accountID, allowPrompt: allowKeychainPrompt)
@@ -99,7 +105,7 @@ public actor ActiveUsageClient: UsageProvider {
                 guard try IdentitySchema.fingerprint(.object(snapshot.auth)) == token.credentialDigest else { throw SwitchError.changed }
             })
         } catch is UsageNotReady {
-            throw SwitchError.blocked(L10n.tr("The saved access token has expired. Switch to this account and let Claude update its login, then refresh again."))
+            throw SwitchError.blocked(L10n.tr("Switch to this account in Claude, check the login, then refresh quota."))
         }
     }
     private static func readOffThread(_ read: @escaping () throws -> DesktopAccessToken) async throws -> DesktopAccessToken {
@@ -107,7 +113,7 @@ public actor ActiveUsageClient: UsageProvider {
             DispatchQueue.global(qos: .userInitiated).async { continuation.resume(with: Result(catching: read)) }
         }
     }
-    func fetch(accountID: String, onlyIfTokenChanged: Bool = false, readToken: () async throws -> DesktopAccessToken,
+    func fetch(accountID: String, onlyIfTokenChanged: Bool = false, profileRefreshID: UUID? = nil, readToken: () async throws -> DesktopAccessToken,
                validate: (DesktopAccessToken) async throws -> Void) async throws -> UsageSnapshot {
         guard !inFlight else { throw SwitchError.busy }
         inFlight = true; defer { inFlight = false }
@@ -119,7 +125,7 @@ public actor ActiveUsageClient: UsageProvider {
         try await validate(token)
         try checkCancellation(generation)
         guard token.expiresAt > now().addingTimeInterval(60) else { throw UsageNotReady(reason: .expiring) }
-        if onlyIfTokenChanged, attemptedTokens[accountID] == token.tokenDigest { throw UsageUnchanged() }
+        if onlyIfTokenChanged, profileRefreshID == nil, attemptedTokens[accountID] == token.tokenDigest { throw UsageUnchanged() }
         guard let version = ClaudeCodeVersion.installed(environment) else {
             throw SwitchError.missing(L10n.tr("Claude Code was not found, so the quota compatibility request is unavailable."))
         }
@@ -134,18 +140,29 @@ public actor ActiveUsageClient: UsageProvider {
         defer { session.invalidateAndCancel(); sessionInFlight = nil }
         do {
             try checkCancellation(generation)
-            let profileRequest = try DesktopUsageProtocol.request(path: "/api/oauth/profile", token: token.value, codeVersion: version)
-            let profile = try await getJSON(session, request: profileRequest, token: token)
-            let owner = profile["account"]["uuid"].string ?? profile["account_uuid"].string ?? profile["accountUuid"].string
-            let org = profile["organization"]["uuid"].string ?? profile["organization_uuid"].string ?? profile["organizationUuid"].string
-            guard owner?.lowercased() == token.accountID, org?.lowercased() == token.organizationID else {
-                denied[token.tokenDigest] = .identityMismatch; throw UsageFailure.identityMismatch
+            verifiedTokens = verifiedTokens.filter { $0.value.expiresAt > now() }
+            let key = token.quotaScope + ":" + token.tokenDigest
+            let refresh = profileRefreshID.map { verifiedTokens[key]?.completedRefreshes.contains($0) != true } ?? false
+            if verifiedTokens[key] == nil || refresh {
+                let profileRequest = try DesktopUsageProtocol.request(path: "/api/oauth/profile", token: token.value, codeVersion: version)
+                let profile = try await getJSON(session, request: profileRequest, token: token)
+                let owner = profile["account"]["uuid"].string ?? profile["account_uuid"].string ?? profile["accountUuid"].string
+                let org = profile["organization"]["uuid"].string ?? profile["organization_uuid"].string ?? profile["organizationUuid"].string
+                guard owner?.lowercased() == token.accountID, org?.lowercased() == token.organizationID else {
+                    verifiedTokens[key] = nil
+                    denied[token.tokenDigest] = .identityMismatch; throw UsageFailure.identityMismatch
+                }
+                try await validate(token)
+                try checkCancellation(generation)
+                var record = verifiedTokens[key] ?? VerifiedToken(expiresAt: token.expiresAt)
+                if let profileRefreshID { record.completedRefreshes.insert(profileRefreshID) }
+                verifiedTokens[key] = record
+                // Publish metadata only for a new server response, even when usage subsequently fails.
+                verifiedAccount = Account(id: token.accountID, email: Self.profileEmail(profile["account"]), organizationID: token.organizationID)
+                verifiedPlan = (token.accountID, token.organizationID, AccountPlan.profile(profile), now())
             }
             try await validate(token)
             try checkCancellation(generation)
-            // A verified plan remains useful when the subsequent usage endpoint denies a downgraded login.
-            verifiedAccount = Account(id: token.accountID, email: Self.profileEmail(profile["account"]), organizationID: token.organizationID)
-            verifiedPlan = (token.accountID, token.organizationID, AccountPlan.profile(profile), now())
             guard token.expiresAt > now().addingTimeInterval(15) else { throw UsageNotReady(reason: .expiring) }
             let request = try DesktopUsageProtocol.request(path: "/api/oauth/usage", token: token.value, codeVersion: version)
             let root = try await getJSON(session, request: request, token: token)
@@ -156,6 +173,7 @@ public actor ActiveUsageClient: UsageProvider {
             failures[token.quotaScope] = nil
             return UsageSnapshot(accountID: accountID, organizationID: token.organizationID, observedAt: now(), origin: .live, windows: windows)
         } catch {
+            if denied[token.tokenDigest] != nil { verifiedTokens[token.quotaScope + ":" + token.tokenDigest] = nil }
             if error is CancellationError || (error as? URLError)?.code == .cancelled {
                 verifiedAccount = nil; verifiedPlan = nil
                 attemptedTokens[accountID] = nil

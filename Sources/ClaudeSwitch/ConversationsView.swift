@@ -78,6 +78,7 @@ struct ConversationsView: View {
                 .foregroundStyle(state.selectedAccountID == nil ? Color.secondary : Palette.brand)
             }
             .menuStyle(.button).buttonStyle(.plain).fixedSize()
+            .hoverSurface()
             .help(L10n.tr("Filter and sort"))
         }
         .padding(.horizontal, 14).padding(.vertical, 8)
@@ -119,6 +120,7 @@ private struct SessionRow: View {
             }
         }
         .padding(.vertical, 4)
+        .listRowHover(radius: 8)
         .contextMenu {
             if session.kind == .code {
                 let targets = state.accounts.filter { $0.id != session.accountID }
@@ -223,7 +225,7 @@ struct SessionInspector: View {
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading).card(radius: 10)
     }
     private func followCaption(_ session: Conversation) -> String {
-        guard session.cliSessionID != nil else { return L10n.tr("This conversation has no verifiable local transcript.") }
+        guard session.cliSessionID != nil else { return L10n.tr("This conversation's local history is missing, so it cannot be transferred.") }
         return state.transferMode(session) == .move
             ? L10n.tr("When you switch accounts, it moves along and replaces the older version in the target account.")
             : L10n.tr("When you switch accounts, it is copied along and replaces the older version in the target account.")

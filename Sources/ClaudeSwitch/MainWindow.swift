@@ -4,16 +4,26 @@ import SwitchCore
 
 struct MainWindow: View {
     @Environment(AppState.self) private var state
+    @Environment(\.openWindow) private var openWindow
     var body: some View {
         Group {
             if state.startupAccess.isReady { AuthorizedWorkbench() }
             else { StartupAccessView() }
         }.background(WorkbenchWindowObserver())
+        .onAppear {
+            state.presentWorkbench = {
+                WorkbenchLifecycle.shared.prepareToOpen()
+                openWindow(id: "library")
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+            Task { await state.openPendingNotification() }
+        }
     }
 }
 
 private struct AuthorizedWorkbench: View {
     @Environment(AppState.self) private var state
+    @State private var hiddenReminderID: UUID?
     var body: some View {
         NavigationSplitView {
             Sidebar().navigationSplitViewColumnWidth(min: 210, ideal: 228, max: 280)
@@ -44,8 +54,23 @@ private struct AuthorizedWorkbench: View {
         .sheet(isPresented: Bindable(state).showQuickFind) { QuickFind().environment(state) }
         .overlay(alignment: .bottom) {
             ZStack {
-                if let message = state.message { Toast(message: message) { state.message = nil }.padding(.bottom, 24) }
+                if state.message == nil, let reminder = state.switchReminder, reminder.needsReview, state.pending == nil, hiddenReminderID != reminder.id {
+                    SwitchReminderBanner(reminder: reminder).padding(.horizontal, 24).padding(.bottom, 24)
+                        .task(id: reminder.id) {
+                            do { try await Task.sleep(for: .seconds(12)) } catch { return }
+                            guard !Task.isCancelled else { return }
+                            hiddenReminderID = reminder.id
+                        }
+                }
             }.animation(.snappy(duration: 0.25), value: state.message)
+                .animation(.snappy(duration: 0.25), value: state.switchReminder?.needsReview)
+                .animation(.snappy(duration: 0.25), value: hiddenReminderID)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if let message = state.message {
+                OperationNoticeView(message: message, feedback: state.operationFeedback) { state.message = nil }
+                    .padding(20)
+            }
         }
     }
     private var sessionInspector: Binding<Bool> {
@@ -64,6 +89,7 @@ private struct Sidebar: View {
             Section {
                 ForEach(NavigationPage.primary) { page in
                     Label(page.title, systemImage: page.symbol).badge(badge(page)).tag(page)
+                        .listRowHover()
                 }
             }
         }
@@ -86,18 +112,23 @@ private struct Sidebar: View {
                                     in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                         .contentShape(Rectangle())
                 }.buttonStyle(HoverRowStyle())
-                Button { ProjectLink.open() } label: {
-                    HStack(spacing: 6) {
-                        Label("GitHub", systemImage: ProjectLink.symbol).font(.system(size: 13))
-                        Spacer(minLength: 0)
-                        Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 6).contentShape(Rectangle())
-                }
-                .buttonStyle(HoverRowStyle())
-                .hint(L10n.tr("Open the project page on GitHub"))
+                projectButton("GitHub", symbol: ProjectLink.symbol, url: ProjectLink.repository)
+                    .hint(L10n.tr("Open the project page on GitHub"))
+                projectButton(L10n.tr("Report an issue"), symbol: "bubble.left", url: ProjectLink.issues)
+                projectButton(state.updates.hasUpdate ? L10n.tr("Update available") : L10n.tr("View latest version"),
+                              symbol: "arrow.down.circle", url: ProjectLink.releases)
+
             }.padding(.horizontal, 10).padding(.bottom, 10)
         }
+    }
+    private func projectButton(_ title: String, symbol: String, url: URL) -> some View {
+        Link(destination: url) {
+            HStack(spacing: 6) {
+                Label(title, systemImage: symbol).font(.system(size: 13))
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right").font(.system(size: 10)).foregroundStyle(.tertiary)
+            }.padding(.horizontal, 8).padding(.vertical, 6).contentShape(Rectangle())
+        }.buttonStyle(HoverRowStyle())
     }
     private func badge(_ page: NavigationPage) -> Int {
         switch page {
@@ -139,27 +170,6 @@ private struct RecoveryBanner: View {
         .padding(.horizontal, 20).padding(.vertical, 10)
         .background(Color.orange.opacity(0.1))
         .overlay(alignment: .bottom) { Rectangle().fill(Palette.line).frame(height: 1) }
-    }
-}
-
-private struct Toast: View {
-    let message: String
-    let close: () -> Void
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "info.circle.fill").foregroundStyle(Palette.brand)
-            Text(message).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
-            Button(action: close) {
-                Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
-                    .frame(width: 18, height: 18).contentShape(Rectangle())
-            }
-            .buttonStyle(HoverRowStyle()).foregroundStyle(.secondary).hint(L10n.tr("Dismiss"))
-        }
-        .padding(.horizontal, 16).padding(.vertical, 12).frame(maxWidth: 520)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Palette.line))
-        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }
 
@@ -266,13 +276,16 @@ struct HoverRowStyle: ButtonStyle {
         let configuration: ButtonStyleConfiguration
         @State private var hovering = false
         @Environment(\.isEnabled) private var enabled
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.colorSchemeContrast) private var contrast
         var body: some View {
+            let emphasis = enabled ? (configuration.isPressed ? 0.12 : hovering ? 0.08 : 0) : 0
             configuration.label
                 .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.primary.opacity(configuration.isPressed ? 0.12 : hovering && enabled ? 0.07 : 0)))
+                    .fill(Color.primary.opacity(emphasis * (contrast == .increased ? 2 : 1))))
                 .opacity(enabled ? 1 : 0.45)
                 .onHover { hovering = $0 }
-                .animation(.easeOut(duration: 0.12), value: hovering)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering && enabled)
         }
     }
 }

@@ -56,7 +56,7 @@ final class FileTransaction {
         root = existing; self.live = live
         journal = try JSONDecoder().decode(TransactionJournal.self, from: SafeFiles.read(existing.appendingPathComponent("journal.json")))
         guard journal.schema == 1, UUID(uuidString: journal.id) != nil,
-              journal.id == existing.lastPathComponent else { throw SwitchError.malformed(L10n.tr("The recovery journal format is unsupported.")) }
+              journal.id == existing.lastPathComponent else { throw SwitchError.malformed(L10n.tr("Recovery data could not be read. Update Claude Switch before trying again.")) }
         for entry in journal.entries { try Self.validateAllowed(entry.relative) }
     }
     static func validateAllowed(_ relative: String) throws {
@@ -200,7 +200,7 @@ final class FileTransaction {
         guard ["committed", "recovered"].contains(journal.phase) else { throw SwitchError.blocked(L10n.tr("Unfinished transactions must retain their recovery originals.")) }
         var files: [ArchiveFile] = [], size = 0
         func collect(_ directory: URL, prefix: String, depth: Int) throws {
-            guard depth < 20, files.count < 25_000 else { throw SwitchError.blocked(L10n.tr("The recovery archive exceeds the limit.")) }
+            guard depth < 20, files.count < 25_000 else { throw SwitchError.blocked(L10n.tr("The recovery backup is too large. Your data is preserved.")) }
             try SafeFiles.validateAncestors(directory)
             for file in try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) {
                 let properties = try file.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
@@ -209,7 +209,7 @@ final class FileTransaction {
                 if properties.isDirectory == true { try collect(file, prefix: path, depth: depth + 1) }
                 else {
                     let data = try SafeFiles.read(file, limit: 64 * 1024 * 1024); size += data.count
-                    guard size <= 128 * 1024 * 1024 else { throw SwitchError.blocked(L10n.tr("The recovery archive exceeds the limit.")) }
+                    guard size <= 128 * 1024 * 1024 else { throw SwitchError.blocked(L10n.tr("The recovery backup is too large. Your data is preserved.")) }
                     files.append(ArchiveFile(path: path, data: data, sha256: digest(data)))
                 }
             }
@@ -224,7 +224,7 @@ final class FileTransaction {
         let archive = root.appendingPathComponent("recovery.switchbackup")
         try SafeFiles.atomicWrite(sealed, to: archive)
         let restored = try await vault.unseal(SafeFiles.read(archive, limit: 192 * 1024 * 1024), context: context)
-        guard digest(restored) == digest(data) else { throw SwitchError.blocked(L10n.tr("Recovery archive verification failed. Originals are preserved.")) }
+        guard digest(restored) == digest(data) else { throw SwitchError.blocked(L10n.tr("The recovery backup could not be completed. Your data has been kept.")) }
         // These are transaction-owned scratch folders, never Claude's live directories.
         for name in ["staged", "originals", "quarantine"] {
             let folder = root.appendingPathComponent(name)

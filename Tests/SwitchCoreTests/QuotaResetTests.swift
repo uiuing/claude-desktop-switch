@@ -40,12 +40,72 @@ final class QuotaResetTests: XCTestCase {
                                          active: true, now: base).awaitingFirstUse)
     }
 
+    func testLastMeasurementRemainsVisibleAcrossFreshnessAndResetBoundaries() throws {
+        let reset = base.addingTimeInterval(4 * hour)
+        let original = snapshot(.live, at: 0, [QuotaWindow(id: "five_hour", title: "Session", usedPercent: 27, resetsAt: reset)])
+        func row(at date: Date) -> QuotaReadout {
+            QuotaReadout.make(id: "five_hour", title: "Session", window: original.windows[0], snapshot: original, active: false, now: date)
+        }
+        let fresh = row(at: base), stale = row(at: base.addingTimeInterval(3 * hour)), pending = row(at: reset)
+        XCTAssertEqual(fresh.currentRemainingPercent, 73)
+        XCTAssertNil(fresh.lastRecordedPercentageText)
+        XCTAssertEqual(stale.remainingPercent, 73)
+        XCTAssertNil(stale.currentRemainingPercent)
+        XCTAssertEqual(stale.percentageText, fresh.percentageText)
+        XCTAssertEqual(stale.lastRecordedPercentageText, fresh.percentageText)
+        XCTAssertEqual(stale.resetsAt, reset)
+        XCTAssertEqual(stale.observedAt, base)
+        XCTAssertNil(stale.evenRemaining(now: base.addingTimeInterval(3 * hour)))
+        XCTAssertEqual(pending.state, .resetPending)
+        XCTAssertNil(pending.currentRemainingPercent)
+        XCTAssertEqual(pending.remainingPercent, fresh.remainingPercent)
+        XCTAssertEqual(pending.percentageText, fresh.percentageText)
+        XCTAssertEqual(pending.lastRecordedPercentageText, fresh.percentageText)
+        XCTAssertEqual(pending.resetsAt, reset)
+        XCTAssertEqual(original.windows[0].usedPercent, 27)
+        XCTAssertEqual(original.observedAt, base)
+    }
+
+    func testConfirmedUnusedSessionRemainsVisibleInOldCache() {
+        let live = snapshot(.live, at: 0, [QuotaWindow(id: "five_hour", title: "Session", usedPercent: 0, resetKnownAbsent: true)])
+        let stale = QuotaReadout.make(id: "five_hour", title: "Session", window: live.windows[0], snapshot: live,
+                                     active: false, now: base.addingTimeInterval(3 * hour))
+        XCTAssertEqual(stale.state, .stale)
+        XCTAssertEqual(stale.remainingPercent, 100)
+        XCTAssertTrue(stale.awaitingFirstUse)
+        XCTAssertFalse(AccountRanking.recent(stale, now: base.addingTimeInterval(3 * hour)))
+        XCTAssertNil(stale.currentRemainingPercent)
+        var unknownReset = live.windows[0]
+        unknownReset.resetKnownAbsent = nil
+        XCTAssertFalse(QuotaReadout.make(id: "five_hour", title: "Session", window: unknownReset, snapshot: live,
+                                        active: false, now: base.addingTimeInterval(3 * hour)).awaitingFirstUse)
+    }
+
+    func testExpiredReadingNeverBecomesAFullQuotaOrSwitchRecommendation() {
+        let past = rows(fiveHour: 12, sevenDay: 64, at: -3600, fiveReset: -60)
+        XCTAssertEqual(past[0].state, .resetPending)
+        XCTAssertEqual(past[0].remainingPercent, 12)
+        XCTAssertFalse(past[0].awaitingFirstUse)
+        XCTAssertNil(recommend(active: rows(fiveHour: 5, sevenDay: 50), candidates: [("b", past)], now: base))
+        XCTAssertNil(recommend(active: past, candidates: [("b", rows(fiveHour: 90, sevenDay: 90))], now: base))
+    }
+
     private func rows(fiveHour: Double, sevenDay: Double, at offset: TimeInterval = 0,
                       fiveReset: TimeInterval? = nil, sevenReset: TimeInterval? = nil) -> [QuotaReadout] {
         let live = snapshot(.live, at: offset, [
             QuotaWindow(id: "five_hour", title: "5h", usedPercent: 100 - fiveHour, resetsAt: base.addingTimeInterval(fiveReset ?? 2 * hour)),
             QuotaWindow(id: "seven_day", title: "7d", usedPercent: 100 - sevenDay, resetsAt: base.addingTimeInterval(sevenReset ?? 3 * day))])
         return live.windows.map { QuotaReadout.make(id: $0.id, title: $0.title, window: $0, snapshot: live, active: false, now: base) }
+    }
+
+    private func recommend(active: [QuotaReadout], candidates: [(id: String, rows: [QuotaReadout])], now: Date) -> SwitchAdvice? {
+        func account(_ id: String) -> Account {
+            var value = Account(id: id, hasSnapshot: true)
+            value.plan = "Pro"
+            return value
+        }
+        return AccountRanking.evaluate([(account("active"), active)] + candidates.map { (account($0.id), $0.rows) },
+                                       activeID: "active", now: now).advice
     }
 
     func testEvenRemainingFollowsTimeLeftInWindow() {
@@ -55,39 +115,39 @@ final class QuotaResetTests: XCTestCase {
     }
 
     func testAdviceOnlyWhenActiveIsLowAndTargetIsClearlyBetter() {
-        XCTAssertNil(SwitchAdvisor.advice(active: rows(fiveHour: 60, sevenDay: 50), candidates: [("b", rows(fiveHour: 100, sevenDay: 90))], now: base))
+        XCTAssertNil(recommend(active: rows(fiveHour: 60, sevenDay: 50), candidates: [("b", rows(fiveHour: 100, sevenDay: 90))], now: base))
         let low = rows(fiveHour: 15, sevenDay: 50)
-        XCTAssertNil(SwitchAdvisor.advice(active: low, candidates: [("b", rows(fiveHour: 30, sevenDay: 90))], now: base))
-        XCTAssertNil(SwitchAdvisor.advice(active: low, candidates: [("b", rows(fiveHour: 90, sevenDay: 10))], now: base))
-        let advice = SwitchAdvisor.advice(active: low, candidates: [("b", rows(fiveHour: 60, sevenDay: 90)),
+        XCTAssertNil(recommend(active: low, candidates: [("b", rows(fiveHour: 30, sevenDay: 90))], now: base))
+        XCTAssertNil(recommend(active: low, candidates: [("b", rows(fiveHour: 90, sevenDay: 10))], now: base))
+        let advice = recommend(active: low, candidates: [("b", rows(fiveHour: 60, sevenDay: 90)),
                                                                     ("c", rows(fiveHour: 80, sevenDay: 30))], now: base)
         XCTAssertEqual(advice?.accountID, "c")
         XCTAssertEqual(advice?.reason, .fiveHourLow("15%"))
     }
 
     func testWeeklyShortageAdvisesEvenWithFullFiveHourWindow() {
-        let advice = SwitchAdvisor.advice(active: rows(fiveHour: 100, sevenDay: 3), candidates: [("b", rows(fiveHour: 66, sevenDay: 29))], now: base)
+        let advice = recommend(active: rows(fiveHour: 100, sevenDay: 3), candidates: [("b", rows(fiveHour: 66, sevenDay: 29))], now: base)
         XCTAssertEqual(advice?.accountID, "b")
         XCTAssertEqual(advice?.reason, .sevenDayLow("3%"))
     }
 
     func testShortageThatResetsShortlyIsWaitedOut() {
         let candidate = [("b", rows(fiveHour: 90, sevenDay: 90))]
-        XCTAssertNil(SwitchAdvisor.advice(active: rows(fiveHour: 10, sevenDay: 60, fiveReset: 20 * 60), candidates: candidate, now: base))
-        XCTAssertNil(SwitchAdvisor.advice(active: rows(fiveHour: 80, sevenDay: 5, sevenReset: 40 * 60), candidates: candidate, now: base))
+        XCTAssertNil(recommend(active: rows(fiveHour: 10, sevenDay: 60, fiveReset: 20 * 60), candidates: candidate, now: base))
+        XCTAssertNil(recommend(active: rows(fiveHour: 80, sevenDay: 5, sevenReset: 40 * 60), candidates: candidate, now: base))
     }
 
-    func testQuotaAboutToResetUnspentIsWorthUsing() {
+    func testExpiryNeverOverridesTheBestBackupOrReducesHeadroom() {
         let healthy = rows(fiveHour: 80, sevenDay: 60)
-        let weekly = SwitchAdvisor.advice(active: healthy, candidates: [("b", rows(fiveHour: 70, sevenDay: 40, sevenReset: 10 * hour)),
-                                                                       ("c", rows(fiveHour: 90, sevenDay: 80))], now: base)
-        XCTAssertEqual(weekly?.accountID, "b")
-        XCTAssertEqual(weekly.map { if case .expiring(let row) = $0.reason { row.id } else { "" } }, "seven_day")
-        let fiveHour = SwitchAdvisor.advice(active: healthy, candidates: [("b", rows(fiveHour: 75, sevenDay: 50, fiveReset: 40 * 60))], now: base)
+        let weekly = recommend(active: healthy, candidates: [("b", rows(fiveHour: 70, sevenDay: 40, sevenReset: 10 * hour)),
+                                                             ("c", rows(fiveHour: 90, sevenDay: 80))], now: base)
+        XCTAssertNil(weekly)
+        let fiveHour = recommend(active: healthy, candidates: [("b", rows(fiveHour: 85, sevenDay: 65, fiveReset: 40 * 60))], now: base)
         XCTAssertEqual(fiveHour.map { if case .expiring(let row) = $0.reason { row.id } else { "" } }, "five_hour")
-        XCTAssertNil(SwitchAdvisor.advice(active: healthy, candidates: [("b", rows(fiveHour: 70, sevenDay: 10, sevenReset: 10 * hour))], now: base))
+        XCTAssertNil(recommend(active: healthy, candidates: [("b", rows(fiveHour: 75, sevenDay: 50, fiveReset: 40 * 60))], now: base))
+        XCTAssertNil(recommend(active: healthy, candidates: [("b", rows(fiveHour: 90, sevenDay: 70, fiveReset: 60))], now: base))
         let lapsing = rows(fiveHour: 80, sevenDay: 50, sevenReset: 5 * hour)
-        XCTAssertNil(SwitchAdvisor.advice(active: lapsing, candidates: [("b", rows(fiveHour: 70, sevenDay: 40, sevenReset: 10 * hour))], now: base))
+        XCTAssertNil(recommend(active: lapsing, candidates: [("b", rows(fiveHour: 85, sevenDay: 60, sevenReset: 10 * hour))], now: base))
     }
 
     func testReadoutWaitsForConfirmationOnceResetPasses() {
@@ -95,7 +155,8 @@ final class QuotaResetTests: XCTestCase {
         let live = snapshot(.live, at: 0, [QuotaWindow(id: "seven_day", title: "7d", usedPercent: 90, resetsAt: reset)])
         let row = QuotaReadout.make(id: "seven_day", title: "7d", window: live.windows[0], snapshot: live,
                                     active: true, now: reset.addingTimeInterval(60))
-        XCTAssertNil(row.remainingPercent)
+        XCTAssertEqual(row.remainingPercent, 10)
+        XCTAssertNil(row.currentRemainingPercent)
         XCTAssertEqual(row.state, .resetPending)
         XCTAssertEqual(row.resetsAt, reset)
     }
@@ -138,7 +199,7 @@ final class QuotaResetTests: XCTestCase {
     func testStaleQuotaCannotRecommendSwitching() {
         let low = rows(fiveHour: 10, sevenDay: 40)
         let stale = rows(fiveHour: 95, sevenDay: 90, at: -601)
-        XCTAssertNil(SwitchAdvisor.advice(active: low, candidates: [("b", stale)], now: base))
+        XCTAssertNil(recommend(active: low, candidates: [("b", stale)], now: base))
     }
 
     func testLegacySnapshotDecodesWithoutPerWindowMetadata() throws {

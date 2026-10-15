@@ -28,8 +28,9 @@ final class UsageClientTests: XCTestCase {
     private func client(_ env: MacEnvironment, service: UsageFixtureService, clock: FixtureClock = FixtureClock()) -> ActiveUsageClient {
         ActiveUsageClient(environment: env, transport: { _, request in try await service.respond(request) }, now: { clock.date })
     }
-    private func fetch(_ client: ActiveUsageClient, _ account: String, generation: String = "1") async throws -> UsageSnapshot {
-        try await client.fetch(accountID: account, readToken: { self.token(account, generation: generation) }, validate: { _ in })
+    private func fetch(_ client: ActiveUsageClient, _ account: String, generation: String = "1", profileRefreshID: UUID? = nil) async throws -> UsageSnapshot {
+        try await client.fetch(accountID: account, profileRefreshID: profileRefreshID,
+                               readToken: { self.token(account, generation: generation) }, validate: { _ in })
     }
 
     func testSelectedLoginWorksWithoutDesktopBeingSignedIn() async throws {
@@ -92,7 +93,7 @@ final class UsageClientTests: XCTestCase {
         XCTAssertEqual(snapshot.windows.first?.usedPercent, 23)
     }
 
-    func testEveryAllowedRefreshRechecksProfileWithTheSameToken() async throws {
+    func testAutomaticRefreshReusesVerifiedTokenWithoutRepublishingMetadata() async throws {
         let env = try environment(), service = service(), clock = FixtureClock()
         let client = client(env, service: service, clock: clock)
         await service.setProfile(.object([
@@ -100,12 +101,15 @@ final class UsageClientTests: XCTestCase {
             "organization": .object(["uuid": .string(organization)])
         ]))
         _ = try await fetch(client, accountA)
-        clock.advance(61)
-        _ = try await fetch(client, accountA)
+        for interval in [61.0, 601, 901] {
+            clock.advance(interval)
+            _ = try await fetch(client, accountA)
+        }
         let identity = await client.identity()
-        XCTAssertEqual(identity?.email, "mi•••el@gmail.com")
+        let plan = await client.takeVerifiedPlan()
+        XCTAssertNil(identity); XCTAssertNil(plan)
         let paths = await service.paths
-        XCTAssertEqual(paths, ["/api/oauth/profile", "/api/oauth/usage", "/api/oauth/profile", "/api/oauth/usage"])
+        XCTAssertEqual(paths, ["/api/oauth/profile", "/api/oauth/usage", "/api/oauth/usage", "/api/oauth/usage", "/api/oauth/usage"])
     }
 
     private func profile(plan: String?) -> JSONValue {
@@ -114,13 +118,13 @@ final class UsageClientTests: XCTestCase {
         return .object(["account": .object(["uuid": .string(accountA)]), "organization": .object(org)])
     }
 
-    func testPlanChangesAreReadWithoutTokenRenewal() async throws {
+    func testManualRefreshReadsPlanChangesWithoutTokenRenewal() async throws {
         let env = try environment(), service = service(), clock = FixtureClock()
         let client = client(env, service: service, clock: clock)
         for (tier, expected) in [("default_claude_max_20x", "Max 20x" as String?), ("default_claude_ai", "Free"),
                                  ("future_tier", nil), ("default_claude_pro", "Pro")] {
             await service.setProfile(profile(plan: tier))
-            _ = try await fetch(client, accountA)
+            _ = try await fetch(client, accountA, profileRefreshID: UUID())
             let verified = await client.takeVerifiedPlan()
             XCTAssertNotNil(verified)
             XCTAssertEqual(verified?.plan, expected)
@@ -167,7 +171,7 @@ final class UsageClientTests: XCTestCase {
             XCTAssertEqual(previous?.plan, "Max 20x")
             clock.advance(61)
             await service.reject(accountA, status: status)
-            do { _ = try await fetch(client, accountA); XCTFail("Expected profile query failure") } catch {}
+            do { _ = try await fetch(client, accountA, profileRefreshID: UUID()); XCTFail("Expected profile query failure") } catch {}
             let verified = await client.takeVerifiedPlan(), identity = await client.identity()
             XCTAssertNil(verified); XCTAssertNil(identity)
         }
@@ -183,7 +187,7 @@ final class UsageClientTests: XCTestCase {
             "account": .object(["uuid": .string(accountB)]),
             "organization": .object(["uuid": .string(organization), "rate_limit_tier": .string("default_claude_ai")])
         ]))
-        do { _ = try await fetch(client, accountA); XCTFail("Expected mismatched profile") }
+        do { _ = try await fetch(client, accountA, profileRefreshID: UUID()); XCTFail("Expected mismatched profile") }
         catch let failure as UsageFailure { XCTAssertEqual(failure, .identityMismatch) }
         let verified = await client.takeVerifiedPlan(), identity = await client.identity()
         XCTAssertNil(verified); XCTAssertNil(identity)
@@ -348,7 +352,7 @@ final class UsageClientTests: XCTestCase {
         XCTAssertEqual(count, 3)
     }
 
-    func testProfileIsRecheckedAcrossTokenChangesAndIntervals() async throws {
+    func testProfileIsRecheckedOnlyAcrossTokenChanges() async throws {
         let env = try environment(), service = service(), clock = FixtureClock()
         let client = client(env, service: service, clock: clock)
         _ = try await fetch(client, accountA)
@@ -359,8 +363,82 @@ final class UsageClientTests: XCTestCase {
         clock.advance(601)
         _ = try await fetch(client, accountA, generation: "2")
         let paths = await service.paths
-        XCTAssertEqual(paths.filter { $0.hasSuffix("profile") }.count, 4)
+        XCTAssertEqual(paths.filter { $0.hasSuffix("profile") }.count, 2)
         XCTAssertEqual(paths.filter { $0.hasSuffix("usage") }.count, 4)
+    }
+
+    func testSwitchRefreshReadsProfileOnceEvenWhenUsageNeedsRetry() async throws {
+        let env = try environment(), service = service(), clock = FixtureClock()
+        let client = client(env, service: service, clock: clock), switchID = UUID()
+        _ = try await fetch(client, accountA)
+        clock.advance(61)
+        await service.setProfile(profile(plan: "default_claude_ai"))
+        await service.setUsageStatus(503)
+        do { _ = try await fetch(client, accountA, profileRefreshID: switchID); XCTFail("Expected temporary failure") }
+        catch let error as UsageFailure { XCTAssertEqual(error, .server) }
+        let plan = await client.takeVerifiedPlan()
+        XCTAssertEqual(plan?.plan, "Free")
+        clock.advance(601)
+        await service.setUsageStatus(200)
+        _ = try await fetch(client, accountA, profileRefreshID: switchID)
+        let repeatedPlan = await client.takeVerifiedPlan(), identity = await client.identity()
+        XCTAssertNil(repeatedPlan); XCTAssertNil(identity)
+        let paths = await service.paths
+        XCTAssertEqual(paths, ["/api/oauth/profile", "/api/oauth/usage", "/api/oauth/profile", "/api/oauth/usage", "/api/oauth/usage"])
+    }
+
+    func testManualRefreshReadsProfileForEachSelectedAccount() async throws {
+        let env = try environment(), service = service(), clock = FixtureClock()
+        let client = client(env, service: service, clock: clock)
+        for _ in 0..<2 {
+            for account in [accountA, accountB] {
+                _ = try await fetch(client, account, profileRefreshID: UUID())
+                let identity = await client.identity()
+                XCTAssertEqual(identity?.id, account)
+            }
+            clock.advance(61)
+        }
+        let paths = await service.paths
+        XCTAssertEqual(paths, Array(repeating: ["/api/oauth/profile", "/api/oauth/usage"], count: 4).flatMap { $0 })
+    }
+
+    func testCachedValidationCannotBypassOrganizationMismatchOrTokenExpiry() async throws {
+        let env = try environment(), service = service(), clock = FixtureClock()
+        let client = client(env, service: service, clock: clock), original = token(accountA)
+        _ = try await fetch(client, accountA)
+        clock.advance(61)
+        let otherOrg = DesktopAccessToken(value: original.value, accountID: original.accountID, credentialDigest: original.credentialDigest,
+                                         expiresAt: original.expiresAt, organizationID: accountB)
+        do { _ = try await client.fetch(accountID: accountA, readToken: { otherOrg }, validate: { _ in }); XCTFail("Expected mismatch") }
+        catch let error as UsageFailure { XCTAssertEqual(error, .identityMismatch) }
+        let paths = await service.paths
+        XCTAssertEqual(paths, ["/api/oauth/profile", "/api/oauth/usage", "/api/oauth/profile"])
+        clock.advance(3601)
+        do { _ = try await client.fetch(accountID: accountA, readToken: { original }, validate: { _ in }); XCTFail("Expected expired token") }
+        catch is UsageNotReady {}
+        let finalPaths = await service.paths
+        XCTAssertEqual(finalPaths, paths)
+    }
+
+    func testUsageRejectionBlocksPreviouslyVerifiedTokenAcrossRelaunch() async throws {
+        let env = try environment(), service = service(), clock = FixtureClock()
+        let client = client(env, service: service, clock: clock)
+        _ = try await fetch(client, accountA)
+        clock.advance(61)
+        await service.setUsageStatus(401)
+        do { _ = try await fetch(client, accountA); XCTFail("Expected rejection") }
+        catch let error as UsageFailure { XCTAssertEqual(error, .unauthorized) }
+        clock.advance(601)
+        for candidate in [client, self.client(env, service: service, clock: clock)] {
+            do { _ = try await fetch(candidate, accountA); XCTFail("Expected persisted rejection") }
+            catch let error as UsageFailure { XCTAssertEqual(error, .unauthorized) }
+        }
+        let paths = await service.paths
+        XCTAssertEqual(paths, ["/api/oauth/profile", "/api/oauth/usage", "/api/oauth/usage"])
+        await service.setUsageStatus(200)
+        _ = try await fetch(client, accountA, generation: "2")
+        let finalPaths = await service.paths
+        XCTAssertEqual(finalPaths.suffix(2), ["/api/oauth/profile", "/api/oauth/usage"])
     }
 
     func testRetryAfterLongerThanAnHourAndHTTPDateSurviveRelaunch() async throws {

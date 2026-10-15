@@ -3,9 +3,10 @@ import SwiftUI
 import SwitchCore
 
 struct MenuPanel: View {
+    var automaticallyReviewReminders = true
     @Environment(AppState.self) private var state
     @Environment(\.openWindow) private var openWindow
-    private var others: [Account] { state.accounts.filter { $0.id != state.activeID } }
+    @State private var menuSnapshot: AccountMenuSnapshot?
     var body: some View {
         Group {
             if state.startupAccess.isReady { authorizedContent }
@@ -16,8 +17,40 @@ struct MenuPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             separator
+            if let reminder = state.switchReminder {
+                Button {
+                    show(.accounts)
+                    Task { await state.reviewSwitchReminder(reminder.id) }
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: reminder.kind == .expiring ? "arrow.left.arrow.right.circle.fill" : "exclamationmark.circle.fill")
+                            .foregroundStyle(Palette.brand)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(reminder.title).font(.system(size: 12, weight: .semibold))
+                            Text(reminder.detail).font(.system(size: 11)).foregroundStyle(.secondary)
+                            Text(L10n.tr("Review switch")).font(.system(size: 11, weight: .medium)).foregroundStyle(Palette.brand)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(.secondary)
+                    }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Palette.brand.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
+                }.buttonStyle(CardButtonStyle(radius: 9)).disabled(state.working || state.reviewingReminder)
+                    .padding(.horizontal, 10)
+                separator
+            }
+            if state.showsNewAccountFollowUp {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.tr("Login saved · Conversations not transferred")).font(.system(size: 12, weight: .medium))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(L10n.tr("View")) { show(.accounts) }.controlSize(.small)
+                }.padding(.horizontal, 14).padding(.vertical, 8)
+                separator
+            }
             if state.quotaAccessRequired || state.authorizingQuotaAccess {
                 QuotaAccessStatus().padding(.horizontal, 14).padding(.vertical, 6)
+                separator
+            } else if let reason = state.quotaRefreshPause {
+                QuotaRefreshPauseStatus(reason: reason, compact: true).padding(.horizontal, 14).padding(.vertical, 8)
                 separator
             }
             if state.activeUnsaved { LoginSaveStatus(compact: true).padding(.horizontal, 14).padding(.vertical, 6) }
@@ -31,8 +64,9 @@ struct MenuPanel: View {
                 }
             } else {
                 TimelineView(.periodic(from: .now, by: 30)) { context in
-                    let suggestion = state.switchAdvice(now: context.date)
-                    let ordered = suggestion.map { pick in [pick.account] + others.filter { $0.id != pick.account.id } } ?? others
+                    let ranking = state.accountRanking(now: context.date)
+                    let suggestion = menuSnapshot == nil ? ranking.advice : menuSnapshot?.advice(from: ranking)
+                    let ordered = (menuSnapshot?.accounts(from: ranking) ?? ranking.displayAccounts).filter { $0.id != state.activeID }
                     VStack(spacing: 0) {
                         HStack(spacing: 8) {
                             Text(L10n.tr("Accounts"))
@@ -48,12 +82,12 @@ struct MenuPanel: View {
                             VStack(spacing: 0) {
                                 if let active = state.activeAccount {
                                     Divider().padding(.horizontal, 14)
-                                    MenuAccountRow(account: active, now: context.date, active: true, advice: suggestion?.advice)
+                                    MenuAccountRow(account: active, now: context.date, active: true, advice: suggestion)
                                 }
                                 ForEach(ordered) { account in
                                     Divider().padding(.horizontal, 14)
                                     MenuAccountRow(account: account, now: context.date,
-                                                   advice: account.id == suggestion?.account.id ? suggestion?.advice : nil) {
+                                                   advice: account.id == suggestion?.accountID ? suggestion : nil) {
                                         show(.accounts)
                                         Task { await state.prepare(.switchAccount, target: account) }
                                     }
@@ -77,9 +111,15 @@ struct MenuPanel: View {
             VStack(spacing: 0) {
                 MenuAction(title: L10n.tr("Open Claude Switch"), symbol: "macwindow") { show(state.page == .settings ? .accounts : state.page) }
                 MenuAction(title: "GitHub", symbol: ProjectLink.symbol, external: true) {
-                    MenuPanelWindowReader.panel?.close()
-                    ProjectLink.open()
+                    MenuPanelWindowReader.panel?.close(); ProjectLink.open()
                 }.hint(L10n.tr("Open the project page on GitHub"))
+                MenuAction(title: L10n.tr("Report an issue"), symbol: "bubble.left", external: true) {
+                    MenuPanelWindowReader.panel?.close(); NSWorkspace.shared.open(ProjectLink.issues)
+                }
+                MenuAction(title: state.updates.hasUpdate ? L10n.tr("Update available") : L10n.tr("View latest version"),
+                           symbol: "arrow.down.circle", external: true) {
+                    MenuPanelWindowReader.panel?.close(); NSWorkspace.shared.open(ProjectLink.releases)
+                }
                 MenuAction(title: L10n.tr("Settings…"), symbol: "gearshape", detail: "⌘,") { show(.settings) }
                 MenuAction(title: L10n.tr("Quit"), symbol: "power", detail: "⌘Q") { NSApplication.shared.terminate(nil) }
             }.padding(.horizontal, 6)
@@ -87,7 +127,12 @@ struct MenuPanel: View {
         .padding(.bottom, 6)
         .frame(width: 330)
         .tint(Palette.brand)
-        .background(MenuPanelWindowReader())
+        .background(MenuPanelWindowReader(onVisibilityChange: { visible in
+            menuSnapshot = visible ? AccountMenuSnapshot(state.accountRanking()) : nil
+            if visible { reviewUnseenReminder() }
+        }))
+        .onAppear { menuSnapshot = AccountMenuSnapshot(state.accountRanking()) }
+        .onDisappear { menuSnapshot = nil }
     }
     private var header: some View {
         HStack(spacing: 8) {
@@ -105,6 +150,15 @@ struct MenuPanel: View {
         }.padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
     }
     private var separator: some View { Divider().padding(.horizontal, 14).padding(.vertical, 6) }
+    private func reviewUnseenReminder() {
+        // The marked status item is a direct review shortcut once per reminder. Later clicks open the normal menu.
+        guard automaticallyReviewReminders, MenuPanelWindowReader.panel?.isVisible == true,
+              let reminder = state.switchReminder, reminder.needsReview,
+              !state.working, !state.reviewingReminder, state.pending == nil,
+              !state.showAddAccount, !state.showQuickFind else { return }
+        show(.accounts)
+        Task { await state.reviewSwitchReminder(reminder.id) }
+    }
     private func show(_ page: NavigationPage) {
         // The status-item panel floats above every window; it would cover the sheet opened next.
         MenuPanelWindowReader.panel?.close()
@@ -116,14 +170,26 @@ struct MenuPanel: View {
 /// The MenuBarExtra panel has no dismiss API; keep its window so actions can close it.
 private struct MenuPanelWindowReader: NSViewRepresentable {
     @MainActor static weak var panel: NSWindow?
+    var onVisibilityChange: ((Bool) -> Void)?
     final class Attachment: NSView {
+        var onVisibilityChange: ((Bool) -> Void)?
+        private var visibility: NSKeyValueObservation?
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if let window { MenuPanelWindowReader.panel = window }
+            visibility = nil
+            if let window {
+                MenuPanelWindowReader.panel = window
+                visibility = window.observe(\.isVisible, options: [.initial, .new]) { [weak self] window, _ in
+                    let visible = window.isVisible
+                    DispatchQueue.main.async { [weak self] in self?.onVisibilityChange?(visible) }
+                }
+            }
         }
     }
-    func makeNSView(context: Context) -> Attachment { Attachment() }
-    func updateNSView(_ view: Attachment, context: Context) {}
+    func makeNSView(context: Context) -> Attachment {
+        let view = Attachment(); view.onVisibilityChange = onVisibilityChange; return view
+    }
+    func updateNSView(_ view: Attachment, context: Context) { view.onVisibilityChange = onVisibilityChange }
 }
 
 /// One table row per saved account: status dot, identity over a status line, then a column per quota window.
@@ -181,7 +247,7 @@ private struct MenuAccountRow: View {
     private var subtitle: (text: String, color: Color) {
         if let error = state.usageError(for: account.id) { return (error, .orange) }
         if state.usageRefreshingAccountID == account.id { return (L10n.tr("Reading quota…"), .secondary) }
-        if state.usageNotices[account.id] != nil { return (L10n.tr("Waiting for Claude"), .orange) }
+        if state.usageNotices[account.id] != nil { return (L10n.tr("Check in Claude"), .orange) }
         if active {
             if let shortage { return (shortage.status, Color(nsColor: .systemOrange)) }
             return (account.planTitle + " · " + L10n.tr("Active"), Palette.green)
@@ -224,12 +290,16 @@ private struct MenuTableRowStyle: ButtonStyle {
         let configuration: ButtonStyleConfiguration
         let tint: Color?
         @State private var hovering = false
+        @Environment(\.isEnabled) private var enabled
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @Environment(\.colorSchemeContrast) private var contrast
         var body: some View {
-            let emphasis = configuration.isPressed ? 0.08 : hovering ? 0.045 : 0
+            let emphasis = enabled ? (configuration.isPressed ? 0.12 : hovering ? 0.08 : 0) : 0
             configuration.label
-                .background((tint ?? .primary).opacity((tint == nil ? 0 : 0.07) + emphasis))
+                .background((tint ?? .primary).opacity((tint == nil ? 0 : 0.07) + emphasis * (contrast == .increased ? 2 : 1)))
+                .opacity(enabled ? 1 : 0.45)
                 .onHover { hovering = $0 }
-                .animation(.easeOut(duration: 0.12), value: hovering)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering && enabled)
         }
     }
 }

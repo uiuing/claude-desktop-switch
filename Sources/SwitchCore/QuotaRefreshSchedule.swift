@@ -3,6 +3,18 @@ import Foundation
 /// Policy only: the queue serializes reads and the client enforces server cooldowns.
 public struct QuotaRefreshSchedule {
     public var preferences = QuotaRefreshPreferences()
+    public enum PauseReason: Equatable {
+        case disabled, claudeClosed, offline, sleeping
+
+        public var message: String {
+            switch self {
+            case .disabled: return L10n.tr("Auto-refresh is off")
+            case .claudeClosed: return L10n.tr("Claude is closed · Auto-refresh paused")
+            case .offline: return L10n.tr("Offline · Auto-refresh paused")
+            case .sleeping: return L10n.tr("Mac is asleep · Auto-refresh paused")
+            }
+        }
+    }
     public struct Activity {
         public var running: Bool
         public var online: Bool
@@ -26,6 +38,13 @@ public struct QuotaRefreshSchedule {
         var retryAt: Date?
     }
     public var activity = Activity()
+    public var pauseReason: PauseReason? {
+        if !preferences.enabled { return .disabled }
+        if !activity.awake { return .sleeping }
+        if !activity.running { return .claudeClosed }
+        if !activity.online { return .offline }
+        return nil
+    }
     private var entries: [String: Entry] = [:]
     private var currentAccountID: String?
     public init() {}

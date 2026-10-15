@@ -21,36 +21,70 @@ struct LoginSnapshot: Codable, Sendable {
 
 public actor CredentialVault: AccountVault {
     private let root: URL
-    private let service = "dev.claudeswitch.local-vault"
-    public init(root: URL) { self.root = root }
+    private nonisolated let access = KeychainKeyCache()
+    private let loadKey: (Bool, Bool) throws -> Data
+    public init(root: URL) {
+        self.root = root
+        loadKey = { allowPrompt, create in try Self.readKey(root: root, allowPrompt: allowPrompt, create: create) }
+    }
+    init(root: URL, loadKey: @escaping (Bool, Bool) throws -> Data) { self.root = root; self.loadKey = loadKey }
+    public nonisolated func clearAccess() { access.clear() }
+    public func authorizeAccess(allowPrompt: Bool) throws {
+        _ = try key(create: allowPrompt, allowPrompt: allowPrompt)
+    }
     public func contains(accountID: String) -> Bool {
         guard UUID(uuidString: accountID) != nil else { return false }
         return FileManager.default.fileExists(atPath: root.appendingPathComponent(accountID + ".switchvault").path)
     }
-    private func key(create: Bool) throws -> SymmetricKey {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service, kSecAttrAccount as String: "master-v1",
-            kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail]
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecSuccess, let data = result as? Data, data.count == 32 { return SymmetricKey(data: data) }
-        guard status == errSecItemNotFound, create else {
-            throw SwitchError.blocked(L10n.tr("Could not read Switch's local encryption key. Unlock Keychain first."))
+    private func key(create: Bool, allowPrompt: Bool = false) throws -> SymmetricKey {
+        let data = try access.read(allowPrompt: allowPrompt) { allowed in
+            let data = try loadKey(allowed, create)
+            guard data.count == 32 else { throw VaultKeychain.accessError }
+            return data
         }
-        let key = SymmetricKey(size: .bits256)
-        let data = key.withUnsafeBytes { Data($0) }
-        let entry: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service, kSecAttrAccount as String: "master-v1", kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            kSecAttrSynchronizable as String: false]
-        guard SecItemAdd(entry as CFDictionary, nil) == errSecSuccess else { throw SwitchError.blocked(L10n.tr("Could not create an encryption key.")) }
-        return key
+        return SymmetricKey(data: data)
+    }
+    private static func readKey(root: URL, allowPrompt: Bool, create: Bool) throws -> Data {
+        func identity(_ service: String) -> [String: Any] {
+            [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+             kSecAttrAccount as String: "master-v1"]
+        }
+        return try VaultKeychain.load(create: create, lookup: { service in
+            var query = identity(service)
+            query[kSecReturnData as String] = true
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+            let result = KeychainInteraction.shared.perform(allowPrompt: allowPrompt) { interactive in
+                if interactive { query.removeValue(forKey: kSecUseAuthenticationUI as String) }
+                var value: CFTypeRef?
+                let status = SecItemCopyMatching(query as CFDictionary, &value)
+                return .init(status, data: value as? Data)
+            }
+            return .init(result.status, data: result.data)
+        }, make: {
+            try validateKeyCreation(root: root)
+            let data = SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }
+            var entry = identity(VaultKeychain.service)
+            entry[kSecValueData as String] = data; entry[kSecAttrLabel as String] = VaultKeychain.label
+            entry[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            entry[kSecAttrSynchronizable as String] = false
+            let added = KeychainInteraction.shared.perform(allowPrompt: allowPrompt) { _ in .init(SecItemAdd(entry as CFDictionary, nil)) }
+            return .init(added.status, data: added.status == errSecSuccess ? data : nil)
+        })
+    }
+    static func validateKeyCreation(root: URL) throws {
+        let fm = FileManager.default
+        for directory in [root, root.deletingLastPathComponent().appendingPathComponent("transactions")] {
+            try SafeFiles.validateAncestors(directory)
+            if fm.fileExists(atPath: directory.path), !(try fm.contentsOfDirectory(atPath: directory.path)).isEmpty {
+                throw SwitchError.blocked(L10n.tr("The saved-login encryption key is missing. Restore it from a backup before continuing."))
+            }
+        }
     }
     func seal(_ data: Data, context: String) throws -> Data {
-        guard data.count <= 192 * 1024 * 1024 else { throw SwitchError.blocked(L10n.tr("The snapshot exceeds the encryption size limit.")) }
+        guard data.count <= 192 * 1024 * 1024 else { throw SwitchError.blocked(L10n.tr("Account data is too large to save. Nothing was changed.")) }
         guard let sealed = try AES.GCM.seal(data, using: key(create: true), authenticating: Data(context.utf8)).combined else {
-            throw SwitchError.blocked(L10n.tr("Snapshot encryption failed."))
+            throw SwitchError.blocked(L10n.tr("Could not securely save the account data. Please try again."))
         }
         return sealed
     }
@@ -121,10 +155,10 @@ public actor CredentialVault: AccountVault {
         let snapshot = try JSONDecoder().decode(LoginSnapshot.self, from: unseal(data, context: "account:" + accountID))
         guard snapshot.schema == 1, snapshot.accountID == accountID,
               snapshot.auth["lastKnownAccountUuid"]?.string?.lowercased() == accountID else {
-            throw SwitchError.malformed(L10n.tr("Snapshot identity verification failed. Stopped."))
+            throw SwitchError.malformed(L10n.tr("The saved login belongs to a different account. The operation stopped."))
         }
         for file in snapshot.files {
-            guard digest(file.data) == file.sha256 else { throw SwitchError.malformed(L10n.tr("Snapshot integrity verification failed.")) }
+            guard digest(file.data) == file.sha256 else { throw SwitchError.malformed(L10n.tr("The saved login is damaged. Sign in to this account in Claude again.")) }
         }
         return snapshot
     }
