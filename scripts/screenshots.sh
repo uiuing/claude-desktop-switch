@@ -8,9 +8,8 @@ published="$PWD/docs/images"
 mkdir -p "$output" "$published"
 CLAUDE_SWITCH_SCREENSHOTS="$output" swift test --filter "${1:-ScreenshotTests}"
 for name in hero-{en,zh-Hans,zh-Hant,ja}-{light,dark}.jpg \
-  {accounts,menu,conversations,usage}-{light,dark}.png social-preview.png \
-  switch-reminder-menu-{en,zh-Hans,zh-Hant,ja}.png \
-  new-account-follow-confirm-{en,zh-Hans,zh-Hant,ja}.png; do
+  {conversations,usage,switch-reminder-menu}-{en,zh-Hans,zh-Hant,ja}-{light,dark}.png \
+  social-preview.png; do
   if [[ -f "$output/$name" ]]; then cp "$output/$name" "$published/$name"; fi
 done
 sips -s format png -Z 512 Resources/AppIcon.icns --out "$published/icon.png" >/dev/null

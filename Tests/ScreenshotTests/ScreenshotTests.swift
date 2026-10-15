@@ -107,15 +107,13 @@ final class ScreenshotTests: XCTestCase {
                 let menu = try captureMenu(state, dark: dark)
                 try save(render(HeroImage(window: accounts, menu: menu, status: status, dark: dark), size: HeroImage.size),
                          "hero-\(language)-\(mode)", maxWidth: 1800, jpeg: true)
-                guard language == "en" else { continue }
-                try save(accounts, "accounts-\(mode)", maxWidth: 1600)
-                try save(menu, "menu-\(mode)", maxWidth: 700)
                 state.page = .conversations
                 state.selectedSessionIDs = ["demo-1"]
-                try save(captureWorkbench(state, dark: dark), "conversations-\(mode)", maxWidth: 1600)
+                try save(captureWorkbench(state, dark: dark), "conversations-\(language)-\(mode)", maxWidth: 1600)
                 state.page = .usage
-                try save(captureWorkbench(state, dark: dark, size: NSSize(width: 1080, height: 980), settle: 2),
-                         "usage-\(mode)", maxWidth: 1600)
+                state.tokenDays = 30
+                try save(captureWorkbench(state, dark: dark, size: NSSize(width: 1080, height: 1160), settle: 2),
+                         "usage-\(language)-\(mode)", maxWidth: 1600)
             }
         }
     }
@@ -137,6 +135,7 @@ final class ScreenshotTests: XCTestCase {
         defer { UserDefaults.standard.register(defaults: [Format.showResetTimeKey: previousReset]) }
         let state = AppState(demo: true)
         state.inventory?.warnings = []
+        state.updateSwitchReminder()
         let menu = try captureMenu(state, dark: false)
         try save(render(SocialPreview(menu: menu), size: NSSize(width: 1280, height: 640), scale: 1),
                  "social-preview", maxWidth: 1280)
@@ -159,7 +158,9 @@ final class ScreenshotTests: XCTestCase {
             state.updateSwitchReminder()
             let reminder = try XCTUnwrap(state.switchReminder)
             try save(captureWorkbench(state, dark: false), "switch-reminder-\(language)", maxWidth: 1600)
-            try save(captureMenu(state, dark: false), "switch-reminder-menu-\(language)", maxWidth: 700)
+            for dark in [false, true] {
+                try save(captureMenu(state, dark: dark), "switch-reminder-menu-\(language)-\(dark ? "dark" : "light")", maxWidth: 700)
+            }
             try save(render(MenuBarLabel(state: state).padding(8).background(Color.white), size: NSSize(width: 150, height: 34)),
                      "switch-reminder-status-\(language)", maxWidth: 300)
             state.presentWorkbench = nil
@@ -585,6 +586,8 @@ final class ScreenshotTests: XCTestCase {
 
 /// Draws as the focused window, so controls and window buttons use their active colors without stealing focus.
 private final class ActiveWindow: NSWindow {
+    // Off-screen captures keep their requested size regardless of the display resolution.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
     override var isKeyWindow: Bool { true }
     override var isMainWindow: Bool { true }
     @objc func _hasActiveAppearance() -> Bool { true }
@@ -695,7 +698,7 @@ private struct SocialPreview: View {
                     }
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Claude Switch").font(.system(size: 28, weight: .bold))
-                        Text("Claude Desktop, in your menu bar.")
+                        Text("Your accounts, in your Mac's menu bar.")
                             .font(.system(size: 18)).foregroundStyle(ink.opacity(0.65))
                     }
                 }
@@ -707,7 +710,7 @@ private struct SocialPreview: View {
                     .font(.system(size: 62, weight: .bold)).tracking(-2)
                     .foregroundStyle(Color(hex: 0xB45532))
                 Spacer().frame(height: 24)
-                Text("Live quotas. Timely reminders.\nCode conversations that follow you.")
+                Text("See your quota at a glance.\nBring your Code conversations along.")
                     .font(.system(size: 24, weight: .regular))
                     .foregroundStyle(ink.opacity(0.72)).lineSpacing(5)
                 Spacer()

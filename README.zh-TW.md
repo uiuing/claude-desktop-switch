@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.0" width="112" alt="Claude Switch 圖示">
+<img src="docs/images/icon.png?v=0.2.0-2" width="112" alt="Claude Switch 圖示">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hant-dark.jpg?v=0.2.0">
-  <img src="docs/images/hero-zh-Hant-light.jpg?v=0.2.0" alt="Claude Switch：帳號視窗與選單列面板">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hant-dark.jpg?v=0.2.0-2">
+  <img src="docs/images/hero-zh-Hant-light.jpg?v=0.2.0-2" alt="Claude Switch：帳號視窗與選單列面板">
 </picture>
 
 </div>
@@ -38,34 +38,26 @@
 
 ## 截圖
 
-<table>
-  <tr>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png?v=0.2.0">
-        <img src="docs/images/conversations-light.png?v=0.2.0" alt="對話：移動、複製或跟隨 Claude Code 工作階段">
-      </picture>
-      <p align="center"><b>對話</b> · 換個帳號，繼續手上的工作</p>
-    </td>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png?v=0.2.0">
-        <img src="docs/images/usage-light.png?v=0.2.0" alt="用量統計：活躍熱度圖與各模型的每日 Token">
-      </picture>
-      <p align="center"><b>用量</b> · 看看自己的使用習慣</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="docs/images/switch-reminder-menu-zh-Hant.png?v=0.2.0" width="330" alt="切換提醒">
-      <p><b>切換提醒</b> · 需要時，找到還有餘裕的帳號</p>
-    </td>
-    <td width="50%">
-      <img src="docs/images/new-account-follow-confirm-zh-Hant.png?v=0.2.0" alt="帶上對話">
-      <p><b>帶上對話</b> · 選擇新帳號要繼續的對話</p>
-    </td>
-  </tr>
-</table>
+**額度不足，及時提醒。**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hant-dark.png?v=0.2.0-2">
+  <img src="docs/images/switch-reminder-menu-zh-Hant-light.png?v=0.2.0-2" width="330" alt="額度不足，及時提醒。">
+</picture>
+
+**換帳號，對話跟著走。**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-zh-Hant-dark.png?v=0.2.0-2">
+  <img src="docs/images/conversations-zh-Hant-light.png?v=0.2.0-2" alt="換帳號，對話跟著走。">
+</picture>
+
+**看看自己的使用習慣。**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hant-dark.png?v=0.2.0-2">
+  <img src="docs/images/usage-zh-Hant-light.png?v=0.2.0-2" alt="看看自己的使用習慣。">
+</picture>
 
 <sub>所有截圖皆使用虛構的範例資料。</sub>
 

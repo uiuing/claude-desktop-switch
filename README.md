@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.0" width="112" alt="Claude Switch icon">
+<img src="docs/images/icon.png?v=0.2.0-2" width="112" alt="Claude Switch icon">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@ Your Claude Desktop accounts and remaining quota, together in your Mac’s menu 
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-en-dark.jpg?v=0.2.0">
-  <img src="docs/images/hero-en-light.jpg?v=0.2.0" alt="Claude Switch: the accounts window and the menu bar panel">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-en-dark.jpg?v=0.2.0-2">
+  <img src="docs/images/hero-en-light.jpg?v=0.2.0-2" alt="Claude Switch: the accounts window and the menu bar panel">
 </picture>
 
 </div>
@@ -38,34 +38,26 @@ Using personal and work accounts should not mean signing in over and over or fin
 
 ## Screenshots
 
-<table>
-  <tr>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png?v=0.2.0">
-        <img src="docs/images/conversations-light.png?v=0.2.0" alt="Conversations: move, copy and follow Claude Code sessions">
-      </picture>
-      <p align="center"><b>Conversations</b> · continue your work on another account</p>
-    </td>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png?v=0.2.0">
-        <img src="docs/images/usage-light.png?v=0.2.0" alt="Usage statistics with an activity heatmap and daily tokens per model">
-      </picture>
-      <p align="center"><b>Usage</b> · see your activity over time</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="docs/images/switch-reminder-menu-en.png?v=0.2.0" width="330" alt="Switch reminders">
-      <p><b>Switch reminders</b> · know when another account can help</p>
-    </td>
-    <td width="50%">
-      <img src="docs/images/new-account-follow-confirm-en.png?v=0.2.0" alt="Bring conversations along">
-      <p><b>Bring conversations along</b> · choose what to bring to your new account</p>
-    </td>
-  </tr>
-</table>
+**Get a heads-up when you run low.**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-en-dark.png?v=0.2.0-2">
+  <img src="docs/images/switch-reminder-menu-en-light.png?v=0.2.0-2" width="330" alt="Get a heads-up when you run low.">
+</picture>
+
+**Pick up where you left off.**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-en-dark.png?v=0.2.0-2">
+  <img src="docs/images/conversations-en-light.png?v=0.2.0-2" alt="Pick up where you left off.">
+</picture>
+
+**Understand your usage.**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-en-dark.png?v=0.2.0-2">
+  <img src="docs/images/usage-en-light.png?v=0.2.0-2" alt="Understand your usage.">
+</picture>
 
 <sub>All screenshots use fictional sample data.</sub>
 

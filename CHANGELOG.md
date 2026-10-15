@@ -6,6 +6,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Documentation
+
+- Localized screenshots and a refreshed social preview highlight account switching, conversation continuity and everyday usage.
+
 ## [0.2.0] - 2026-10-16
 
 Switch recommendations, timely reminders, and an easier way to bring your Code conversations to another account.
