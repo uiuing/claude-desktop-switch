@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png" width="112" alt="Claude Switch 图标">
+<img src="docs/images/icon.png?v=0.2.0" width="112" alt="Claude Switch 图标">
 
 # Claude Switch
 
@@ -8,8 +8,7 @@
 
 保存登录、查看剩余额度，切换账号时也能带上本地 Code 会话。
 
-[![最新版本](https://img.shields.io/github/v/release/uiuing/claude-desktop-switch?style=flat-square&color=C9653F&label=release)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
-[![下载量](https://img.shields.io/github/downloads/uiuing/claude-desktop-switch/total?style=flat-square&color=C9653F)](https://github.com/uiuing/claude-desktop-switch/releases)
+[![最新版本](https://img.shields.io/badge/Download-latest_release-C9653F?style=flat-square)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111?style=flat-square&logo=apple)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3B82F6?style=flat-square)](LICENSE)
@@ -19,8 +18,8 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hans-dark.jpg">
-  <img src="docs/images/hero-zh-Hans-light.jpg" alt="Claude Switch：账号窗口与菜单栏面板">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hans-dark.jpg?v=0.2.0">
+  <img src="docs/images/hero-zh-Hans-light.jpg?v=0.2.0" alt="Claude Switch：账号窗口与菜单栏面板">
 </picture>
 
 </div>
@@ -49,26 +48,26 @@ Claude Switch 把你用到的每个登录加密保存在本机，并替你完成
   <tr>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png">
-        <img src="docs/images/conversations-light.png" alt="会话：移动、复制或跟随 Claude Code 会话">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png?v=0.2.0">
+        <img src="docs/images/conversations-light.png?v=0.2.0" alt="会话：移动、复制或跟随 Claude Code 会话">
       </picture>
       <p align="center"><b>会话</b> · 在账号之间移动、复制或跟随会话</p>
     </td>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png">
-        <img src="docs/images/usage-light.png" alt="用量统计：活跃热力图与按模型的每日 Token">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png?v=0.2.0">
+        <img src="docs/images/usage-light.png?v=0.2.0" alt="用量统计：活跃热力图与按模型的每日 Token">
       </picture>
       <p align="center"><b>用量</b> · Token、模型、热力图与连续天数</p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="docs/images/switch-reminder-menu-zh-Hans.png" width="330" alt="切换提醒">
+      <img src="docs/images/switch-reminder-menu-zh-Hans.png?v=0.2.0" width="330" alt="切换提醒">
       <p><b>切换提醒</b> · 先查看推荐账号的额度，再确认切换</p>
     </td>
     <td width="50%">
-      <img src="docs/images/new-account-follow-confirm-zh-Hans.png" alt="带上会话">
+      <img src="docs/images/new-account-follow-confirm-zh-Hans.png?v=0.2.0" alt="带上会话">
       <p><b>带上会话</b> · 添加账号后确认移动或复制</p>
     </td>
   </tr>

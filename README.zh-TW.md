@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png" width="112" alt="Claude Switch 圖示">
+<img src="docs/images/icon.png?v=0.2.0" width="112" alt="Claude Switch 圖示">
 
 # Claude Switch
 
@@ -8,8 +8,7 @@
 
 保存登入、查看剩餘額度，切換帳號時也能帶上本機 Code 對話。
 
-[![最新版本](https://img.shields.io/github/v/release/uiuing/claude-desktop-switch?style=flat-square&color=C9653F&label=release)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
-[![下載次數](https://img.shields.io/github/downloads/uiuing/claude-desktop-switch/total?style=flat-square&color=C9653F)](https://github.com/uiuing/claude-desktop-switch/releases)
+[![最新版本](https://img.shields.io/badge/Download-latest_release-C9653F?style=flat-square)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111?style=flat-square&logo=apple)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3B82F6?style=flat-square)](LICENSE)
@@ -19,8 +18,8 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hant-dark.jpg">
-  <img src="docs/images/hero-zh-Hant-light.jpg" alt="Claude Switch：帳號視窗與選單列面板">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hant-dark.jpg?v=0.2.0">
+  <img src="docs/images/hero-zh-Hant-light.jpg?v=0.2.0" alt="Claude Switch：帳號視窗與選單列面板">
 </picture>
 
 </div>
@@ -49,26 +48,26 @@ Claude Switch 會把你用到的每個登入加密保存在本機，並替你完
   <tr>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png">
-        <img src="docs/images/conversations-light.png" alt="對話：移動、複製或跟隨 Claude Code 工作階段">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png?v=0.2.0">
+        <img src="docs/images/conversations-light.png?v=0.2.0" alt="對話：移動、複製或跟隨 Claude Code 工作階段">
       </picture>
       <p align="center"><b>對話</b> · 在帳號之間移動、複製或跟隨工作階段</p>
     </td>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png">
-        <img src="docs/images/usage-light.png" alt="用量統計：活躍熱度圖與各模型的每日 Token">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png?v=0.2.0">
+        <img src="docs/images/usage-light.png?v=0.2.0" alt="用量統計：活躍熱度圖與各模型的每日 Token">
       </picture>
       <p align="center"><b>用量</b> · Token、模型、熱度圖與連續天數</p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="docs/images/switch-reminder-menu-zh-Hant.png" width="330" alt="切換提醒">
+      <img src="docs/images/switch-reminder-menu-zh-Hant.png?v=0.2.0" width="330" alt="切換提醒">
       <p><b>切換提醒</b> · 先查看推薦帳號的額度，再確認切換</p>
     </td>
     <td width="50%">
-      <img src="docs/images/new-account-follow-confirm-zh-Hant.png" alt="帶上對話">
+      <img src="docs/images/new-account-follow-confirm-zh-Hant.png?v=0.2.0" alt="帶上對話">
       <p><b>帶上對話</b> · 新增帳號後確認移動或複製</p>
     </td>
   </tr>

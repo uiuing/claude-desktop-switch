@@ -10,7 +10,7 @@ Releases are built locally and published by hand on GitHub. Claude Switch checks
    - `CFBundleShortVersionString`: the user-facing version `X.Y.Z`
    - `CFBundleVersion`: increase by one for every release
 2. Move the entries under **Unreleased** in `CHANGELOG.md` into a new section `## [X.Y.Z] - YYYY-MM-DD` and update the comparison links at the bottom.
-3. If the UI changed, regenerate the README images with `zsh scripts/screenshots.sh`.
+3. If the UI changed, regenerate the README images with `zsh scripts/screenshots.sh` and set their README image URL cache keys to `?v=X.Y.Z` using the release version. The download badge links to the latest release without caching a displayed version or download count.
 4. Check and build:
 
    ```sh

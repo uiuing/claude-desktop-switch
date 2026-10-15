@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png" width="112" alt="Claude Switch icon">
+<img src="docs/images/icon.png?v=0.2.0" width="112" alt="Claude Switch icon">
 
 # Claude Switch
 
@@ -8,8 +8,7 @@
 
 Save your logins, see what quota is left, and bring your local Code conversations when you switch.
 
-[![Latest release](https://img.shields.io/github/v/release/uiuing/claude-desktop-switch?style=flat-square&color=C9653F&label=release)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/uiuing/claude-desktop-switch/total?style=flat-square&color=C9653F)](https://github.com/uiuing/claude-desktop-switch/releases)
+[![Latest release](https://img.shields.io/badge/Download-latest_release-C9653F?style=flat-square)](https://github.com/uiuing/claude-desktop-switch/releases/latest)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-111?style=flat-square&logo=apple)
 ![Swift 6](https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3B82F6?style=flat-square)](LICENSE)
@@ -19,8 +18,8 @@ Save your logins, see what quota is left, and bring your local Code conversation
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-en-dark.jpg">
-  <img src="docs/images/hero-en-light.jpg" alt="Claude Switch: the accounts window and the menu bar panel">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-en-dark.jpg?v=0.2.0">
+  <img src="docs/images/hero-en-light.jpg?v=0.2.0" alt="Claude Switch: the accounts window and the menu bar panel">
 </picture>
 
 </div>
@@ -49,26 +48,26 @@ Claude Switch keeps every login you use on your Mac, encrypted, and swaps them f
   <tr>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png">
-        <img src="docs/images/conversations-light.png" alt="Conversations: move, copy and follow Claude Code sessions">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png?v=0.2.0">
+        <img src="docs/images/conversations-light.png?v=0.2.0" alt="Conversations: move, copy and follow Claude Code sessions">
       </picture>
       <p align="center"><b>Conversations</b> · move, copy or follow sessions across accounts</p>
     </td>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png">
-        <img src="docs/images/usage-light.png" alt="Usage statistics with an activity heatmap and daily tokens per model">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png?v=0.2.0">
+        <img src="docs/images/usage-light.png?v=0.2.0" alt="Usage statistics with an activity heatmap and daily tokens per model">
       </picture>
       <p align="center"><b>Usage</b> · tokens, models, heatmap and streaks</p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="docs/images/switch-reminder-menu-en.png" width="330" alt="Switch reminders">
+      <img src="docs/images/switch-reminder-menu-en.png?v=0.2.0" width="330" alt="Switch reminders">
       <p><b>Switch reminders</b> · review an account with quota before switching</p>
     </td>
     <td width="50%">
-      <img src="docs/images/new-account-follow-confirm-en.png" alt="Bring conversations along">
+      <img src="docs/images/new-account-follow-confirm-en.png?v=0.2.0" alt="Bring conversations along">
       <p><b>Bring conversations along</b> · confirm moves and copies after adding an account</p>
     </td>
   </tr>
