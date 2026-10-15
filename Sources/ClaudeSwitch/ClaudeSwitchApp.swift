@@ -61,25 +61,20 @@ struct ClaudeSwitchApp: App {
 /// Reads only what the status item shows, so other state changes leave it alone.
 struct MenuBarLabel: View {
     let state: AppState
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var images = MenuBarStatusImage.Cache()
     var body: some View {
         if state.startupAccess.isReady { quotaLabel }
         else { Image(systemName: "lock").accessibilityLabel(L10n.tr("Allow access to continue")) }
     }
     private var quotaLabel: some View {
+        // The local refresh updates the label without a rendering clock inside MenuBarExtra.
         let quota = state.fiveHourQuota?.percentageText ?? "—"
-        return HStack(spacing: 4) {
-            Image(nsImage: StatusIcon.image)
-            // A scheduled view inside the status item's rendered label can keep
-            // invalidating MenuBarExtra during launch. The local refresh already
-            // updates this value once a minute without a separate rendering clock.
-            Text(quota).monospacedDigit()
-            if let reminder = state.switchReminder, reminder.needsReview {
-                Image(systemName: reminder.kind == .expiring ? "arrow.left.arrow.right.circle.fill" : "exclamationmark.circle.fill")
-                    .foregroundStyle(reminder.exhausted ? .red : .orange)
-            }
-        }
-        .help(state.switchReminder?.needsReview == true ? L10n.tr("Recommendation available. Click to review the switch.") : L10n.tr("Claude Switch, current account session limit remaining: {0}", L10n.argument(quota)))
-        .accessibilityLabel(state.switchReminder?.needsReview == true ? L10n.tr("Recommendation available. Click to review the switch.") : L10n.tr("Claude Switch, current account session limit remaining: {0}", L10n.argument(quota)))
+        let tasks = state.library.preferences.showCodeTasks ? state.codeTasks : nil
+        let description = MenuBarStatusImage.description(quota: quota, reminder: state.switchReminder, tasks: tasks)
+        return Image(nsImage: images.image(quota: quota, reminder: state.switchReminder, tasks: tasks,
+                                           icon: StatusIcon.image, colorScheme: colorScheme, frame: state.menuBarTaskAnimation.frame))
+            .renderingMode(.original).accessibilityLabel(description).help(description)
     }
 }
 

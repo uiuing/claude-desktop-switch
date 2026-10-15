@@ -65,6 +65,7 @@ SwiftPM needs to run outside restrictive sandboxes (it uses `sandbox-exec` for t
   | `seven_day_opus` | Weekly · Opus | 周额度 · Opus | — |
 
   German, Spanish, French, Japanese, Korean and Portuguese use Claude's official translations (see [claude-internals](docs/claude-internals.md#claude-desktop-app)). Do not call these "5 hours" or "7 days": the Usage page's "7 days" is a date range, not a limit.
+- **UI copy**: Keep interface text minimal. Only explain what helps users understand a choice or take action. Do not describe internal implementation, defensive guarantees, or behavior the app does not perform (such as not inferring unavailable task states). A clear control label usually needs no explanatory paragraph.
 - **Text must fit**: check English and German in narrow places (menu rows, 56 pt quota columns); prefer shorter wording over truncation.
 - **Demo data** (`DemoData.swift`) is fictional, deterministic and marketing-quality: masked US-provider emails, realistic plans (Max 20x, Max 5x, Team, Pro), model names without version numbers, and states that exercise the UI (a suggested switch, low quota colors, "Starts on next use").
 - **Screenshots** come only from `scripts/screenshots.sh`. Re-render them when the visible UI changes and look at the results before committing.

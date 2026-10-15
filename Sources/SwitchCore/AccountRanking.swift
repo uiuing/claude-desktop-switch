@@ -35,6 +35,9 @@ public enum AccountRanking {
     public static let freshFor: TimeInterval = 600
     public static let weeklyReserve: Double = 20
     public static let maximumResetBonus: Double = 0.10
+    public static let maximumWeeklyBonus: Double = 0.05
+    public static let sessionTolerance: Double = 5
+    static let resetTolerances: [String: TimeInterval] = ["five_hour": 3600, "seven_day": 86400]
     private static let switchBuffer: TimeInterval = 300
     private static let opportunityRamp: TimeInterval = 900
 
@@ -50,7 +53,9 @@ public enum AccountRanking {
 
     public static func evaluate(_ candidates: [(account: Account, rows: [QuotaReadout])], activeID: String?,
                                 now: Date = Date()) -> AccountRankingResult {
-        let ranked = candidates.map { assess($0.account, rows: $0.rows, now: now) }.sorted(by: precedes)
+        var assessed = candidates.map { assess($0.account, rows: $0.rows, active: $0.account.id == activeID, now: now) }
+        scoreComparableAccounts(&assessed, now: now)
+        let ranked = assessed.sorted(by: precedes)
         var result = AccountRankingResult(ranked: ranked, activeID: activeID)
         result.advice = SwitchAdvisor.advice(active: ranked.first { $0.account.id == activeID },
                                             target: result.bestBackup, now: now)
@@ -64,14 +69,29 @@ public enum AccountRanking {
         return true
     }
 
-    private static func assess(_ account: Account, rows: [QuotaReadout], now: Date) -> RankedAccount {
+    /// An online-confirmed unused backup stays a candidate until newer usage or its weekly reset supersedes it.
+    static func unusedBackupDeadline(_ rows: [QuotaReadout], now: Date) -> Date? {
+        guard rows.count == 2,
+              let five = rows.first(where: { $0.id == "five_hour" }), five.awaitingFirstUse, !five.resetIsEstimate,
+              let seven = rows.first(where: { $0.id == "seven_day" }), !seven.resetIsEstimate,
+              let reset = seven.resetsAt, reset > now, (seven.remainingPercent ?? 0) > 0,
+              rows.allSatisfy({ row in
+                  [.recorded, .stale].contains(row.state) && row.origin == .live &&
+                  row.observedAt.map({ $0 <= now }) == true &&
+                  row.remainingPercent.map({ $0.isFinite && (0...100).contains($0) }) == true
+              }) else { return nil }
+        return reset
+    }
+
+    private static func assess(_ account: Account, rows: [QuotaReadout], active: Bool, now: Date) -> RankedAccount {
         let required = rows.filter { ["five_hour", "seven_day"].contains($0.id) }
         let complete = required.count == 2 && Set(required.map(\.id)).count == 2
         let fresh = complete && required.allSatisfy { recent($0, now: now) }
+        let usable = fresh || (!active && unusedBackupDeadline(required, now: now) != nil)
         let availability: RankedAccount.Availability
         if !account.hasSnapshot || account.loginInvalidAt != nil { availability = .unavailable }
         else if required.contains(where: { recent($0, now: now) && $0.remainingPercent == 0 }) { availability = .exhausted }
-        else { availability = fresh ? .available : .needsRefresh }
+        else { availability = usable ? .available : .needsRefresh }
         let multiplier = sessionMultiplier(plan: account.plan)
         let baseRelative: Double?
         let recorded = complete && required.allSatisfy { row in
@@ -84,27 +104,87 @@ public enum AccountRanking {
             // Weekly capacity is unknown. Below the reserve, discount the session index rather than inventing a weekly multiplier.
             baseRelative = five / 100 * min(1, seven / weeklyReserve)
         } else { baseRelative = nil }
-        let bonus = availability == .available ? resetBonus(rows: required, now: now) : 0
-        let relative = baseRelative.map { $0 * (1 + bonus) }
+        let base = multiplier.flatMap { scale in baseRelative.map { scale * $0 } }
         return RankedAccount(account: account, rows: required, availability: availability,
-                             baseScore: multiplier.flatMap { scale in baseRelative.map { scale * $0 } },
-                             score: multiplier.flatMap { scale in relative.map { scale * $0 } },
-                             resetBonus: bonus, sessionMultiplier: multiplier, relativeScore: relative)
+                             baseScore: base, score: base, resetBonus: 0,
+                             sessionMultiplier: multiplier, relativeScore: baseRelative)
     }
 
-    private static func resetBonus(rows: [QuotaReadout], now: Date) -> Double {
-        let priorities = rows.compactMap { row -> Double? in
-            guard recent(row, now: now), !row.resetIsEstimate, let reset = row.resetsAt,
-                  let remaining = row.remainingPercent, let length = ResetInference.lengths[row.id] else { return nil }
-            let left = reset.timeIntervalSince(now)
-            guard left.isFinite, left > switchBuffer, left < length else { return nil }
-            let urgency = 1 - left / length
-            // This is a bounded opportunity heuristic, not a prediction of work completed before reset.
-            let opportunity = min(1, (left - switchBuffer) / opportunityRamp)
-            return remaining / 100 * urgency * opportunity
+    private struct ComparisonGroup: Hashable {
+        var plan: String
+        var availability: Int
+    }
+
+    private static func scoreComparableAccounts(_ values: inout [RankedAccount], now: Date) {
+        let original = values
+        let eligible = values.indices.filter {
+            [.available, .needsRefresh].contains(values[$0].availability) && values[$0].relativeScore != nil
         }
-        // One request consumes both limits. Do not count the same opportunity twice.
-        return maximumResetBonus * (priorities.max() ?? 0)
+        let groups = Dictionary(grouping: eligible) {
+            ComparisonGroup(plan: original[$0].account.plan ?? original[$0].account.id,
+                            availability: original[$0].availability.rawValue)
+        }
+        for indices in groups.values {
+            let ordered = indices.sorted {
+                let a = original[$0].relativeScore!, b = original[$1].relativeScore!
+                return a == b ? original[$0].account.id < original[$1].account.id : a > b
+            }
+            let cohorts = bands(ordered) { anchor, index in
+                let a = original[anchor], b = original[index]
+                return a.relativeScore! - b.relativeScore! <= sessionTolerance / 100 + 1e-9 &&
+                    abs(a.window("five_hour")!.remainingPercent! - b.window("five_hour")!.remainingPercent!) <= sessionTolerance + 1e-9
+            }
+            for cohort in cohorts {
+                let base = original[cohort[0]].relativeScore!
+                let session = cohort.map { original[$0].window("five_hour")!.remainingPercent! }.max()!
+                let bonuses = resetBonuses(cohort, values: original, session: session, now: now)
+                for index in cohort {
+                    let weekly = original[index].window("seven_day")!.remainingPercent!
+                    let bonus = bonuses[index] ?? 0
+                    let relative = base * (1 + maximumWeeklyBonus * weekly / 100 + bonus)
+                    values[index].resetBonus = bonus
+                    values[index].relativeScore = relative
+                    values[index].score = original[index].sessionMultiplier.map { $0 * relative }
+                }
+            }
+        }
+    }
+
+    /// Anchor each band once; pairwise approximate comparisons can form cycles and invalidate sorting.
+    private static func bands<T>(_ ordered: [T], close: (T, T) -> Bool) -> [[T]] {
+        var remaining = ordered, result: [[T]] = []
+        while let anchor = remaining.first {
+            result.append(remaining.filter { close(anchor, $0) })
+            remaining.removeAll { close(anchor, $0) }
+        }
+        return result
+    }
+
+    private static func resetBonuses(_ indices: [Int], values: [RankedAccount], session: Double,
+                                     now: Date) -> [Int: Double] {
+        var bonuses: [Int: Double] = [:]
+        for id in ["five_hour", "seven_day"] {
+            let length = ResetInference.lengths[id]!
+            let resets = indices.compactMap { index -> (index: Int, left: TimeInterval, remaining: Double)? in
+                guard values[index].availability == .available, let row = values[index].window(id),
+                      !row.resetIsEstimate else { return nil }
+                // A confirmed unused session has a full window ahead; it receives no expiry bonus.
+                guard let left = row.resetsAt?.timeIntervalSince(now) ?? (row.awaitingFirstUse ? length : nil),
+                      left.isFinite, left > switchBuffer, left <= length else { return nil }
+                return (index, left, id == "five_hour" ? session : row.remainingPercent!)
+            }.sorted { $0.left == $1.left ? $0.index < $1.index : $0.left < $1.left }
+            for band in bands(resets, close: { $1.left - $0.left <= resetTolerances[id]! }) {
+                // Nearby deadlines share the later time so a small difference cannot defeat weekly headroom.
+                let urgency = 1 - band.last!.left / length
+                for reset in band {
+                    let opportunity = min(1, (reset.left - switchBuffer) / opportunityRamp)
+                    let bonus = maximumResetBonus * reset.remaining / 100 * urgency * opportunity
+                    // One request consumes both windows; do not count the same opportunity twice.
+                    bonuses[reset.index] = max(bonuses[reset.index] ?? 0, bonus)
+                }
+            }
+        }
+        return bonuses
     }
 
     private static func precedes(_ a: RankedAccount, _ b: RankedAccount) -> Bool {
@@ -126,10 +206,14 @@ public enum AccountRanking {
 }
 
 public enum SwitchAdvisor {
+    static let sessionWarningPercent: Double = 10
+    static let weeklyWarningPercent: Double = 5
+
     /// Consume the ranked backup; never select a different account with a second scoring rule.
     public static func advice(active: RankedAccount?, target: RankedAccount?, now: Date = Date()) -> SwitchAdvice? {
         guard let active, let target, target.account.id != active.account.id, target.availability == .available,
-              target.rows.allSatisfy({ AccountRanking.recent($0, now: now) }),
+              (target.rows.allSatisfy({ AccountRanking.recent($0, now: now) }) ||
+               AccountRanking.unusedBackupDeadline(target.rows, now: now) != nil),
               let five = target.window("five_hour"), let targetFive = five.remainingPercent,
               let seven = target.window("seven_day"), let targetSeven = seven.remainingPercent else { return nil }
         func result(_ reason: SwitchAdvice.Reason) -> SwitchAdvice {
@@ -149,8 +233,8 @@ public enum SwitchAdvisor {
         guard active.sessionMultiplier == target.sessionMultiplier || targetSeven >= sevenLeft else { return nil }
         let gain = targetScore - currentScore
         if gain + 1e-9 >= max(0.2, currentScore * 0.25) {
-            if fiveLeft <= 20, !resets(currentFive, within: 1800, now: now) { return result(.fiveHourLow(currentFive.percentageText)) }
-            if sevenLeft <= 10, !resets(currentSeven, within: 3600, now: now) { return result(.sevenDayLow(currentSeven.percentageText)) }
+            if fiveLeft <= sessionWarningPercent, !resets(currentFive, within: 1800, now: now) { return result(.fiveHourLow(currentFive.percentageText)) }
+            if sevenLeft <= weeklyWarningPercent, !resets(currentSeven, within: 3600, now: now) { return result(.sevenDayLow(currentSeven.percentageText)) }
         }
         // The reset bonus may reorder close backups; an expiry suggestion still requires at least as much headroom.
         guard active.sessionMultiplier == target.sessionMultiplier, targetScore >= currentScore,
@@ -158,9 +242,13 @@ public enum SwitchAdvisor {
         for (row, current, horizon) in [(seven, currentSeven, 86400.0), (five, currentFive, 3600.0)] {
             guard let reset = row.resetsAt, reset.timeIntervalSince(now) >= 300,
                   resets(row, within: horizon, now: now) else { continue }
+            let requiredGap = AccountRanking.resetTolerances[row.id] ?? .infinity
             if let ownReset = current.resetsAt, !current.resetIsEstimate {
-                if ownReset <= reset { continue }
-            } else if !current.awaitingFirstUse { continue }
+                if ownReset.timeIntervalSince(reset) <= requiredGap { continue }
+            } else {
+                guard current.awaitingFirstUse, let length = ResetInference.lengths[row.id],
+                      length - reset.timeIntervalSince(now) > requiredGap else { continue }
+            }
             return result(.expiring(row))
         }
         return nil

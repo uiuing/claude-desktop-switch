@@ -14,6 +14,99 @@ final class ScreenshotTests: XCTestCase {
     private static var windows: [NSWindow] = []
     private var output: URL!
 
+    func testRenderWeeklyHeadroomRanking() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render ranking examples.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        let previous = UserDefaults.standard.volatileDomain(forName: UserDefaults.registrationDomain)
+        defer { UserDefaults.standard.setVolatileDomain(previous, forName: UserDefaults.registrationDomain) }
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = QuotaPresentationTests.weeklyHeadroomFixture()
+            state.inventory?.warnings = []
+            state.library.preferences.showMenuProjectLinks = false
+            state.updateSwitchReminder()
+            XCTAssertEqual(state.switchAdvice()?.account.id, state.library.accounts[2].id)
+            for dark in [false, true] {
+                try save(captureMenu(state, dark: dark), "weekly-headroom-menu-\(language)-\(dark ? "dark" : "light")", maxWidth: 700)
+            }
+        }
+    }
+
+    func testRenderCodeTasks() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render task states.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            state.inventory?.warnings = []
+            for dark in [false, true] {
+                try save(captureMenu(state, dark: dark), "code-tasks-menu-\(language)-\(dark ? "dark" : "light")", maxWidth: 700)
+                let scope = try XCTUnwrap(state.codeTaskScope), base = state.codeTasks
+                let states: [CodeTaskSnapshot.Availability] = [.ready, .incomplete, .switching, .connecting, .offline, .unavailable]
+                let sheet = VStack(alignment: .leading, spacing: 16) {
+                    ForEach(states.indices, id: \.self) { index in
+                        let snapshot = CodeTaskSnapshot(scope: scope, availability: states[index], tasks: states[index] == .ready ? base.tasks : [])
+                        HStack(spacing: 20) {
+                            MenuBarTaskLabel(snapshot: snapshot).frame(width: 110, alignment: .leading)
+                            Text(snapshot.detail).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Divider()
+                    ForEach([CodeTaskStatus.running, .permission, .input, .waiting, .idle, .notRunning, .unknown], id: \.rawValue) { status in
+                        Label(status.title, systemImage: status.symbol).font(.system(size: 12))
+                    }
+                }.padding(24).frame(width: 500).environment(\.colorScheme, dark ? .dark : .light)
+                    .background(dark ? Color(nsColor: .windowBackgroundColor).environment(\.colorScheme, .dark) : Color(nsColor: .windowBackgroundColor).environment(\.colorScheme, .light))
+                try save(captureSheet(sheet), "code-tasks-states-\(language)-\(dark ? "dark" : "light")", maxWidth: 1000)
+            }
+            let settings = Form {
+                Section(L10n.tr("Menu bar")) {
+                    Toggle(L10n.tr("Show Claude Code task status"), isOn: .constant(true))
+                }
+            }.formStyle(.grouped).frame(width: 500, height: 200)
+            try save(captureSheet(settings), "code-tasks-settings-\(language)", maxWidth: 1000)
+        }
+    }
+
+    func testRenderMenuProjectLinks() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render menu link preferences.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSApplication.shared.applicationIconImage = NSImage(contentsOf: root.appendingPathComponent("Resources/AppIcon.icns"))
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            state.inventory?.warnings = []
+            state.switchReminder = nil
+            for visible in [true, false] {
+                state.library.preferences.showMenuProjectLinks = visible
+                try save(captureMenu(state, dark: false),
+                         "project-links-menu-\(language)-\(visible ? "shown" : "hidden")", maxWidth: 700)
+            }
+            let settings = SettingsView().environment(state).frame(width: 650, height: 1700)
+            try save(captureSheet(settings), "project-links-settings-\(language)", maxWidth: 1000)
+        }
+    }
+
     func testRenderOperationFeedback() async throws {
         guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
             throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render operation results.")
@@ -98,15 +191,19 @@ final class ScreenshotTests: XCTestCase {
             spin(0.3)
             // The demo's "sample data" notice is for people running --demo, not for screenshots.
             state.inventory?.warnings = []
+            state.library.preferences.showMenuProjectLinks = false
+            state.updateSwitchReminder()
             let status = state.fiveHourQuota?.percentageText ?? "—"
             for dark in [false, true] {
                 let mode = dark ? "dark" : "light"
+                state.updateSwitchReminder(notify: false)
                 state.page = .accounts
                 state.selectedSessionIDs = []
                 let accounts = try captureWorkbench(state, dark: dark)
                 let menu = try captureMenu(state, dark: dark)
-                try save(render(HeroImage(window: accounts, menu: menu, status: status, dark: dark), size: HeroImage.size),
+                try save(render(HeroImage(window: accounts, menu: menu, status: status, reminder: state.switchReminder, tasks: state.codeTasks, dark: dark), size: HeroImage.size),
                          "hero-\(language)-\(mode)", maxWidth: 1800, jpeg: true)
+                state.switchReminder = nil
                 state.page = .conversations
                 state.selectedSessionIDs = ["demo-1"]
                 try save(captureWorkbench(state, dark: dark), "conversations-\(language)-\(mode)", maxWidth: 1600)
@@ -135,6 +232,7 @@ final class ScreenshotTests: XCTestCase {
         defer { UserDefaults.standard.register(defaults: [Format.showResetTimeKey: previousReset]) }
         let state = AppState(demo: true)
         state.inventory?.warnings = []
+        state.library.preferences.showMenuProjectLinks = false
         state.updateSwitchReminder()
         let menu = try captureMenu(state, dark: false)
         try save(render(SocialPreview(menu: menu), size: NSSize(width: 1280, height: 640), scale: 1),
@@ -155,6 +253,7 @@ final class ScreenshotTests: XCTestCase {
             UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
             let state = AppState(demo: true)
             state.inventory?.warnings = []
+            state.library.preferences.showMenuProjectLinks = false
             state.updateSwitchReminder()
             let reminder = try XCTUnwrap(state.switchReminder)
             try save(captureWorkbench(state, dark: false), "switch-reminder-\(language)", maxWidth: 1600)
@@ -171,6 +270,79 @@ final class ScreenshotTests: XCTestCase {
             state.pending = nil; state.page = .settings
             try save(captureWorkbench(state, dark: false, size: NSSize(width: 1080, height: 1320)),
                      "notification-settings-\(language)", maxWidth: 1600)
+        }
+    }
+
+    func testRenderMenuBarQuotaStates() throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render menu bar quota states.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            var samples: [(name: String, quota: String, reminder: SwitchReminder?)] = []
+            for scenario in ["normal", "low", "reviewed", "exhausted", "weekly-low", "weekly-exhausted", "weekly-reviewed", "both-low", "both-exhausted", "no-backup", "stale"] {
+                let state = AppState(demo: true)
+                let active = try XCTUnwrap(state.activeID)
+                state.library.usage[active]?.windows[0].usedPercent = scenario == "normal" ? 38 : 98
+                if ["exhausted", "both-exhausted"].contains(scenario) { state.library.usage[active]?.windows[0].usedPercent = 100 }
+                if scenario.hasPrefix("weekly-") {
+                    state.library.usage[active]?.windows[0].usedPercent = 38
+                }
+                if ["weekly-low", "both-low"].contains(scenario) { state.library.usage[active]?.windows[1].usedPercent = 95 }
+                if ["weekly-exhausted", "weekly-reviewed", "both-exhausted"].contains(scenario) {
+                    state.library.usage[active]?.windows[1].usedPercent = 100
+                }
+                if scenario == "stale" {
+                    for index in state.library.usage[active]?.windows.indices ?? 0..<0 {
+                        state.library.usage[active]?.windows[index].observedAt = Date().addingTimeInterval(-3600)
+                    }
+                }
+                if scenario == "no-backup" {
+                    for index in state.library.accounts.indices where state.library.accounts[index].id != active {
+                        state.library.accounts[index].loginInvalidAt = Date()
+                    }
+                }
+                state.updateSwitchReminder(notify: false)
+                if ["reviewed", "weekly-reviewed"].contains(scenario) {
+                    state.dismissSwitchReminder()
+                    XCTAssertFalse(try XCTUnwrap(state.switchReminder).needsReview)
+                }
+                if ["normal", "no-backup", "stale"].contains(scenario) { XCTAssertNil(state.switchReminder) }
+                else {
+                    let reminder = try XCTUnwrap(state.switchReminder)
+                    XCTAssertEqual(reminder.kind, scenario.hasPrefix("weekly-") ? .weeklyLow : .sessionLow)
+                    XCTAssertEqual(reminder.exhausted, scenario.contains("exhausted") || scenario == "weekly-reviewed")
+                }
+                samples.append((scenario, state.fiveHourQuota?.percentageText ?? "—", state.switchReminder))
+            }
+            for dark in [false, true] {
+                let preview = VStack(spacing: 0) {
+                    ForEach(samples.indices, id: \.self) { index in
+                        HStack {
+                            Text(samples[index].name).font(.system(size: 12)).frame(width: 140, alignment: .leading)
+                            MenuBarQuotaLabel(quota: samples[index].quota, reminder: samples[index].reminder, icon: StatusIcon.image)
+                                .font(.system(size: 13)).frame(width: 190, alignment: .leading)
+                        }.frame(height: 34)
+                    }
+                }
+                .padding(12)
+                .foregroundStyle(dark ? Color.white : Color.black)
+                .background(dark ? Color(white: 0.12) : Color(white: 0.95))
+                .environment(\.colorScheme, dark ? .dark : .light)
+                try save(render(preview, size: NSSize(width: 370, height: 398)),
+                         "menu-bar-quota-\(language)-\(dark ? "dark" : "light")", maxWidth: 740)
+                let weekly = try XCTUnwrap(samples.first { $0.name == "weekly-exhausted" })
+                let detail = MenuBarQuotaLabel(quota: weekly.quota, reminder: weekly.reminder, icon: StatusIcon.image)
+                    .font(.system(size: 13)).padding(12)
+                    .foregroundStyle(dark ? Color.white : Color.black)
+                    .frame(width: 210, height: 42)
+                    .background(dark ? Color(white: 0.12) : Color(white: 0.95))
+                    .environment(\.colorScheme, dark ? .dark : .light)
+                try save(render(detail, size: NSSize(width: 210, height: 42)),
+                         "menu-bar-weekly-\(language)-\(dark ? "dark" : "light")", maxWidth: 420)
+            }
         }
     }
 
@@ -642,6 +814,8 @@ private struct HeroImage: View {
     let window: NSImage
     let menu: NSImage
     let status: String
+    let reminder: SwitchReminder?
+    let tasks: CodeTaskSnapshot
     let dark: Bool
     private var panelX: CGFloat { Self.size.width - menu.size.width - 64 }
     var body: some View {
@@ -661,10 +835,9 @@ private struct HeroImage: View {
         ZStack(alignment: .leading) {
             Rectangle().fill(dark ? Color.black.opacity(0.38) : Color.white.opacity(0.5)).frame(height: 30)
             HStack(spacing: 18) {
-                HStack(spacing: 5) {
-                    Image(nsImage: StatusIcon.image).renderingMode(.template).resizable().frame(width: 18, height: 18)
-                    Text(status).monospacedDigit()
-                }
+                Image(nsImage: MenuBarStatusImage.image(quota: status, reminder: reminder, tasks: tasks,
+                                                        icon: StatusIcon.image, colorScheme: dark ? .dark : .light))
+                .renderingMode(.original)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(Color.primary.opacity(dark ? 0.2 : 0.12), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 Image(systemName: "wifi")

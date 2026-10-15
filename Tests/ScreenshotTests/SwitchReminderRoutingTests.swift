@@ -45,6 +45,21 @@ final class SwitchReminderRoutingTests: XCTestCase {
         await state.reviewSwitchReminder(reminder.id)
         XCTAssertEqual(state.pending?.id, original)
     }
+    func testReviewedReminderKeepsItsIdentityWhileQuotaAndResetTimeChange() throws {
+        let (state, reminder) = try fixture()
+        let active = try XCTUnwrap(state.activeID)
+        state.dismissSwitchReminder()
+        for left in stride(from: 7, through: 1, by: -1) {
+            state.library.usage[active]?.windows[0].usedPercent = Double(100 - left)
+            state.library.usage[active]?.windows[0].resetsAt?.addTimeInterval(1)
+            state.updateSwitchReminder()
+            let updated = try XCTUnwrap(state.switchReminder)
+            XCTAssertEqual(updated.id, reminder.id)
+            XCTAssertFalse(updated.needsReview)
+            XCTAssertEqual(updated.remaining, state.fiveHourQuota?.percentageText)
+            XCTAssertNil(state.pending)
+        }
+    }
     func testNotificationWaitsForAWorkbenchAndThenOnlyPreviews() async throws {
         let (state, reminder) = try fixture()
         await state.openNotification(reminder.id)

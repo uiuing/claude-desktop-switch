@@ -190,13 +190,17 @@ public struct FollowRule: Codable, Identifiable, Sendable {
 
 public struct Preferences: Codable, Sendable {
     public var maskEmail = false
+    public var showCodeTasks = true
+    public var showMenuProjectLinks = true
     public var sessionSort: SessionSort = .time
     public var quotaRefresh = QuotaRefreshPreferences()
     public init() {}
-    private enum CodingKeys: String, CodingKey { case maskEmail, sessionSort, quotaRefresh }
+    private enum CodingKeys: String, CodingKey { case maskEmail, showCodeTasks, showMenuProjectLinks, sessionSort, quotaRefresh }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         maskEmail = try c.decodeIfPresent(Bool.self, forKey: .maskEmail) ?? false
+        showCodeTasks = try c.decodeIfPresent(Bool.self, forKey: .showCodeTasks) ?? true
+        showMenuProjectLinks = try c.decodeIfPresent(Bool.self, forKey: .showMenuProjectLinks) ?? true
         sessionSort = try c.decodeIfPresent(SessionSort.self, forKey: .sessionSort) ?? .time
         quotaRefresh = try c.decodeIfPresent(QuotaRefreshPreferences.self, forKey: .quotaRefresh) ?? .init()
     }

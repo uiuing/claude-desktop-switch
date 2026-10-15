@@ -14,6 +14,19 @@ struct MenuPanel: View {
         }
     }
     private var authorizedContent: some View {
+        ScrollView { menuContent }
+        .frame(maxHeight: min(760, (NSScreen.main?.visibleFrame.height ?? 820) - 60))
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(width: 330)
+        .tint(Palette.brand)
+        .background(MenuPanelWindowReader(onVisibilityChange: { visible in
+            menuSnapshot = visible ? AccountMenuSnapshot(state.accountRanking()) : nil
+            if visible { reviewUnseenReminder() }
+        }))
+        .onAppear { menuSnapshot = AccountMenuSnapshot(state.accountRanking()) }
+        .onDisappear { menuSnapshot = nil }
+    }
+    private var menuContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             separator
@@ -97,6 +110,10 @@ struct MenuPanel: View {
                     }
                 }
             }
+            if state.library.preferences.showCodeTasks {
+                separator
+                MenuCodeTasks { MenuPanelWindowReader.dismiss() }
+            }
             if let message = state.message {
                 Text(message).font(.footnote).foregroundStyle(.secondary)
                     .padding(.horizontal, 14).padding(.top, 4).fixedSize(horizontal: false, vertical: true)
@@ -110,29 +127,23 @@ struct MenuPanel: View {
             separator
             VStack(spacing: 0) {
                 MenuAction(title: L10n.tr("Open Claude Switch"), symbol: "macwindow") { show(state.page == .settings ? .accounts : state.page) }
-                MenuAction(title: "GitHub", symbol: ProjectLink.symbol, external: true) {
-                    MenuPanelWindowReader.panel?.close(); ProjectLink.open()
-                }.hint(L10n.tr("Open the project page on GitHub"))
-                MenuAction(title: L10n.tr("Report an issue"), symbol: "bubble.left", external: true) {
-                    MenuPanelWindowReader.panel?.close(); NSWorkspace.shared.open(ProjectLink.issues)
-                }
-                MenuAction(title: state.updates.hasUpdate ? L10n.tr("Update available") : L10n.tr("View latest version"),
-                           symbol: "arrow.down.circle", external: true) {
-                    MenuPanelWindowReader.panel?.close(); NSWorkspace.shared.open(ProjectLink.releases)
+                if state.library.preferences.showMenuProjectLinks {
+                    MenuAction(title: "GitHub", symbol: ProjectLink.symbol, external: true) {
+                        MenuPanelWindowReader.dismiss(); ProjectLink.open()
+                    }.hint(L10n.tr("Open the project page on GitHub"))
+                    MenuAction(title: L10n.tr("Report an issue"), symbol: "bubble.left", external: true) {
+                        MenuPanelWindowReader.dismiss(); NSWorkspace.shared.open(ProjectLink.issues)
+                    }
+                    MenuAction(title: state.updates.hasUpdate ? L10n.tr("Update available") : L10n.tr("View latest version"),
+                               symbol: "arrow.down.circle", external: true) {
+                        MenuPanelWindowReader.dismiss(); NSWorkspace.shared.open(ProjectLink.releases)
+                    }
                 }
                 MenuAction(title: L10n.tr("Settings…"), symbol: "gearshape", detail: "⌘,") { show(.settings) }
                 MenuAction(title: L10n.tr("Quit"), symbol: "power", detail: "⌘Q") { NSApplication.shared.terminate(nil) }
             }.padding(.horizontal, 6)
         }
         .padding(.bottom, 6)
-        .frame(width: 330)
-        .tint(Palette.brand)
-        .background(MenuPanelWindowReader(onVisibilityChange: { visible in
-            menuSnapshot = visible ? AccountMenuSnapshot(state.accountRanking()) : nil
-            if visible { reviewUnseenReminder() }
-        }))
-        .onAppear { menuSnapshot = AccountMenuSnapshot(state.accountRanking()) }
-        .onDisappear { menuSnapshot = nil }
     }
     private var header: some View {
         HStack(spacing: 8) {
@@ -161,15 +172,16 @@ struct MenuPanel: View {
     }
     private func show(_ page: NavigationPage) {
         // The status-item panel floats above every window; it would cover the sheet opened next.
-        MenuPanelWindowReader.panel?.close()
+        MenuPanelWindowReader.dismiss()
         WorkbenchLifecycle.shared.prepareToOpen()
         state.page = page; openWindow(id: "library"); NSApplication.shared.activate(ignoringOtherApps: true)
     }
 }
 
-/// The MenuBarExtra panel has no dismiss API; keep its window so actions can close it.
+/// Observe visibility and retain the exact panel for native status-item dismissal.
 private struct MenuPanelWindowReader: NSViewRepresentable {
     @MainActor static weak var panel: NSWindow?
+    @MainActor static func dismiss() { MenuPanelDismissal.close(panel) }
     var onVisibilityChange: ((Bool) -> Void)?
     final class Attachment: NSView {
         var onVisibilityChange: ((Bool) -> Void)?

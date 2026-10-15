@@ -28,7 +28,7 @@ enum DemoData {
         }
         let usage: [UsageSnapshot] = [
             UsageSnapshot(accountID: personal.id, organizationID: personal.organizationID, observedAt: now.addingTimeInterval(-120), origin: .live,
-                          windows: [window("five_hour", left: 14, resetsIn: 6_700), window("seven_day", left: 58, resetsIn: 262_000),
+                          windows: [window("five_hour", left: 8, resetsIn: 6_700), window("seven_day", left: 58, resetsIn: 262_000),
                                     window("seven_day_opus", left: 71, resetsIn: 262_000)]),
             UsageSnapshot(accountID: studio.id, organizationID: studio.organizationID, observedAt: now.addingTimeInterval(-240), origin: .live,
                           windows: [window("five_hour", left: 92, resetsIn: 15_100), window("seven_day", left: 83, resetsIn: 431_000)]),
@@ -49,10 +49,11 @@ enum DemoData {
             (L10n.tr("demo.researchNotes"), research, .cowork, "claude-opus", "~/Documents/research"),
         ]
         let conversations = sessions.enumerated().map { index, item in
-            Conversation(id: "demo-\(index)", sessionID: "demo-session-\(index)", accountID: item.account.id,
+            Conversation(id: "demo-\(index)", sessionID: String(format: "local_0a1b2c3d-1111-4aaa-8bbb-%012d", index + 1), accountID: item.account.id,
                          organizationID: item.account.organizationID!, title: item.title, kind: item.kind,
                          modifiedAt: now.addingTimeInterval(-Double(index * index * 2400 + index * 1500 + 120)),
-                         model: item.model, project: item.project, recordRelativePath: "demo", cliSessionID: "demo-cli-\(index)")
+                         model: item.model, project: item.project, recordRelativePath: "demo",
+                         cliSessionID: String(format: "1a1b2c3d-2222-4aaa-8bbb-%012d", index + 1))
         }
 
         var library = LibraryState()
