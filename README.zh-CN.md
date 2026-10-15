@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.0" width="112" alt="Claude Switch 图标">
+<img src="docs/images/icon.png?v=0.2.0-2" width="112" alt="Claude Switch 图标">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hans-dark.jpg?v=0.2.0">
-  <img src="docs/images/hero-zh-Hans-light.jpg?v=0.2.0" alt="Claude Switch：账号窗口与菜单栏面板">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hans-dark.jpg?v=0.2.0-2">
+  <img src="docs/images/hero-zh-Hans-light.jpg?v=0.2.0-2" alt="Claude Switch：账号窗口与菜单栏面板">
 </picture>
 
 </div>
@@ -38,34 +38,26 @@
 
 ## 截图
 
-<table>
-  <tr>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png?v=0.2.0">
-        <img src="docs/images/conversations-light.png?v=0.2.0" alt="会话：移动、复制或跟随 Claude Code 会话">
-      </picture>
-      <p align="center"><b>会话</b> · 换个账号，继续手上的工作</p>
-    </td>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png?v=0.2.0">
-        <img src="docs/images/usage-light.png?v=0.2.0" alt="用量统计：活跃热力图与按模型的每日 Token">
-      </picture>
-      <p align="center"><b>用量</b> · 看看自己的使用习惯</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="docs/images/switch-reminder-menu-zh-Hans.png?v=0.2.0" width="330" alt="切换提醒">
-      <p><b>切换提醒</b> · 需要时，找到还有余量的账号</p>
-    </td>
-    <td width="50%">
-      <img src="docs/images/new-account-follow-confirm-zh-Hans.png?v=0.2.0" alt="带上会话">
-      <p><b>带上会话</b> · 选择新账号要继续的会话</p>
-    </td>
-  </tr>
-</table>
+**额度不足，及时提醒。**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hans-dark.png?v=0.2.0-2">
+  <img src="docs/images/switch-reminder-menu-zh-Hans-light.png?v=0.2.0-2" width="330" alt="额度不足，及时提醒。">
+</picture>
+
+**换账号，会话跟着走。**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-zh-Hans-dark.png?v=0.2.0-2">
+  <img src="docs/images/conversations-zh-Hans-light.png?v=0.2.0-2" alt="换账号，会话跟着走。">
+</picture>
+
+**看看自己的使用习惯。**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hans-dark.png?v=0.2.0-2">
+  <img src="docs/images/usage-zh-Hans-light.png?v=0.2.0-2" alt="看看自己的使用习惯。">
+</picture>
 
 <sub>所有截图均使用虚构的示例数据。</sub>
 

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.0" width="112" alt="Claude Switch アイコン">
+<img src="docs/images/icon.png?v=0.2.0-2" width="112" alt="Claude Switch アイコン">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-ja-dark.jpg?v=0.2.0">
-  <img src="docs/images/hero-ja-light.jpg?v=0.2.0" alt="Claude Switch：アカウントウインドウとメニューバーのパネル">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-ja-dark.jpg?v=0.2.0-2">
+  <img src="docs/images/hero-ja-light.jpg?v=0.2.0-2" alt="Claude Switch：アカウントウインドウとメニューバーのパネル">
 </picture>
 
 </div>
@@ -38,34 +38,26 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 
 ## スクリーンショット
 
-<table>
-  <tr>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-dark.png?v=0.2.0">
-        <img src="docs/images/conversations-light.png?v=0.2.0" alt="会話：Claude Code セッションの移動・コピー・追従">
-      </picture>
-      <p align="center"><b>会話</b> · 別のアカウントで作業の続きを</p>
-    </td>
-    <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-dark.png?v=0.2.0">
-        <img src="docs/images/usage-light.png?v=0.2.0" alt="使用量の統計：ヒートマップとモデル別の日別トークン">
-      </picture>
-      <p align="center"><b>使用量</b> · 自分の使い方を振り返る</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="docs/images/switch-reminder-menu-ja.png?v=0.2.0" width="330" alt="切り替えのおすすめ">
-      <p><b>切り替えのおすすめ</b> · 余裕のあるアカウントを見つける</p>
-    </td>
-    <td width="50%">
-      <img src="docs/images/new-account-follow-confirm-ja.png?v=0.2.0" alt="セッションを引き継ぐ">
-      <p><b>セッションを引き継ぐ</b> · 新しいアカウントに引き継ぐ会話を選ぶ</p>
-    </td>
-  </tr>
-</table>
+**残りが少なくなったらお知らせ。**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-ja-dark.png?v=0.2.0-2">
+  <img src="docs/images/switch-reminder-menu-ja-light.png?v=0.2.0-2" width="330" alt="残りが少なくなったらお知らせ。">
+</picture>
+
+**会話の続きを別のアカウントで。**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-ja-dark.png?v=0.2.0-2">
+  <img src="docs/images/conversations-ja-light.png?v=0.2.0-2" alt="会話の続きを別のアカウントで。">
+</picture>
+
+**自分の使い方を振り返る。**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-ja-dark.png?v=0.2.0-2">
+  <img src="docs/images/usage-ja-light.png?v=0.2.0-2" alt="自分の使い方を振り返る。">
+</picture>
 
 <sub>スクリーンショットには架空のサンプルデータを使用しています。</sub>
 
