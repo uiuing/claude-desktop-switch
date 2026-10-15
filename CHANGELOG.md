@@ -8,32 +8,27 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [0.2.0] - 2026-10-16
 
-Smarter account choices, timely reminders and Code conversations that travel with you.
+Switch recommendations, timely reminders, and an easier way to bring your Code conversations to another account.
 
 ### Added
 
-- Quota-aware account ordering across the account list, menu and search. Plan, session and weekly headroom, and confirmed reset times help rank saved accounts; the current account stays pinned. Stale readings never trigger recommendations.
-- Switch reminders in the app and menu bar, with optional macOS notifications. Click to review the recommended account and followed conversations before confirming. Repeated refreshes do not repeat the same low-quota alert.
-- Optional operation-result notifications showing the selected account, transferred conversation counts and available quota. Notification preferences and email masking remain under your control.
-- A follow-up preview after adding an account, so followed Code conversations can be moved or copied once the new login is saved and verified. A canceled preview remains available to review later.
-- Built-in version checks and feedback links. Checks read only this project's public GitHub release redirect, at most once per day automatically or on demand. Downloads and installation remain manual.
+- Low-quota reminders in the menu bar and optional macOS notifications. Review a recommended account when you are ready to switch.
+- After adding an account, choose which followed Code conversations to bring with you.
+- Optional notifications for completed switches and conversation transfers.
+- Version checks and feedback links inside the app.
 
-### Changed
+### Improved
 
-- More compact account cards, clearer hover and press feedback, and plain-language confirmations and recovery guidance in all ten languages. Custom interaction effects respect Increase Contrast and Reduce Motion.
-- Operation results use compact, dismissible cards. Success messages clear after five seconds; errors and recovery warnings remain visible.
-- Startup explains and checks access to both Claude's quota key and Switch's saved-login key, and offers optional notification setup. Authorized keys are reused in memory and cleared on sleep or session deactivation.
-- Profile checks verify new tokens, both accounts after a switch, and manual quota refreshes. Other automatic reads reuse verified identity while preserving per-login cooldowns.
-- Updated English, Simplified Chinese, Traditional Chinese and Japanese guides, refreshed product screenshots and a new social preview. Removed unused translations and kept visual-review captures outside the published documentation.
+- Accounts with available quota are easier to find, with matching recommendations across the app and menu bar.
+- More compact account cards, clearer controls and simpler messages in all ten languages.
+- Updated guides in four languages, new screenshots and a refreshed social preview.
 
 ### Fixed
 
-- Session moves, copies and follow rules retain modes, worktrees, branches, preferences and PR metadata. Account authorization, cloud bindings and live connection state are excluded; local transcripts stay in place.
-- Follow rules use the current account's copy, including preference-only changes. A fallback from a third account cannot overwrite a conversation already in the destination.
-- Paused or failed quota refreshes keep the last reading and reset time visible. A passed reset waits for online confirmation instead of inventing a full quota; mismatched account or organization readings are rejected.
-- Free and unknown plans are distinct. Verified email and plan information takes precedence over local caches, and plan changes clear obsolete quota readings.
-- New-account discovery observes cookie WAL changes, retries transient saves and continues after startup or wake. Missing emails can be filled by the online profile, and saving failures provide a retry action.
-- Keychain requests share an interaction guard, so background work cannot inherit permission to show a prompt. Damaged login data no longer repeatedly rereads a shared key, and interrupted approvals cannot report success after sleep.
+- Moved and copied Code conversations keep their conversation settings.
+- Quota stays visible when automatic refresh is paused or temporarily unavailable.
+- New accounts are found and saved more reliably, with more accurate emails and plan names.
+- More reliable Keychain access and fewer repeated permission requests.
 
 ## [0.1.5] - 2026-10-15
 
