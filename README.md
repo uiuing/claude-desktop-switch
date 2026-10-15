@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.0-2" width="112" alt="Claude Switch icon">
+<img src="docs/images/icon.png?v=0.2.2" width="112" alt="Claude Switch icon">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@ Your Claude Desktop accounts and remaining quota, together in your Mac’s menu 
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-en-dark.jpg?v=0.2.0-2">
-  <img src="docs/images/hero-en-light.jpg?v=0.2.0-2" alt="Claude Switch: the accounts window and the menu bar panel">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-en-dark.jpg?v=0.2.2">
+  <img src="docs/images/hero-en-light.jpg?v=0.2.2" alt="Claude Switch: the accounts window and the menu bar panel">
 </picture>
 
 </div>
@@ -41,8 +41,8 @@ Using personal and work accounts should not mean signing in over and over or fin
 **Pick up where you left off.**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-en-dark.png?v=0.2.0-2">
-  <img src="docs/images/conversations-en-light.png?v=0.2.0-2" alt="Pick up where you left off.">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-en-dark.png?v=0.2.2">
+  <img src="docs/images/conversations-en-light.png?v=0.2.2" alt="Pick up where you left off.">
 </picture>
 
 <table>
@@ -50,15 +50,15 @@ Using personal and work accounts should not mean signing in over and over or fin
     <td width="33%" valign="top">
       <p><b>Get a heads-up when you run low.</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-en-dark.png?v=0.2.0-2">
-        <img src="docs/images/switch-reminder-menu-en-light.png?v=0.2.0-2" alt="Get a heads-up when you run low.">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-en-dark.png?v=0.2.2">
+        <img src="docs/images/switch-reminder-menu-en-light.png?v=0.2.2" alt="Get a heads-up when you run low.">
       </picture>
     </td>
     <td width="67%" valign="top">
       <p><b>Understand your usage.</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-en-dark.png?v=0.2.0-2">
-        <img src="docs/images/usage-en-light.png?v=0.2.0-2" alt="Understand your usage.">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-en-dark.png?v=0.2.2">
+        <img src="docs/images/usage-en-light.png?v=0.2.2" alt="Understand your usage.">
       </picture>
     </td>
   </tr>
