@@ -6,6 +6,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- Quota refresh can use an eligible Code credential when the preferred Desktop credential was already rejected, including after restarting Switch.
+
 ## [0.2.2] - 2026-10-16
 
 Clearer quota reminders, smoother conversation browsing and more reliable menu bar behavior.

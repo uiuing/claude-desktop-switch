@@ -17,20 +17,23 @@ struct DesktopAccessToken {
 enum DesktopTokenReader {
     static let access = KeychainKeyCache()
     private struct DecryptionFailure: Error {}
-    static func read(environment: MacEnvironment, expectedAccount: String, allowPrompt: Bool) throws -> DesktopAccessToken {
+    static func read(environment: MacEnvironment, expectedAccount: String, allowPrompt: Bool,
+                     rejectedTokens: [String: UsageFailure] = [:]) throws -> DesktopAccessToken {
         let config = try environment.liveConfig()
-        return try read(config: config, expectedAccount: expectedAccount, allowPrompt: allowPrompt)
-    }
-    static func read(config: JSONValue, expectedAccount: String, allowPrompt: Bool) throws -> DesktopAccessToken {
-        try read(config: config, expectedAccount: expectedAccount, allowPrompt: allowPrompt, access: access, load: safeStorageKey)
+        return try read(config: config, expectedAccount: expectedAccount, allowPrompt: allowPrompt, rejectedTokens: rejectedTokens)
     }
     static func read(config: JSONValue, expectedAccount: String, allowPrompt: Bool,
-                     access: KeychainKeyCache, load: (Bool) throws -> Data) throws -> DesktopAccessToken {
+                     rejectedTokens: [String: UsageFailure] = [:]) throws -> DesktopAccessToken {
+        try read(config: config, expectedAccount: expectedAccount, allowPrompt: allowPrompt, access: access, load: safeStorageKey, rejectedTokens: rejectedTokens)
+    }
+    static func read(config: JSONValue, expectedAccount: String, allowPrompt: Bool,
+                     access: KeychainKeyCache, load: (Bool) throws -> Data,
+                     rejectedTokens: [String: UsageFailure] = [:]) throws -> DesktopAccessToken {
         let credential = try IdentitySchema.fingerprint(config)
         let unreadable = SwitchError.blocked(L10n.tr("Could not read login data. Update Claude Switch and try again."))
         var usedKey: KeychainKeyCache.Key?
         do {
-            return try read(config: config, expectedAccount: expectedAccount) {
+            return try read(config: config, expectedAccount: expectedAccount, rejectedTokens: rejectedTokens) {
                 let key = try access.key(allowPrompt: allowPrompt, load: load)
                 guard !access.rejects(credential, using: key) else { throw unreadable }
                 usedKey = key
@@ -45,7 +48,7 @@ enum DesktopTokenReader {
             }
             let replacement = try access.key(allowPrompt: allowPrompt, replacing: usedKey, load: load)
             do {
-                return try read(config: config, expectedAccount: expectedAccount) { replacement.data }
+                return try read(config: config, expectedAccount: expectedAccount, rejectedTokens: rejectedTokens) { replacement.data }
             } catch is DecryptionFailure {
                 access.reject(credential, using: replacement)
                 throw unreadable
@@ -56,7 +59,7 @@ enum DesktopTokenReader {
         try access.read(allowPrompt: allowPrompt, load: safeStorageKey)
     }
     /// Saved logins use the same encrypted cache, without restoring anything into Claude's folder.
-    static func read(config: JSONValue, expectedAccount: String, password: () throws -> Data) throws -> DesktopAccessToken {
+    static func read(config: JSONValue, expectedAccount: String, rejectedTokens: [String: UsageFailure] = [:], password: () throws -> Data) throws -> DesktopAccessToken {
         try IdentitySchema.validateConfig(config)
         guard config["lastKnownAccountUuid"].string?.lowercased() == expectedAccount else {
             throw UsageNotReady(message: SwitchError.changed.localizedDescription)
@@ -117,18 +120,31 @@ enum DesktopTokenReader {
                                                   expiresAt: expiry, organizationID: item.org),
                                item.key.contains("user:sessions:claude_code") ? 1 : 0))
         }
-        guard let rank = candidates.map(\.rank).min() else {
+        guard !candidates.isEmpty else {
             if malformed { throw UsageFailure.invalidCredentials }
             if expiring { throw UsageNotReady(reason: .expiring) }
             if expired { throw UsageNotReady(reason: .expired) }
             throw UsageNotReady(reason: .updating)
         }
-        let selected = candidates.filter { $0.rank == rank }
-        guard Set(selected.map { $0.token.tokenDigest }).count == 1,
-              let token = selected.map(\.token).min(by: { $0.expiresAt < $1.expiresAt }) else {
-            throw UsageFailure.ambiguousCredentials
+        // Identity conflicts cannot be recovered by trying another credential.
+        if candidates.contains(where: { rejectedTokens[$0.token.tokenDigest] == .identityMismatch }) {
+            throw UsageFailure.identityMismatch
         }
-        return token
+        var rejected: UsageFailure?
+        for rank in Set(candidates.map(\.rank)).sorted() {
+            let selected = candidates.filter { $0.rank == rank }
+            guard Set(selected.map { $0.token.tokenDigest }).count == 1,
+                  let token = selected.map(\.token).min(by: { $0.expiresAt < $1.expiresAt }) else {
+                throw UsageFailure.ambiguousCredentials
+            }
+            if let failure = rejectedTokens[token.tokenDigest] {
+                guard [.unauthorized, .forbidden, .missingScopes].contains(failure) else { throw failure }
+                if rejected == nil { rejected = failure }
+                continue
+            }
+            return token
+        }
+        throw rejected ?? UsageFailure.invalidCredentials
     }
 
     /// The organization of a token-cache entry that can read usage for `account`, or nil.

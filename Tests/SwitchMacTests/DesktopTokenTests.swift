@@ -174,6 +174,109 @@ final class DesktopTokenTests: XCTestCase {
         }
     }
 
+    func testRejectedPreferredTokenDoesNotHideCodeReplacement() throws {
+        let prefix = "acct:\(account)|\(client):\(org):https://api.anthropic.com:"
+        let old = "synthetic-rejected", replacement = "synthetic-replacement"
+        let entries: [String: JSONValue] = [
+            prefix + "user:inference user:profile": .object(["token": .string(old),
+                "expiresAt": .number(Date().addingTimeInterval(1800).timeIntervalSince1970)]),
+            prefix + "user:inference user:profile user:sessions:claude_code": .object(["token": .string(replacement),
+                "expiresAt": .number(Date().addingTimeInterval(3600).timeIntervalSince1970)])
+        ]
+        let auth = try savedAuth(entries: entries)
+        let selected = try DesktopTokenReader.read(config: auth, expectedAccount: account,
+            rejectedTokens: [digest(Data(old.utf8)): .forbidden]) { Data("fixture-password".utf8) }
+        XCTAssertTrue(selected.value == replacement, "The usable replacement must not be hidden by the rejected preferred credential")
+    }
+
+    func testRejectedCandidatesPreserveIdentityAndAmbiguityGuards() throws {
+        let prefix = "acct:\(account)|\(client):\(org):https://api.anthropic.com:"
+        let old = "synthetic-rejected", replacement = "synthetic-replacement"
+        let entry: (String) -> JSONValue = { .object(["token": .string($0),
+            "expiresAt": .number(Date().addingTimeInterval(3600).timeIntervalSince1970)]) }
+        let preferred = prefix + "user:inference user:profile"
+        let code = prefix + "user:inference user:profile user:sessions:claude_code"
+        let entries = [preferred: entry(old), code: entry(replacement)]
+        let oldDigest = digest(Data(old.utf8)), replacementDigest = digest(Data(replacement.utf8))
+        for failure in [UsageFailure.unauthorized, .forbidden, .missingScopes] {
+            let auth = try savedAuth(entries: entries)
+            let selected = try DesktopTokenReader.read(config: auth, expectedAccount: account,
+                rejectedTokens: [oldDigest: failure]) { Data("fixture-password".utf8) }
+            XCTAssertTrue(selected.value == replacement)
+            XCTAssertThrowsError(try DesktopTokenReader.read(config: auth, expectedAccount: account,
+                rejectedTokens: [oldDigest: failure, replacementDigest: .forbidden]) { Data("fixture-password".utf8) }) {
+                XCTAssertEqual($0 as? UsageFailure, failure)
+            }
+        }
+        let scenarios: [([String: JSONValue], UsageFailure, UsageFailure)] = [
+            (entries, .identityMismatch, .identityMismatch),
+            ([preferred: entry(old), prefix + "user:profile user:inference": entry(replacement)], .forbidden, .ambiguousCredentials),
+            ([preferred: entry(old), "\(client):\(org):https://api.anthropic.com:user:inference user:profile": entry(replacement)], .forbidden, .forbidden),
+            ([preferred: entry(old), "acct:\(account)|\(client):\(account):https://api.anthropic.com:user:inference user:profile": entry(replacement)], .forbidden, .ambiguousCredentials)
+        ]
+        for (cache, rejection, expected) in scenarios {
+            let auth = try savedAuth(entries: cache)
+            XCTAssertThrowsError(try DesktopTokenReader.read(config: auth, expectedAccount: account,
+                rejectedTokens: [oldDigest: rejection]) { Data("fixture-password".utf8) }) {
+                XCTAssertEqual($0 as? UsageFailure, expected)
+            }
+        }
+    }
+
+    func testPersisted403WithCodeReplacementRecoversWithoutRetryingRejectedToken() async throws {
+        let home = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent(".build/token-recovery-tests/" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".local/share/claude/versions/1.0.0"),
+                                                withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let env = MacEnvironment(home: home)
+        let service = TokenRecoveryService(account: account, organization: org)
+        var now = Date()
+        let makeClient = { ActiveUsageClient(environment: env, transport: { _, request in try await service.respond(request) }, now: { now }) }
+        let prefix = "acct:\(account)|\(client):\(org):https://api.anthropic.com:"
+        let entry: (String) -> JSONValue = { .object(["token": .string($0),
+            "expiresAt": .number(Date().addingTimeInterval(3600).timeIntervalSince1970)]) }
+        let initial = try savedAuth(entries: [prefix + "user:inference user:profile": entry("synthetic-rejected")])
+        let updated = try savedAuth(entries: [
+            prefix + "user:inference user:profile": entry("synthetic-rejected"),
+            prefix + "user:inference user:profile user:sessions:claude_code": entry("synthetic-replacement")])
+        let first = makeClient()
+        do {
+            _ = try await first.fetch(accountID: account, readToken: {
+                try DesktopTokenReader.read(config: initial, expectedAccount: self.account) { Data("fixture-password".utf8) }
+            }, validate: { _ in })
+            XCTFail("Expected the original HTTP rejection")
+        } catch { XCTAssertEqual(error as? UsageFailure, .forbidden) }
+        let restarted = makeClient()
+        // The legacy selection still chooses the denied token even after the cache changes.
+        do {
+            _ = try await restarted.fetch(accountID: account, readToken: {
+                try DesktopTokenReader.read(config: updated, expectedAccount: self.account) { Data("fixture-password".utf8) }
+            }, validate: { _ in })
+            XCTFail("Expected the legacy selection to replay the persisted rejection")
+        } catch { XCTAssertEqual(error as? UsageFailure, .forbidden) }
+        let readReplacement = {
+            let rejected = try await restarted.rejectedTokenFailures()
+            return try DesktopTokenReader.read(config: updated, expectedAccount: self.account,
+                rejectedTokens: rejected) { Data("fixture-password".utf8) }
+        }
+        do {
+            _ = try await restarted.fetch(accountID: account, readToken: readReplacement, validate: { _ in })
+            XCTFail("Replacement must preserve the account cooldown")
+        } catch { XCTAssertTrue(error is UsageCoolingDown) }
+        now.addTimeInterval(61)
+        let snapshot = try await restarted.fetch(accountID: account, readToken: readReplacement, validate: { _ in })
+        XCTAssertEqual(snapshot.windows.first?.usedPercent, 23)
+        let paths = await service.paths
+        XCTAssertEqual(paths, ["/api/oauth/profile", "/api/oauth/profile", "/api/oauth/usage"])
+        let denied = try await restarted.rejectedTokenFailures()
+        XCTAssertEqual(denied[digest(Data("synthetic-rejected".utf8))], .forbidden)
+        do {
+            _ = try await restarted.fetch(accountID: account, onlyIfTokenChanged: true, readToken: readReplacement, validate: { _ in })
+            XCTFail("An unchanged replacement must not enqueue another request")
+        } catch { XCTAssertTrue(error is UsageUnchanged) }
+    }
+
     private func savedAuth(expired: Bool = false, ambiguous: Bool = false, entries: [String: JSONValue]? = nil,
                            password: Data = Data("fixture-password".utf8)) throws -> JSONValue {
         let entry: JSONValue = .object(["token": .string("synthetic-access"),
@@ -205,5 +308,22 @@ final class DesktopTokenTests: XCTestCase {
         cipher.count = written
         return .object(["lastKnownAccountUuid": .string(account),
                         "oauth:tokenCacheV2": .string((Data("v10".utf8) + cipher).base64EncodedString())])
+    }
+}
+
+private actor TokenRecoveryService {
+    let account: String
+    let organization: String
+    private(set) var paths: [String] = []
+    init(account: String, organization: String) { self.account = account; self.organization = organization }
+    func respond(_ request: URLRequest) throws -> (Data, HTTPURLResponse) {
+        let url = try XCTUnwrap(request.url)
+        paths.append(url.path)
+        let rejected = request.value(forHTTPHeaderField: "Authorization") == "Bearer synthetic-rejected"
+        let status = rejected ? 403 : 200
+        let body: JSONValue = url.path.hasSuffix("/profile")
+            ? .object(["account": .object(["uuid": .string(account)]), "organization": .object(["uuid": .string(organization)])])
+            : .object(["five_hour": .object(["utilization": .number(23)])])
+        return (try JSONEncoder().encode(body), HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!)
     }
 }

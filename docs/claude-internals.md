@@ -45,7 +45,7 @@ Any other `oauth:` key in `config.json` means the format changed; saving and swi
 - key: PBKDF2-HMAC-SHA1, salt `saltysalt`, 1003 iterations, 16 bytes
 - cipher: AES-128-CBC, IV of 16 spaces (`0x20`), PKCS#7 padding
 
-The plaintext is a JSON object. Keys look like `<client>:<org>:https://api.anthropic.com:<scopes>`, or `acct:<account>|<client>:<org>:https://api.anthropic.com:<scopes>` when bound to an account. Values hold `token` and `expiresAt` (and a refresh token, which Claude Switch never selects or uses). Only entries with both `user:profile` and `user:inference` scopes can read usage. [`DesktopTokenReader`]
+The plaintext is a JSON object. Keys look like `<client>:<org>:https://api.anthropic.com:<scopes>`, or `acct:<account>|<client>:<org>:https://api.anthropic.com:<scopes>` when bound to an account. Values hold `token` and `expiresAt` (and a refresh token, which Claude Switch never selects or uses). Only entries with both `user:profile` and `user:inference` scopes can read usage. Account-bound candidates take precedence over unbound candidates; within that binding, candidates without `user:sessions:claude_code` take precedence unless their token has a recorded authorization rejection. An eligible Code-scoped candidate can then be selected, without bypassing identity conflicts, same-rank ambiguity or account cooldowns. Expiry is a validity check, not evidence of ownership or issuance order. [`DesktopTokenReader`]
 
 ## Accounts, emails and plans
 
