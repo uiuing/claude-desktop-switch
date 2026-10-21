@@ -84,8 +84,9 @@ public actor ActiveUsageClient: UsageProvider {
             guard try environment.currentAccount() == accountID, environment.signedIn() == true else {
                 throw UsageNotReady(reason: .updating)
             }
+            let rejected = try rejectedTokenFailures()
             return try await Self.readOffThread {
-                try DesktopTokenReader.read(environment: environment, expectedAccount: accountID, allowPrompt: allowKeychainPrompt)
+                try DesktopTokenReader.read(environment: environment, expectedAccount: accountID, allowPrompt: allowKeychainPrompt, rejectedTokens: rejected)
             }
         }, validate: { token in
             guard try environment.currentAccount() == token.accountID, environment.signedIn() == true,
@@ -97,8 +98,9 @@ public actor ActiveUsageClient: UsageProvider {
         do {
             return try await fetch(accountID: accountID, profileRefreshID: profileRefreshID, readToken: {
                 let snapshot = try await vault.load(accountID: accountID)
+                let rejected = try self.rejectedTokenFailures()
                 return try await Self.readOffThread {
-                    try DesktopTokenReader.read(config: .object(snapshot.auth), expectedAccount: accountID, allowPrompt: allowKeychainPrompt)
+                    try DesktopTokenReader.read(config: .object(snapshot.auth), expectedAccount: accountID, allowPrompt: allowKeychainPrompt, rejectedTokens: rejected)
                 }
             }, validate: { token in
                 let snapshot = try await vault.load(accountID: accountID)
@@ -261,6 +263,9 @@ public actor ActiveUsageClient: UsageProvider {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = TimeZone(secondsFromGMT: 0)
         f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
         return f.date(from: header).map { max(0, $0.timeIntervalSince(now())) }
+    }
+    func rejectedTokenFailures() throws -> [String: UsageFailure] {
+        try schedulerLock { try loadState(); return denied }
     }
     private func reserve(_ token: DesktopAccessToken) throws {
         try schedulerLock {
