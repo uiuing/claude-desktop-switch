@@ -54,8 +54,9 @@ struct OperationSheet: View {
         }
     }
     private var replacing: Bool { current.sessions.contains { state.replacesExisting($0, in: current) } }
-    private let rowHeight: CGFloat = 38
-    private let visibleRows = 5
+    private var listedSessions: [Conversation] { current.followCandidates ?? current.sessions }
+    private var rowHeight: CGFloat { current.followCandidates == nil ? 38 : 46 }
+    private var visibleRows: Int { current.followCandidates == nil ? 5 : 4 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -64,9 +65,12 @@ struct OperationSheet: View {
                 Text(L10n.tr("The new login is saved. These followed Code conversations have not been transferred yet."))
                     .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            if !current.sessions.isEmpty { sessionsSection }
+            if !listedSessions.isEmpty { sessionsSection }
             stepsSection
             if !current.plan.warnings.isEmpty { warningsSection }
+            if let error = current.selectionError {
+                Text(error).font(.system(size: 12)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+            }
             footer
         }
         .padding(24).frame(width: 480)
@@ -96,7 +100,7 @@ struct OperationSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(current.plan.kind == .switchAccount
-                     ? L10n.tr("Followed conversations ({0})", L10n.argument(current.sessions.count)) : L10n.tr("Conversations"))
+                     ? L10n.tr("Follow with this switch ({0})", L10n.argument(current.sessions.count)) : L10n.tr("Conversations"))
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
                 if current.sessions.count > 1 {
@@ -105,16 +109,21 @@ struct OperationSheet: View {
                             Button(mode.title) { state.setPendingTransferMode(mode) }
                         }
                     }.menuStyle(.borderlessButton).fixedSize().font(.system(size: 12))
-                        .hoverSurface().disabled(state.working)
+                        .hoverSurface().disabled(state.working || current.preparingSelection)
                 }
             }
             Group {
-                if current.sessions.count > visibleRows {
+                if listedSessions.count > visibleRows {
                     ScrollView { sessionRows }.frame(height: rowHeight * CGFloat(visibleRows))
                 } else { sessionRows }
             }.card(radius: 10)
             VStack(alignment: .leading, spacing: 3) {
-                Text(uniformMode?.explanation ?? L10n.tr("Move: the original account no longer keeps it. Copy: both accounts keep it."))
+                if current.followCandidates != nil {
+                    Text(L10n.tr("Followed conversations and the 3 most recent Code conversations. Changes are saved after switching."))
+                }
+                if !current.sessions.isEmpty {
+                    Text(uniformMode?.explanation ?? L10n.tr("Move: the original account no longer keeps it. Copy: both accounts keep it."))
+                }
                 if replacing { Text(L10n.tr("“Replaces” means the target account already has this conversation; it will be replaced with the current version.")) }
             }.font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
@@ -122,12 +131,22 @@ struct OperationSheet: View {
 
     private var sessionRows: some View {
         VStack(spacing: 0) {
-            ForEach(Array(current.sessions.enumerated()), id: \.element.id) { index, session in
+            ForEach(Array(listedSessions.enumerated()), id: \.element.id) { index, session in
                 if index > 0 { Divider().padding(.leading, 42) }
+                let selected = current.sessions.contains { $0.id == session.id }
                 HStack(spacing: 10) {
-                    KindIcon(kind: session.kind, size: 20)
-                    Text(session.title).font(.system(size: 13)).lineLimit(1).truncationMode(.tail)
-                    if state.replacesExisting(session, in: current) {
+                    if current.followCandidates != nil {
+                        Toggle(session.title, isOn: Binding(get: { selected }, set: { selected in
+                            Task { await state.setPendingFollow(selected, sessionID: session.id) }
+                        })).toggleStyle(.checkbox).labelsHidden().disabled(state.working || current.preparingSelection)
+                    } else { KindIcon(kind: session.kind, size: 20) }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(session.title).font(.system(size: 13)).lineLimit(1).truncationMode(.tail)
+                        if current.followCandidates != nil {
+                            Text(Format.age(session.modifiedAt, now: Date())).font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
+                    }
+                    if selected && current.selectionReady && state.replacesExisting(session, in: current) {
                         StatusBadge(text: L10n.tr("Replaces"), color: Color(nsColor: .systemOrange))
                     }
                     Spacer(minLength: 8)
@@ -136,7 +155,8 @@ struct OperationSheet: View {
                         set: { state.setPendingTransferMode($0, sessionID: session.id) })) {
                         ForEach(SessionTransferMode.allCases, id: \.self) { Text($0.title).tag($0) }
                     }
-                    .pickerStyle(.menu).labelsHidden().fixedSize().controlSize(.small).disabled(state.working)
+                    .pickerStyle(.menu).labelsHidden().fixedSize().controlSize(.small)
+                        .disabled(!selected || state.working || current.preparingSelection)
                 }
                 .padding(.horizontal, 12).frame(height: rowHeight)
             }
@@ -176,11 +196,11 @@ struct OperationSheet: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer()
-            if state.working { ProgressView().controlSize(.small) }
-            Button(L10n.tr("Cancel")) { dismiss() }.keyboardShortcut(.cancelAction).disabled(state.working)
+            if state.working || current.preparingSelection { ProgressView().controlSize(.small) }
+            Button(L10n.tr("Cancel")) { state.pending = nil; dismiss() }.keyboardShortcut(.cancelAction).disabled(state.working)
             Button(confirmTitle) { Task { await state.executePending() } }
                 .buttonStyle(.borderedProminent).prominentHover().keyboardShortcut(.defaultAction)
-                .disabled(!state.canExecute || state.working)
+                .disabled(!state.canExecute || !current.selectionReady)
         }.padding(.top, 2)
     }
 }

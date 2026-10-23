@@ -480,5 +480,7 @@
   "Waiting for permission": "等待授权",
   "Waiting for you": "等待你处理",
   "Waiting for your reply": "等待你回复",
-  "{0} running · {1} waiting": "{0} 执行 · {1} 等待"
+  "{0} running · {1} waiting": "{0} 执行 · {1} 等待",
+  "Follow with this switch ({0})": "本次跟随（{0}）",
+  "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching.": "已跟随的会话和最近活跃的 3 个 Code 会话。切换成功后保存选择。"
 }

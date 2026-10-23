@@ -86,6 +86,15 @@ public enum SessionLibrary {
         }
     }
 
+    public static func switchCandidates(_ sessions: [Conversation], followed: [Conversation], activeAccountID: String?) -> [Conversation] {
+        var recentIDs = Set<String>()
+        let recent = sorted(sessions.filter {
+            $0.accountID == activeAccountID && !$0.archived && $0.kind == .code && $0.cliSessionID != nil
+        }, order: .time, accounts: []).filter { recentIDs.insert($0.sessionID).inserted }.prefix(3)
+        var seen = Set<String>()
+        return (followed + recent).filter { seen.insert($0.sessionID).inserted }
+    }
+
     public static func migrationBlocker(_ session: Conversation, target: Account) -> String? {
         guard session.kind == .code else {
             return session.kind == .cowork ? L10n.tr("Cowork includes sandbox and attachment state. Only folder inspection is currently available.") : L10n.tr("Cloud Chat has no local conversation file that can be migrated directly.")
