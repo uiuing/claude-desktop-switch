@@ -480,5 +480,7 @@
   "Waiting for permission": "Ожидает разрешения",
   "Waiting for you": "Ожидает вас",
   "Waiting for your reply": "Ожидает ответа",
-  "{0} running · {1} waiting": "В работе: {0} · Ожидают: {1}"
+  "{0} running · {1} waiting": "В работе: {0} · Ожидают: {1}",
+  "Follow with this switch ({0})": "Перенести при переключении ({0})",
+  "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching.": "Отслеживаемые диалоги и 3 последних активных диалога Code. Выбор сохраняется после успешного переключения."
 }

@@ -480,5 +480,7 @@
   "Waiting for permission": "권한 승인 대기",
   "Waiting for you": "처리 대기",
   "Waiting for your reply": "답변 대기",
-  "{0} running · {1} waiting": "실행 {0} · 대기 {1}"
+  "{0} running · {1} waiting": "실행 {0} · 대기 {1}",
+  "Follow with this switch ({0})": "이번 전환에 함께 이동 ({0})",
+  "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching.": "따라가는 대화와 최근 활성 Code 대화 3개입니다. 전환에 성공하면 선택이 저장됩니다."
 }

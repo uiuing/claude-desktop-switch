@@ -480,5 +480,7 @@
   "Waiting for permission": "許可待ち",
   "Waiting for you": "対応待ち",
   "Waiting for your reply": "返信待ち",
-  "{0} running · {1} waiting": "実行 {0} · 対応待ち {1}"
+  "{0} running · {1} waiting": "実行 {0} · 対応待ち {1}",
+  "Follow with this switch ({0})": "今回の切り替えに同行（{0}）",
+  "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching.": "同行設定済みの会話と最近アクティブな Code 会話 3 件です。選択は切り替え成功後に保存されます。"
 }

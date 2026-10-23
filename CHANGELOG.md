@@ -6,6 +6,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Choose which Code conversations follow an account switch directly in its confirmation: saved follows and the current account's three most recently active conversations appear together, with move/copy choices. Successful switches remember the selection.
+
 ### Fixed
 
 - Quota refresh can use an eligible Code credential when the preferred Desktop credential was already rejected, including after restarting Switch.

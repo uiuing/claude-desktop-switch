@@ -480,5 +480,7 @@
   "Waiting for permission": "Waiting for permission",
   "Waiting for you": "Waiting for you",
   "Waiting for your reply": "Waiting for your reply",
-  "{0} running · {1} waiting": "{0} running · {1} waiting"
+  "{0} running · {1} waiting": "{0} running · {1} waiting",
+  "Follow with this switch ({0})": "Follow with this switch ({0})",
+  "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching.": "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching."
 }

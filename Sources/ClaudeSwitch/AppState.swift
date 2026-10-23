@@ -26,6 +26,11 @@ struct PendingOperation: Identifiable {
     var target: Account
     var sessions: [Conversation]
     var newAccountFollowUpID: UUID?
+    var followCandidates: [Conversation]?
+    var initialFollowIDs = Set<String>()
+    var preparingSelection = false
+    var selectionError: String?
+    var selectionReady: Bool { !preparingSelection && selectionError == nil }
 }
 
 /// Views redraw only for the properties they read, so a statistics scan does not redraw the menu bar.
@@ -832,7 +837,7 @@ final class AppState {
         persist()
     }
     func setPendingTransferMode(_ mode: SessionTransferMode, sessionID: String? = nil) {
-        guard !working, var operation = pending else { return }
+        guard !working, var operation = pending, !operation.preparingSelection else { return }
         for session in operation.sessions where sessionID == nil || session.id == sessionID {
             operation.plan.transferModes[session.id] = mode
         }
@@ -848,21 +853,31 @@ final class AppState {
             activeAccountID: activeID, targetAccountID: target.id)
         let candidates = explicitSessions ?? (kind == .switchAccount ? following : [])
         message = nil
-        do { pending = try await makeOperation(kind, target: target, sessions: candidates) }
+        do {
+            pending = kind == .switchAccount
+                ? try await makeSwitchOperation(target: target, followed: candidates)
+                : try await makeOperation(kind, target: target, sessions: candidates)
+        }
         catch { message = display(error) }
     }
-    func makeOperation(_ kind: OperationKind, target: Account, sessions candidates: [Conversation]) async throws -> PendingOperation {
+    func makeOperation(_ kind: OperationKind, target: Account, sessions candidates: [Conversation],
+                       transferModes: [String: SessionTransferMode] = [:]) async throws -> PendingOperation {
         var seen = Set<String>()
         let transfers = candidates.sorted {
             if ($0.accountID == activeID) != ($1.accountID == activeID) { return $0.accountID == activeID }
             return $0.modifiedAt > $1.modifiedAt
         }.filter { $0.accountID != target.id && !$0.archived && seen.insert($0.sessionID).inserted }
-        let modes = Dictionary(uniqueKeysWithValues: transfers.map { ($0.id, transferMode($0)) })
+        let modes = Dictionary(uniqueKeysWithValues: transfers.map { ($0.id, transferModes[$0.id] ?? transferMode($0)) })
         var plan: OperationPlan
         if demo {
+            for session in transfers {
+                if let reason = SessionLibrary.migrationBlocker(session, target: target) { throw SwitchError.blocked(reason) }
+            }
             plan = OperationPlan(kind: kind, sourceAccountID: activeID, targetAccountID: target.id, configDigest: "demo",
                 steps: kind == .switchAccount
-                    ? [L10n.tr("Quit Claude normally"), L10n.tr("Switch to the selected account"), L10n.tr("Bring followed conversations along, replacing matching copies in the target account"), L10n.tr("Reopen Claude")]
+                    ? [L10n.tr("Quit Claude normally"), L10n.tr("Switch to the selected account")]
+                        + (transfers.isEmpty ? [] : [L10n.tr("Bring followed conversations along, replacing matching copies in the target account")])
+                        + [L10n.tr("Reopen Claude")]
                     : [L10n.tr("Quit Claude normally"), L10n.tr("Write the conversations to the target account, replacing matching copies"), L10n.tr("Remove or keep the conversations in the original account as selected"), L10n.tr("Reopen Claude")],
                 conversationIDs: transfers.map(\.id), warnings: [L10n.tr("This is an interface demo. No accounts will be changed.")])
             plan.transferModes = modes; plan.targetOrganizationID = target.organizationID
@@ -870,7 +885,7 @@ final class AppState {
         return PendingOperation(plan: plan, target: target, sessions: transfers)
     }
     func executePending() async {
-        guard canExecute, let operation = pending else { return }
+        guard canExecute, let operation = pending, operation.selectionReady else { return }
         working = true
         var signedIn: String?
         do {
@@ -879,6 +894,7 @@ final class AppState {
             showOperationFeedback(OperationFeedback.completed(plan: operation.plan, target: identity(operation.target),
                                                               quota: quotaRows(for: operation.target.id), result: result))
             completeNewAccountFollowUp(operation)
+            applySwitchFollowSelection(operation)
             // Follow the logical session after either transfer. A move changes its index owner;
             // the stable session ID also survives a restart between commit and this preference save.
             for session in operation.sessions {

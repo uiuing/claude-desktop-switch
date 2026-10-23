@@ -480,5 +480,7 @@
   "Waiting for permission": "Esperando permiso",
   "Waiting for you": "Esperando tu intervención",
   "Waiting for your reply": "Esperando tu respuesta",
-  "{0} running · {1} waiting": "{0} en curso · {1} en espera"
+  "{0} running · {1} waiting": "{0} en curso · {1} en espera",
+  "Follow with this switch ({0})": "Seguir este cambio ({0})",
+  "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching.": "Conversaciones seguidas y las 3 conversaciones de Code más recientes. La selección se guarda al completar el cambio."
 }

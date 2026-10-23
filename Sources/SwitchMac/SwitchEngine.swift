@@ -19,7 +19,9 @@ public actor SwitchEngine: SwitchService {
         switch kind {
         case .capture: steps = [L10n.tr("Quit Claude normally and wait for workers to finish"), L10n.tr("Save the current account"), L10n.tr("Reopen Claude")]
         case .switchAccount: steps = [L10n.tr("Check the saved account before switching"), L10n.tr("Close Claude and save the current account"),
-                                      L10n.tr("Switch to the selected account"), L10n.tr("Bring followed conversations along, replacing matching copies in the target account"), L10n.tr("Reopen Claude")]
+                                      L10n.tr("Switch to the selected account")]
+                + (sessions.isEmpty ? [] : [L10n.tr("Bring followed conversations along, replacing matching copies in the target account")])
+                + [L10n.tr("Reopen Claude")]
         case .signOut: steps = [L10n.tr("Close Claude and save the current account"), L10n.tr("Save the current account"),
                                 L10n.tr("Reopen Claude on its sign-in screen"), L10n.tr("After you sign in to the new account, Claude Switch saves it")]
         case .migrate: steps = [L10n.tr("Quit Claude and verify the conversation records"), L10n.tr("Write the conversations to the target account, replacing matching copies"),

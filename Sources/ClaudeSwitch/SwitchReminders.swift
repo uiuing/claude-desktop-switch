@@ -61,7 +61,7 @@ extension AppState {
         let sessions = SessionLibrary.followedSessions(inventory?.conversations ?? [], rules: library.follows,
             activeAccountID: sourceID, targetAccountID: suggested.account.id)
         do {
-            let operation = try await makeOperation(.switchAccount, target: suggested.account, sessions: sessions)
+            let operation = try await makeSwitchOperation(target: suggested.account, followed: sessions)
             // Preparation may suspend while Claude changes accounts or another window opens a sheet.
             guard startupAccess.isReady, !working, inventory?.signedIn == true, recoveryIDs.isEmpty,
                   activeID == sourceID, pending == nil, !showAddAccount, !showQuickFind,

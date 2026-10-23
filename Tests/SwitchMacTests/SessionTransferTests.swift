@@ -72,6 +72,25 @@ final class SessionTransferTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
     }
 
+    func testSwitchPreviewCanDeselectAllAndRevalidateSelectedRecords() async throws {
+        let f = try fixture(), vault = CredentialVault(root: f.env.root.appendingPathComponent("vault"))
+        let engine = SwitchEngine(environment: f.env, vault: vault)
+        let selected = try await engine.prepare(kind: .switchAccount, target: f.target, sessions: [f.session])
+        XCTAssertEqual(selected.conversationIDs, [f.session.id])
+        XCTAssertEqual(selected.sourceDigests[f.session.id], digest(f.sourceData))
+        let empty = try await engine.prepare(kind: .switchAccount, target: f.target)
+        XCTAssertTrue(empty.conversationIDs.isEmpty)
+        XCTAssertTrue(empty.sourceDigests.isEmpty)
+        XCTAssertTrue(empty.destinationExpectations.isEmpty)
+        XCTAssertFalse(empty.steps.contains(L10n.tr("Bring followed conversations along, replacing matching copies in the target account")))
+        let reselected = try await engine.prepare(kind: .switchAccount, target: f.target, sessions: [f.session],
+                                                  transferModes: [f.session.id: .copy])
+        XCTAssertEqual(reselected.transferMode(for: f.session.id), .copy)
+        XCTAssertEqual(reselected.destinationExpectations[f.destinationRelative], .sha256(digest(f.destinationData)))
+        XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
+        XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
+    }
+
     func testMoveAndCopyReplaceSameSessionAndKeepSharedTranscript() async throws {
         try XCTSkipUnless(BuildAccess.allowsClaudeWrites, "Run isolated fixture tests with CLAUDE_WRITE_ENABLED")
         for mode in SessionTransferMode.allCases {

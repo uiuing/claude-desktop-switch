@@ -14,6 +14,46 @@ final class ScreenshotTests: XCTestCase {
     private static var windows: [NSWindow] = []
     private var output: URL!
 
+    func testRenderSwitchSessionSelection() async throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render switch selection.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let previous = UserDefaults.standard.volatileDomain(forName: UserDefaults.registrationDomain)
+        defer { UserDefaults.standard.setVolatileDomain(previous, forName: UserDefaults.registrationDomain) }
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            await state.prepare(.switchAccount, target: state.library.accounts[1])
+            let operation = try XCTUnwrap(state.pending)
+            for dark in [false, true] {
+                let sheet = OperationSheet(operation: operation).environment(state)
+                try save(captureSheet(sheet, dark: dark), "switch-selection-\(language)-\(dark ? "dark" : "light")", maxWidth: 1100)
+            }
+            for session in operation.sessions { await state.setPendingFollow(false, sessionID: session.id) }
+            try save(captureSheet(OperationSheet(operation: try XCTUnwrap(state.pending)).environment(state)),
+                     "switch-selection-empty-\(language)", maxWidth: 1100)
+            state.pending = nil
+            state.library.follows = (state.inventory?.conversations.filter { $0.kind == .code } ?? []).map {
+                FollowRule(conversationID: $0.id, sessionID: $0.sessionID)
+            }
+            await state.prepare(.switchAccount, target: state.library.accounts[3])
+            var scrollOperation = try XCTUnwrap(state.pending)
+            scrollOperation.plan.steps = [L10n.tr("Check the saved account before switching"),
+                                        L10n.tr("Close Claude and save the current account")]
+                + Array(scrollOperation.plan.steps.dropFirst())
+            scrollOperation.plan.warnings = [L10n.tr("Ongoing work will be interrupted. Finish your work first."),
+                                            L10n.tr("Switching the Desktop login does not change the separate Claude Code CLI login."),
+                                            L10n.tr("This transfers local Code conversations; cloud state, organization permissions and attachments are not transferred.")]
+            state.pending = scrollOperation
+            try save(captureSheet(OperationSheet(operation: try XCTUnwrap(state.pending)).environment(state)),
+                     "switch-selection-scroll-\(language)", maxWidth: 1100)
+        }
+    }
+
     func testRenderWeeklyHeadroomRanking() throws {
         guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
             throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render ranking examples.")
@@ -685,12 +725,12 @@ final class ScreenshotTests: XCTestCase {
     }
 
     /// Native segmented controls need a hosting window; ImageRenderer cannot draw their AppKit views.
-    private func captureSheet<Content: View>(_ content: Content) throws -> NSImage {
+    private func captureSheet<Content: View>(_ content: Content, dark: Bool = false) throws -> NSImage {
         let view = NSHostingView(rootView: content.environment(\.locale, L10n.locale)
-            .environment(\.controlActiveState, .key).environment(\.colorScheme, .light))
+            .environment(\.controlActiveState, .key).environment(\.colorScheme, dark ? .dark : .light))
         let window = ActiveWindow(contentRect: NSRect(x: -6000, y: 200, width: 480, height: 700),
                                   styleMask: [.titled], backing: .buffered, defer: false)
-        window.appearance = NSAppearance(named: .aqua)
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         window.contentView = view
         window.setContentSize(view.fittingSize)
         window.orderFrontRegardless()

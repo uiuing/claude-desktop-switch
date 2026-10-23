@@ -53,6 +53,10 @@ Because Claude is running while this happens, a snapshot taken this way may not 
 
 Every switch is planned first and executed only after you confirm it.
 
+The confirmation combines conversations already set to follow this target with the current account's three most recently active, unarchived Code conversations that have a local history reference. Duplicate sessions appear once. Existing follows start checked; recent additions start unchecked. You can select or deselect conversations and choose Move or Copy without leaving the confirmation, including switching with no conversations selected. Activity uses the same last-active ordering as Conversations, not task running state.
+
+Changing the selection rebuilds and validates the transfer preview before enabling Switch. A conversation that cannot be transferred can be deselected. Follow changes are saved only after a successful switch: deselecting a previously followed conversation stops its follow rule, while selecting a new one enables following. Existing account restrictions are preserved, adding this target when explicitly selected. Canceling the preview or a failed switch leaves saved follow rules unchanged.
+
 1. **Preview.** The plan records the current identity, a fingerprint of `config.json`, the target account and organization, the selected Claude Code sessions and a SHA-256 of every file involved. A plan expires after 120 seconds and is re-checked before execution.
 2. **Locking.** An in-process actor and a file lock shared between app instances prevent two operations from running at once. An unfinished transaction blocks new ones.
 3. **Decrypt first.** The target snapshot is decrypted and verified before Claude is touched. A login saved by an older Claude is restored, because Claude upgrades its own data after an update; one saved by a newer Claude than the installed one stops the switch.

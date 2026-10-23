@@ -16,6 +16,8 @@ final class SwitchReminderRoutingTests: XCTestCase {
         let operation = try XCTUnwrap(state.pending)
         XCTAssertEqual(operation.plan.kind, .switchAccount)
         XCTAssertEqual(operation.target.id, reminder.targetAccountID)
+        XCTAssertEqual(operation.followCandidates?.count, 3)
+        XCTAssertEqual(operation.sessions.count, 2)
         XCTAssertEqual(state.activeID, active)
         XCTAssertEqual(state.inventory?.conversations.map(\.id), sessions)
         XCTAssertFalse(try XCTUnwrap(state.switchReminder).needsReview)

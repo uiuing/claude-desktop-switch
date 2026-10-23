@@ -64,4 +64,37 @@ final class FollowRuleTests: XCTestCase {
         XCTAssertEqual(SessionLibrary.followedSessions([a], rules: [restored], activeAccountID: "a", targetAccountID: "b").count, 1)
         XCTAssertTrue(SessionLibrary.followedSessions([a], rules: [restored], activeAccountID: "a", targetAccountID: "c").isEmpty)
     }
+    func testSwitchCandidatesUnionFollowsWithThreeDistinctRecentCurrentSessions() {
+        func item(_ id: String, date: Double) -> Conversation {
+            var value = session("a", date: date)
+            value.id = "a/org/code/" + id; value.sessionID = id
+            return value
+        }
+        let newest = item("newest", date: 5), second = item("second", date: 4)
+        let third = item("third", date: 3), fourth = item("fourth", date: 2), oldFollow = item("old", date: 1)
+        var duplicate = newest; duplicate.id = "a/other-org/code/newest"
+        var archived = item("archived", date: 9); archived.archived = true
+        var cowork = item("cowork", date: 9); cowork.kind = .cowork
+        var missingHistory = item("missing", date: 9); missingHistory.cliSessionID = nil
+        var otherAccount = item("other", date: 9); otherAccount.accountID = "b"
+        let all = [fourth, oldFollow, third, second, newest, duplicate, archived, cowork, missingHistory, otherAccount]
+        let result = SessionLibrary.switchCandidates(all, followed: [second, oldFollow], activeAccountID: "a")
+        XCTAssertEqual(result.map(\.sessionID), ["second", "old", "newest", "third"])
+        XCTAssertFalse(result.contains { $0.sessionID == fourth.sessionID })
+        XCTAssertEqual(SessionLibrary.switchCandidates(all, followed: [], activeAccountID: nil), [])
+        XCTAssertEqual(SessionLibrary.switchCandidates([newest], followed: [], activeAccountID: "a"), [newest])
+    }
+    func testSwitchCandidatesKeepAuthoritativeFollowSourceAndTargetRestrictions() {
+        let current = session("a", date: 1), stale = session("c", date: 10), target = session("b", date: 20)
+        let restricted = FollowRule(conversationID: current.id, sessionID: current.sessionID,
+                                    mode: .selectedAccounts, targetAccountIDs: ["c"])
+        let sessions = [stale, target, current]
+        let following = SessionLibrary.followedSessions(sessions, rules: [restricted], activeAccountID: "a", targetAccountID: "b")
+        XCTAssertTrue(following.isEmpty)
+        // A restricted recent session can still be offered unchecked for an explicit selection.
+        XCTAssertEqual(SessionLibrary.switchCandidates(sessions, followed: following, activeAccountID: "a"), [current])
+        var rule = restricted; rule.mode = .allSavedAccounts
+        let selected = SessionLibrary.followedSessions(sessions, rules: [rule], activeAccountID: "a", targetAccountID: "b")
+        XCTAssertEqual(SessionLibrary.switchCandidates(sessions, followed: selected, activeAccountID: "a"), [current])
+    }
 }
