@@ -74,6 +74,7 @@ SwiftPM needs to run outside restrictive sandboxes (it uses `sandbox-exec` for t
 
 ## Pitfalls
 
+- Type names do not always match filenames: `MacEnvironment` and `IdentitySchema` are in `Environment.swift`, and `MigrationBuilder` is in `Migration.swift`. Resolve paths with `rg --files` before opening a file by its type name.
 - Unstripped binaries embed absolute build paths (the build machine's user name and folders). `scripts/build.sh` strips debug symbols before signing; keep that step, and check `dist/` with `grep -a /Users/` before publishing.
 - A file named `main.swift` cannot also use `@main`; the universal (`--arch arm64 --arch x86_64`) build uses Xcode's build system and rejects it.
 - The packaged app loads catalogs from `Contents/Resources/ClaudeDesktopSwitch_SwitchCore.bundle`; SwiftPM runs and tests fall back to `Bundle.module`.
