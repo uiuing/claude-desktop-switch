@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.2" width="112" alt="Claude Switch 圖示">
+<img src="docs/images/icon.png?v=0.2.5" width="112" alt="Claude Switch 圖示">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hant-dark.jpg?v=0.2.2">
-  <img src="docs/images/hero-zh-Hant-light.jpg?v=0.2.2" alt="Claude Switch：帳號視窗與選單列面板">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hant-dark.jpg?v=0.2.5">
+  <img src="docs/images/hero-zh-Hant-light.jpg?v=0.2.5" alt="Claude Switch：帳號視窗與選單列面板">
 </picture>
 
 </div>
@@ -32,7 +32,7 @@
 - **切換不必重新登入**：常用帳號保存一次，之後直接從選單列選擇需要的帳號。
 - **剩餘額度一眼看清**：把各個帳號的餘量放在一起，不必來回切換著查。
 - **額度不足，及時提醒**：快用完時，有合適的備用帳號就會提醒你，讓你決定要不要切換。
-- **換帳號，對話跟著走**：將本機 Claude Code 主對話及其子任務帶到另一個帳號，也可以讓指定對話在每次切換時自動跟隨。
+- **換帳號，工作一起帶走**：Code 對話、子任務和附件一起轉到另一個帳號，已儲存的面板和檔案檢視也能保留。
 - **新增帳號，保留原來的登入**：新帳號登入後一起保存，需要時隨時切回來。
 - **看看自己的使用習慣**：查看本機 Code 的每日用量、常用模型與活躍趨勢。
 
@@ -41,8 +41,17 @@
 **換帳號，對話跟著走。**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-zh-Hant-dark.png?v=0.2.2">
-  <img src="docs/images/conversations-zh-Hant-light.png?v=0.2.2" alt="換帳號，對話跟著走。">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-zh-Hant-dark.png?v=0.2.5">
+  <img src="docs/images/conversations-zh-Hant-light.png?v=0.2.5" alt="換帳號，對話跟著走。">
+</picture>
+
+**這次帶走哪些對話，由你選擇。**
+
+在切換確認頁直接選擇對話。最近活躍的對話會預先勾選，確認後的選擇會在下次切換時記住。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-selection-zh-Hant-dark.png?v=0.2.5">
+  <img src="docs/images/switch-selection-zh-Hant-light.png?v=0.2.5" width="720" alt="這次帶走哪些對話，由你選擇。">
 </picture>
 
 <table>
@@ -50,15 +59,15 @@
     <td width="33%" valign="top">
       <p><b>額度不足，及時提醒。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hant-dark.png?v=0.2.2">
-        <img src="docs/images/switch-reminder-menu-zh-Hant-light.png?v=0.2.2" alt="額度不足，及時提醒。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hant-dark.png?v=0.2.5">
+        <img src="docs/images/switch-reminder-menu-zh-Hant-light.png?v=0.2.5" alt="額度不足，及時提醒。">
       </picture>
     </td>
     <td width="67%" valign="top">
       <p><b>看看自己的使用習慣。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hant-dark.png?v=0.2.2">
-        <img src="docs/images/usage-zh-Hant-light.png?v=0.2.2" alt="看看自己的使用習慣。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hant-dark.png?v=0.2.5">
+        <img src="docs/images/usage-zh-Hant-light.png?v=0.2.5" alt="看看自己的使用習慣。">
       </picture>
     </td>
   </tr>
@@ -94,7 +103,9 @@
 
 1. 像平常一樣**登入 Claude Desktop**，然後開啟 Claude Switch，依提示允許存取鑰匙圈，目前的帳號會自動保存。
 2. 在選單列按 **新增帳號…**。Claude 會重新啟動到登入頁，用另一個帳號登入，它也會自動保存。
-3. 之後隨時在選單列或帳號視窗中**切換**。
+3. 在選單列或帳號視窗中**切換**，選好要帶走的 Code 對話，再確認即可。
+
+對話歷史和已儲存的檢視會一起保留。請先結束正在執行的任務，切換後在 Claude 中繼續。
 
 可在首次設定或 **設定 → 通知** 啟用切換推薦及操作結果通知。每次切換仍需你確認。
 

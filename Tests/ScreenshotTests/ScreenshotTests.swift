@@ -24,7 +24,7 @@ final class ScreenshotTests: XCTestCase {
         NSApplication.pretendActive
         let previous = UserDefaults.standard.volatileDomain(forName: UserDefaults.registrationDomain)
         defer { UserDefaults.standard.setVolatileDomain(previous, forName: UserDefaults.registrationDomain) }
-        for language in ["en", "de", "zh-Hans"] {
+        for language in Self.languages + ["de"] {
             UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
             let state = AppState(demo: true)
             await state.prepare(.switchAccount, target: state.library.accounts[1])
@@ -947,7 +947,7 @@ private struct SocialPreview: View {
                     .font(.system(size: 62, weight: .bold)).tracking(-2)
                     .foregroundStyle(Color(hex: 0xB45532))
                 Spacer().frame(height: 24)
-                Text("See your quota at a glance.\nBring your Code conversations along.")
+                Text("See your quota at a glance.\nTake conversations and subtasks with you.")
                     .font(.system(size: 24, weight: .regular))
                     .foregroundStyle(ink.opacity(0.72)).lineSpacing(5)
                 Spacer()

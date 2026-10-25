@@ -6,26 +6,26 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-10-26
+
+Bring your Code conversations, subtasks and attachments to another account, with saved workspace views ready when you return.
+
 ### Added
 
-- Choose which Code conversations follow an account switch directly in its confirmation: saved follows and the current account's three most recently active conversations appear together as main conversations with subtask counts. Successful switches remember the selection.
-- Automatically select all eligible Code conversations active in the last five minutes when reviewing an account switch, including those beyond the three most recent suggestions. Each can still be deselected.
+- Choose which conversations come with you directly in the account-switch confirmation. Recently active conversations are preselected, and successful switches remember your choices.
+- Bring entire conversation trees together, including subtask histories, attachments, pending messages and access to added folders.
+- Keep saved panes, file views and conversation layout across account switches.
 
-- Preserve entire Code conversation trees, unknown ordinary metadata, added-folder access, native subagent histories, session-owned resources and pending-input attachments. Conversation lists and task menus group descendants under their main conversation.
-- Preserve persisted Code pane/file-view state across immediate and later account switches, using conversation-owned snapshots and a credential-separated Local Storage merge.
+### Improved
 
-### Changed
-
-- Remove conversation-copy controls, saved mode preferences and execution branches. Selecting a main conversation transfers its entire tree after destination verification.
-- Reject incomplete queues, ambiguous lineage, conflicting files, unsafe paths and persistent browser-credential contexts; interrupted fixture transfers restore the complete original group. Automatic task continuation is not included.
+- Conversation lists, search and task menus group subtasks under their main conversation.
+- One transfer action brings the selected conversation and its subtasks to the destination account.
 
 ### Fixed
 
-- Verify long shared Code histories with bounded streaming reads instead of the attachment-copy size limit. Preserve already-unavailable workspace paths with a warning while detecting folder loss after preview.
-- Preserve ordinary render tokens, drafts and tool schemas; exclude nested authentication, header-pair credentials and signed connection URLs, and block authentication-store companions.
-- Code conversation transfers accept Desktop's native MCP catalog arrays, including empty catalogs, and optional null authorization fields. Tool schema definitions remain intact while connection credentials are excluded.
-- Account switches with followed Code conversations no longer fail when Claude's quit cleanup changes only JSON formatting or excluded connection state. Identity, ancestry, workspace and destination changes still stop the operation; transaction failures now log their stage without account data.
-- Quota refresh can use an eligible Code credential when the preferred Desktop credential was already rejected, including after restarting Switch.
+- More reliable switches when Claude saves its final conversation state while closing.
+- Better support for long conversation histories and native tool configurations.
+- Quota refresh can recover when another eligible credential is available.
 
 ## [0.2.2] - 2026-10-16
 
@@ -134,7 +134,8 @@ First public release.
 - Links to the project on GitHub from the sidebar, the menu bar panel and Settings. There are no remote or automatic updates yet; new versions are published as GitHub releases.
 - `switch-inspect`, a read-only command-line diagnostic that prints counts only.
 
-[Unreleased]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.2...v0.2.5
 [0.2.2]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.0...v0.2.2
 [0.2.0]: https://github.com/uiuing/claude-desktop-switch/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/uiuing/claude-desktop-switch/compare/v0.1.0...v0.1.5

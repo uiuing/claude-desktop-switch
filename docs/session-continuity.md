@@ -6,7 +6,7 @@ Implementation contract for persisted Code conversations. Automatic task continu
 
 A user selects an account and main conversations. Lists, search, switch confirmation and task menus group native descendants under their main conversation and display the visible subtask count. Selecting the main includes its complete native subtree, including archived descendants. Recent activity anywhere in the tree can trigger the existing five-minute preselection.
 
-There is one transfer operation. Session-copy controls, model preferences, plan fields and execution branches are removed. Legacy library mode fields are ignored on decode; historical recovery journals remain compatible. Only after destination verification do source indexes and pending-input manifests lose ownership.
+A transfer moves the selected conversation tree. Source indexes and pending-input manifests lose ownership only after destination verification.
 
 ## Preservation boundaries
 
@@ -61,6 +61,6 @@ Synthetic fixtures cover:
 
 The native compatibility check is opt-in; see `scripts/check-chromium-fixture.mjs`. Production app code never launches Chrome for migration. Real Claude account switching, native tree rendering after a real login change and real remote-service access are separate acceptance steps, not claimed by fixture results.
 
-## Runtime boundaries and future work
+## Runtime boundaries
 
 This is data migration, not a process checkpoint. In-memory WebContents, unsaved editor buffers, PTYs, in-flight tools and external workers cannot be reconstructed from persisted indexes. The normal quit must succeed. Switch issues no task-resume command and does not replay uncertain side effects. Claude may still apply its own native startup/queued-input behavior.

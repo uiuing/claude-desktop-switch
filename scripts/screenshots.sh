@@ -8,7 +8,7 @@ published="$PWD/docs/images"
 mkdir -p "$output" "$published"
 CLAUDE_SWITCH_SCREENSHOTS="$output" swift test --filter "${1:-ScreenshotTests}"
 for name in hero-{en,zh-Hans,zh-Hant,ja}-{light,dark}.jpg \
-  {conversations,usage,switch-reminder-menu}-{en,zh-Hans,zh-Hant,ja}-{light,dark}.png \
+  {conversations,usage,switch-reminder-menu,switch-selection}-{en,zh-Hans,zh-Hant,ja}-{light,dark}.png \
   social-preview.png; do
   if [[ -f "$output/$name" ]]; then cp "$output/$name" "$published/$name"; fi
 done

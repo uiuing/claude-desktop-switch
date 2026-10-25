@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.2" width="112" alt="Claude Switch 图标">
+<img src="docs/images/icon.png?v=0.2.5" width="112" alt="Claude Switch 图标">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hans-dark.jpg?v=0.2.2">
-  <img src="docs/images/hero-zh-Hans-light.jpg?v=0.2.2" alt="Claude Switch：账号窗口与菜单栏面板">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hans-dark.jpg?v=0.2.5">
+  <img src="docs/images/hero-zh-Hans-light.jpg?v=0.2.5" alt="Claude Switch：账号窗口与菜单栏面板">
 </picture>
 
 </div>
@@ -32,7 +32,7 @@
 - **切换不用重新登录**：常用账号保存一次，之后直接从菜单栏选择需要的账号。
 - **剩余额度一眼看清**：把各个账号的余量放在一起，不用来回切换着查。
 - **额度不足，及时提醒**：快用完时，有合适的备用账号就会提醒你，让你决定要不要切换。
-- **换账号，会话跟着走**：将本地 Claude Code 主会话及其子任务带到另一个账号，也可以让指定会话每次切换时自动跟随。
+- **换账号，工作一起带走**：Code 会话、子任务和附件一起转到另一个账号，已保存的面板和文件视图也能保留。
 - **添加账号，不丢原来的登录**：新账号登录后一起保存，需要时随时切回来。
 - **看看自己的使用习惯**：查看本地 Code 的每日用量、常用模型和活跃趋势。
 
@@ -41,8 +41,17 @@
 **换账号，会话跟着走。**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-zh-Hans-dark.png?v=0.2.2">
-  <img src="docs/images/conversations-zh-Hans-light.png?v=0.2.2" alt="换账号，会话跟着走。">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-zh-Hans-dark.png?v=0.2.5">
+  <img src="docs/images/conversations-zh-Hans-light.png?v=0.2.5" alt="换账号，会话跟着走。">
+</picture>
+
+**这次带走哪些会话，由你选择。**
+
+在切换确认页直接选择会话。最近活跃的会话会预先勾选，确认后的选择会在下次切换时记住。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-selection-zh-Hans-dark.png?v=0.2.5">
+  <img src="docs/images/switch-selection-zh-Hans-light.png?v=0.2.5" width="720" alt="这次带走哪些会话，由你选择。">
 </picture>
 
 <table>
@@ -50,15 +59,15 @@
     <td width="33%" valign="top">
       <p><b>额度不足，及时提醒。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hans-dark.png?v=0.2.2">
-        <img src="docs/images/switch-reminder-menu-zh-Hans-light.png?v=0.2.2" alt="额度不足，及时提醒。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hans-dark.png?v=0.2.5">
+        <img src="docs/images/switch-reminder-menu-zh-Hans-light.png?v=0.2.5" alt="额度不足，及时提醒。">
       </picture>
     </td>
     <td width="67%" valign="top">
       <p><b>看看自己的使用习惯。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hans-dark.png?v=0.2.2">
-        <img src="docs/images/usage-zh-Hans-light.png?v=0.2.2" alt="看看自己的使用习惯。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hans-dark.png?v=0.2.5">
+        <img src="docs/images/usage-zh-Hans-light.png?v=0.2.5" alt="看看自己的使用习惯。">
       </picture>
     </td>
   </tr>
@@ -94,7 +103,9 @@
 
 1. 像平常一样**登录 Claude Desktop**，然后打开 Claude Switch，按提示允许访问钥匙串，当前账号会被自动保存。
 2. 在菜单栏点 **添加账号…**。Claude 会重启到登录页，用另一个账号登录，它也会被自动保存。
-3. 之后随时在菜单栏或账号窗口里**切换**。
+3. 在菜单栏或账号窗口中**切换**，选好要带走的 Code 会话，再确认即可。
+
+会话历史和已保存的视图会一起保留。请先结束正在运行的任务，切换后在 Claude 中继续。
 
 可在首次设置或 **设置 → 通知** 中开启切换推荐和操作结果通知。每次切换仍需你确认。
 

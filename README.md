@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.2" width="112" alt="Claude Switch icon">
+<img src="docs/images/icon.png?v=0.2.5" width="112" alt="Claude Switch icon">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@ Your Claude Desktop accounts and remaining quota, together in your Mac’s menu 
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-en-dark.jpg?v=0.2.2">
-  <img src="docs/images/hero-en-light.jpg?v=0.2.2" alt="Claude Switch: the accounts window and the menu bar panel">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-en-dark.jpg?v=0.2.5">
+  <img src="docs/images/hero-en-light.jpg?v=0.2.5" alt="Claude Switch: the accounts window and the menu bar panel">
 </picture>
 
 </div>
@@ -32,7 +32,7 @@ Using personal and work accounts should not mean signing in over and over or fin
 - **Switch without signing in again.** Save your usual accounts once, then choose the one you need from the menu bar.
 - **See your quota at a glance.** Compare what is left across your accounts without switching between them.
 - **Get a heads-up when you run low.** A reminder points you to a suitable backup account when one is available.
-- **Pick up where you left off.** Bring local Claude Code conversations and their subtasks to another account, or choose conversations to follow you when you switch.
+- **Take your work with you.** Bring Code conversations, subtasks and attachments to another account, with saved panes and file views kept together.
 - **Add an account, keep the others.** Sign in to another account without signing out of the ones you already saved.
 - **Understand your usage.** Look back at your local Code activity, daily usage and most-used models.
 
@@ -41,8 +41,17 @@ Using personal and work accounts should not mean signing in over and over or fin
 **Pick up where you left off.**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-en-dark.png?v=0.2.2">
-  <img src="docs/images/conversations-en-light.png?v=0.2.2" alt="Pick up where you left off.">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-en-dark.png?v=0.2.5">
+  <img src="docs/images/conversations-en-light.png?v=0.2.5" alt="Pick up where you left off.">
+</picture>
+
+**Choose what comes with you.**
+
+Pick conversations in the switch confirmation. Recent work is preselected, and your choices are remembered for the next switch.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-selection-en-dark.png?v=0.2.5">
+  <img src="docs/images/switch-selection-en-light.png?v=0.2.5" width="720" alt="Choose what comes with you.">
 </picture>
 
 <table>
@@ -50,15 +59,15 @@ Using personal and work accounts should not mean signing in over and over or fin
     <td width="33%" valign="top">
       <p><b>Get a heads-up when you run low.</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-en-dark.png?v=0.2.2">
-        <img src="docs/images/switch-reminder-menu-en-light.png?v=0.2.2" alt="Get a heads-up when you run low.">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-en-dark.png?v=0.2.5">
+        <img src="docs/images/switch-reminder-menu-en-light.png?v=0.2.5" alt="Get a heads-up when you run low.">
       </picture>
     </td>
     <td width="67%" valign="top">
       <p><b>Understand your usage.</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-en-dark.png?v=0.2.2">
-        <img src="docs/images/usage-en-light.png?v=0.2.2" alt="Understand your usage.">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-en-dark.png?v=0.2.5">
+        <img src="docs/images/usage-en-light.png?v=0.2.5" alt="Understand your usage.">
       </picture>
     </td>
   </tr>
@@ -94,7 +103,9 @@ Quit Claude Switch before replacing it in Applications. If asked on launch, choo
 
 1. **Sign in to Claude Desktop** as usual, then open Claude Switch and allow Keychain access when asked. The signed-in account is saved automatically.
 2. **Add another account** with **Add account…** in the menu bar. Claude restarts at its sign-in screen; sign in with the other account and it is saved too.
-3. **Switch** from the menu bar or the Accounts window whenever you like.
+3. **Switch** from the menu bar or the Accounts window, choose the Code conversations to bring, then confirm.
+
+Conversation history and saved views come with you. Finish running tasks before switching; continue them in Claude afterward.
 
 You can enable switch recommendations and operation-result notifications during setup or later in **Settings → Notifications**. Every switch still requires confirmation.
 

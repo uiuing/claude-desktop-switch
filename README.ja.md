@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.2" width="112" alt="Claude Switch アイコン">
+<img src="docs/images/icon.png?v=0.2.5" width="112" alt="Claude Switch アイコン">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-ja-dark.jpg?v=0.2.2">
-  <img src="docs/images/hero-ja-light.jpg?v=0.2.2" alt="Claude Switch：アカウントウインドウとメニューバーのパネル">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-ja-dark.jpg?v=0.2.5">
+  <img src="docs/images/hero-ja-light.jpg?v=0.2.5" alt="Claude Switch：アカウントウインドウとメニューバーのパネル">
 </picture>
 
 </div>
@@ -32,7 +32,7 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 - **再ログインせずに切り替え**：いつものアカウントを一度保存すれば、あとはメニューバーから選ぶだけ。
 - **残りの使用量をまとめて確認**：アカウントを切り替えずに、それぞれの余裕を見比べられます。
 - **残りが少なくなったらお知らせ**：余裕のある別のアカウントがあれば、切り替えを検討できるように知らせます。
-- **会話の続きを別のアカウントで**：ローカルの Claude Code の会話とサブタスクを別のアカウントに引き継いだり、切り替え時に引き継ぐ会話を選んだりできます。
+- **作業をまとめて引き継ぐ**：Code の会話、サブタスク、添付ファイルを別のアカウントへ。保存されたパネルやファイル表示も引き継げます。
 - **追加しても、元のログインはそのまま**：新しいアカウントも保存して、必要なときに元のアカウントへ戻れます。
 - **自分の使い方を振り返る**：ローカルの Code の日別使用量、よく使うモデル、活動の傾向を確認できます。
 
@@ -41,8 +41,17 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 **会話の続きを別のアカウントで。**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-ja-dark.png?v=0.2.2">
-  <img src="docs/images/conversations-ja-light.png?v=0.2.2" alt="会話の続きを別のアカウントで。">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-ja-dark.png?v=0.2.5">
+  <img src="docs/images/conversations-ja-light.png?v=0.2.5" alt="会話の続きを別のアカウントで。">
+</picture>
+
+**引き継ぐ会話を、その場で選ぶ。**
+
+切り替えの確認画面で会話を選べます。最近使った会話はあらかじめ選択され、確定した選択は次回にも引き継がれます。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-selection-ja-dark.png?v=0.2.5">
+  <img src="docs/images/switch-selection-ja-light.png?v=0.2.5" width="720" alt="引き継ぐ会話を、その場で選ぶ。">
 </picture>
 
 <table>
@@ -50,15 +59,15 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
     <td width="33%" valign="top">
       <p><b>残りが少なくなったらお知らせ。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-ja-dark.png?v=0.2.2">
-        <img src="docs/images/switch-reminder-menu-ja-light.png?v=0.2.2" alt="残りが少なくなったらお知らせ。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-ja-dark.png?v=0.2.5">
+        <img src="docs/images/switch-reminder-menu-ja-light.png?v=0.2.5" alt="残りが少なくなったらお知らせ。">
       </picture>
     </td>
     <td width="67%" valign="top">
       <p><b>自分の使い方を振り返る。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-ja-dark.png?v=0.2.2">
-        <img src="docs/images/usage-ja-light.png?v=0.2.2" alt="自分の使い方を振り返る。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-ja-dark.png?v=0.2.5">
+        <img src="docs/images/usage-ja-light.png?v=0.2.5" alt="自分の使い方を振り返る。">
       </picture>
     </td>
   </tr>
@@ -94,7 +103,9 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 
 1. いつもどおり **Claude Desktop にサインイン** してから Claude Switch を開き、求められたらキーチェーンへのアクセスを許可します。そのアカウントが自動で保存されます。
 2. メニューバーの **アカウントを追加…** をクリックします。Claude がサインイン画面で再起動するので、別のアカウントでサインインすると、そちらも自動で保存されます。
-3. あとはメニューバーやアカウントウインドウから、いつでも **切り替え** できます。
+3. メニューバーやアカウントウインドウから **切り替え** を選び、引き継ぐ Code の会話を選択して確定します。
+
+会話履歴と保存された表示状態を引き継ぎます。実行中のタスクは切り替え前に終了し、切り替え後に Claude で再開してください。
 
 初回設定または **設定 → 通知** で、切り替えのおすすめと操作結果の通知を有効にできます。切り替えには毎回確認が必要です。
 
