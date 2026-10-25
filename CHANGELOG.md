@@ -21,6 +21,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Code conversation transfers accept Desktop's native MCP catalog arrays, including empty catalogs, and optional null authorization fields. Tool schema definitions remain intact while connection credentials are excluded.
 - Account switches with followed Code conversations no longer fail when Claude's quit cleanup changes only JSON formatting or excluded connection state. Identity, ancestry, workspace and destination changes still stop the operation; transaction failures now log their stage without account data.
 - Quota refresh can use an eligible Code credential when the preferred Desktop credential was already rejected, including after restarting Switch.
 

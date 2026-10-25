@@ -15,7 +15,7 @@ enum SessionTransferRecord {
         var transferred = record
         let excluded = Set(excludedFields.map(normalized))
         for field in record.keys where excluded.contains(normalized(field)) || credentialKeys.contains(normalized(field)) { transferred.removeValue(forKey: field) }
-        if let updates = record["sessionPermissionUpdates"] {
+        if let updates = record["sessionPermissionUpdates"], !(updates is NSNull) {
             guard let values = updates as? [[String: Any]] else { throw authorizationFormat }
             var retained: [[String: Any]] = []
             for value in values {
@@ -30,15 +30,16 @@ enum SessionTransferRecord {
             }
             transferred["sessionPermissionUpdates"] = retained
         }
-        for field in ["remoteMcpServersConfig", "sshConfig"] {
-            if let configuration = record[field] {
-                guard configuration is [String: Any] else { throw authorizationFormat }
-                guard var clean = try withoutCredentials(configuration) as? [String: Any] else { throw authorizationFormat }
-                if field == "sshConfig" {
-                    for key in clean.keys where ["identityfile", "identityagent", "sshauthsock"].contains(normalized(key)) { clean.removeValue(forKey: key) }
-                }
-                transferred[field] = clean
-            }
+        if let configuration = record["remoteMcpServersConfig"], !(configuration is NSNull) {
+            // Desktop persists a server catalog array; retain legacy object-shaped configuration too.
+            guard configuration is [[String: Any]] || configuration is [String: Any] else { throw authorizationFormat }
+            transferred["remoteMcpServersConfig"] = try withoutCredentials(configuration, preservingToolSchemas: true)
+        }
+        if let configuration = record["sshConfig"], !(configuration is NSNull) {
+            guard let fields = configuration as? [String: Any],
+                  var clean = try withoutCredentials(fields) as? [String: Any] else { throw authorizationFormat }
+            for key in clean.keys where ["identityfile", "identityagent", "sshauthsock"].contains(normalized(key)) { clean.removeValue(forKey: key) }
+            transferred["sshConfig"] = clean
         }
         return try JSONSerialization.data(withJSONObject: transferred, options: .sortedKeys)
     }
@@ -61,20 +62,24 @@ enum SessionTransferRecord {
         "refreshtoken", "idtoken", "sessionkey", "apikey", "xapikey", "password", "clientsecret",
         "credentials", "authentication", "auth", "privatekey"
     ]
-    static func withoutCredentials(_ value: Any) throws -> Any {
+    static func withoutCredentials(_ value: Any, preservingToolSchemas: Bool = false) throws -> Any {
         if let fields = value as? [String: Any] {
             return try fields.reduce(into: [String: Any]()) { result, item in
                 let key = normalized(item.key)
                 guard !credentialKey(item.key) else { return }
+                // Schema property names such as "token" describe tool parameters, not credentials.
+                if preservingToolSchemas, ["inputschema", "outputschema"].contains(key) {
+                    result[item.key] = item.value; return
+                }
                 if ["url", "endpoint"].contains(key), let text = item.value as? String,
                    let url = URLComponents(string: text),
                    url.user != nil || url.password != nil || (url.queryItems ?? []).contains(where: { credentialKey($0.name) }) {
                     throw authorizationFormat
                 }
-                result[item.key] = try withoutCredentials(item.value)
+                result[item.key] = try withoutCredentials(item.value, preservingToolSchemas: preservingToolSchemas)
             }
         }
-        if let values = value as? [Any] { return try values.map(withoutCredentials) }
+        if let values = value as? [Any] { return try values.map { try withoutCredentials($0, preservingToolSchemas: preservingToolSchemas) } }
         return value
     }
     private static func credentialKey(_ field: String) -> Bool {

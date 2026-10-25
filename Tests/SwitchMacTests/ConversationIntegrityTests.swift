@@ -39,6 +39,8 @@ final class ConversationIntegrityTests: XCTestCase {
             var record: [String: Any] = ["sessionId": sid, "cliSessionId": cli, "cwd": cwd.path,
                 "title": "Fixture \(index)", "lastActivityAt": 1000, "isArchived": index == 3,
                 "futureMetadata": ["opaque": ["array": [1, 2, 3], "text": "Complete original content"]],
+                "remoteMcpServersConfig": index == 0 ? [["uuid": "fixture-server", "name": "Fixture", "tools": []]] : [],
+                "sshConfig": NSNull(),
                 "sessionPermissionUpdates": [["type": "addDirectories", "directories": [extra.path], "destination": "session"]]]
             if index > 0 { record["spawnedFrom"] = ["sessionId": id(index == 2 ? 11 : 10), "sideSession": true, "taskId": "fixture-task-\(index)"] }
             let relative = sourcePrefix + "/" + sid + ".json"

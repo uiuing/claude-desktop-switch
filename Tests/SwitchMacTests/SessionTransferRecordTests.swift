@@ -9,6 +9,43 @@ final class SessionTransferRecordTests: XCTestCase {
         return try XCTUnwrap(value as? NSDictionary)
     }
 
+    func testNativeMcpCatalogArraysAndEmptyCatalogsArePreserved() throws {
+        for json in [#"{"remoteMcpServersConfig":[]}"#,
+                     #"{"remoteMcpServersConfig":[{"uuid":"fixture-server","name":"Fixture","url":"https://fixture.invalid/mcp","tools":[],"futureMetadata":{"enabled":true}}]}"#] {
+            let source = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+            XCTAssertEqual(try transfer(source), source as NSDictionary)
+        }
+    }
+
+    func testNativeOptionalNullsAndAbsentFieldsDoNotBlockTransfer() throws {
+        let source: [String: Any] = ["sessionPermissionUpdates": NSNull(), "remoteMcpServersConfig": NSNull(),
+                                    "sshConfig": NSNull(), "futureSetting": true]
+        XCTAssertEqual(try transfer(source), source as NSDictionary)
+        XCTAssertEqual(try transfer([:]), NSDictionary())
+    }
+
+    func testCatalogCredentialsAreRemovedWithoutChangingToolSchemaDefinitions() throws {
+        let schema: [String: Any] = ["type": "object", "properties": [
+            "token": ["type": "string", "description": "A term in the task being analyzed"],
+            "password": ["type": "string"], "Authorization": ["type": "boolean"]],
+            "required": ["token"], "futureSchemaMetadata": ["opaque": true]]
+        let tool: [String: Any] = ["name": "analyze_terms", "inputSchema": schema, "outputSchema": schema]
+        let metadata: [String: Any] = ["uuid": "fixture-server", "name": "Fixture", "tools": [tool],
+                                       "futureSetting": ["enabled": true]]
+        var server = metadata
+        server["headers"] = ["Authorization": "synthetic-credential", "Accept": "application/json"]
+        let transferred = try transfer(["remoteMcpServersConfig": [server]])
+        var expected = metadata; expected["headers"] = ["Accept": "application/json"]
+        XCTAssertEqual(transferred, ["remoteMcpServersConfig": [expected]] as NSDictionary)
+    }
+
+    func testMalformedContainersRemainBlocked() {
+        for value: Any in [1, "unsupported", [1], ["unsupported"], [NSNull()]] {
+            XCTAssertThrowsError(try transfer(["remoteMcpServersConfig": value]))
+        }
+        XCTAssertThrowsError(try transfer(["sshConfig": []]))
+    }
+
     func testFutureMetadataAndAllNonCredentialContainersStayIntact() throws {
         var source: [String: Any] = [
             "permissionMode": "future-mode", "autoChosenInApp": true, "bypassChosenInApp": false,
@@ -63,6 +100,7 @@ final class SessionTransferRecordTests: XCTestCase {
         }
         for url in ["https://fixture-user:fixture-password@fixture.invalid/mcp", "https://fixture.invalid/mcp?access_token=synthetic"] {
             XCTAssertThrowsError(try transfer(["remoteMcpServersConfig": ["fixture": ["url": url]]]))
+            XCTAssertThrowsError(try transfer(["remoteMcpServersConfig": [["uuid": "fixture-server", "name": "Fixture", "url": url, "tools": []]]]))
         }
     }
 
