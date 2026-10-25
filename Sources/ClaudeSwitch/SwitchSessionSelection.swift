@@ -5,10 +5,13 @@ extension AppState {
     func makeSwitchOperation(target: Account, followed: [Conversation]) async throws -> PendingOperation {
         // An invalid followed record must remain deselectable in the confirmation.
         var operation = try await makeOperation(.switchAccount, target: target, sessions: [])
+        let now = Date(), followedIDs = Set(followed.map(\.id))
         operation.followCandidates = SessionLibrary.switchCandidates(inventory?.conversations ?? [], followed: followed,
-                                                                     activeAccountID: operation.plan.sourceAccountID)
-        operation.sessions = followed
-        operation.initialFollowIDs = Set(followed.map(\.id))
+                                                                     activeAccountID: operation.plan.sourceAccountID, now: now)
+        operation.sessions = (operation.followCandidates ?? []).filter {
+            followedIDs.contains($0.id) || SessionLibrary.recentlyActiveForSwitch($0, activeAccountID: operation.plan.sourceAccountID, now: now)
+        }
+        operation.initialFollowIDs = followedIDs
         operation.plan.transferModes = Dictionary(uniqueKeysWithValues: (operation.followCandidates ?? []).map { ($0.id, transferMode($0)) })
         return await prepareSwitchSelection(operation)
     }

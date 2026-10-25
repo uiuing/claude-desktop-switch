@@ -482,5 +482,5 @@
   "Waiting for your reply": "等待你回覆",
   "{0} running · {1} waiting": "{0} 執行 · {1} 等待",
   "Follow with this switch ({0})": "本次跟隨（{0}）",
-  "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching.": "已跟隨的對話和最近活躍的 3 個 Code 對話。切換成功後儲存選擇。"
+  "Code conversations active in the last 5 minutes are preselected. Choices are saved after switching.": "最近 5 分鐘活躍的 Code 對話會自動勾選。切換成功後儲存選擇。"
 }

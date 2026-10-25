@@ -482,5 +482,5 @@
   "Waiting for your reply": "返信待ち",
   "{0} running · {1} waiting": "実行 {0} · 対応待ち {1}",
   "Follow with this switch ({0})": "今回の切り替えに同行（{0}）",
-  "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching.": "同行設定済みの会話と最近アクティブな Code 会話 3 件です。選択は切り替え成功後に保存されます。"
+  "Code conversations active in the last 5 minutes are preselected. Choices are saved after switching.": "過去 5 分間にアクティブだった Code 会話は選択済みになります。選択は切り替え成功後に保存されます。"
 }

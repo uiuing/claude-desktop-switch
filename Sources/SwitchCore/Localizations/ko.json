@@ -482,5 +482,5 @@
   "Waiting for your reply": "답변 대기",
   "{0} running · {1} waiting": "실행 {0} · 대기 {1}",
   "Follow with this switch ({0})": "이번 전환에 함께 이동 ({0})",
-  "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching.": "따라가는 대화와 최근 활성 Code 대화 3개입니다. 전환에 성공하면 선택이 저장됩니다."
+  "Code conversations active in the last 5 minutes are preselected. Choices are saved after switching.": "최근 5분 동안 활성 상태였던 Code 대화가 미리 선택됩니다. 전환에 성공하면 선택이 저장됩니다."
 }

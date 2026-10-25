@@ -11,7 +11,7 @@ final class SwitchSessionSelectionTests: XCTestCase {
         await state.prepare(.switchAccount, target: state.library.accounts[1])
         let operation = try XCTUnwrap(state.pending)
         XCTAssertEqual(operation.followCandidates?.map(\.id), ["demo-1", "demo-2", "demo-0"])
-        XCTAssertEqual(Set(operation.sessions.map(\.id)), ["demo-1", "demo-2"])
+        XCTAssertEqual(Set(operation.sessions.map(\.id)), ["demo-0", "demo-1", "demo-2"])
         XCTAssertTrue(operation.selectionReady)
 
         await state.setPendingFollow(false, sessionID: "demo-1")
@@ -23,7 +23,7 @@ final class SwitchSessionSelectionTests: XCTestCase {
         XCTAssertEqual(try JSONEncoder().encode(state.library.follows), before)
         XCTAssertEqual(state.inventory?.conversations, inventory)
         await state.prepare(.switchAccount, target: state.library.accounts[1])
-        XCTAssertEqual(Set(try XCTUnwrap(state.pending).sessions.map(\.id)), ["demo-1", "demo-2"])
+        XCTAssertEqual(Set(try XCTUnwrap(state.pending).sessions.map(\.id)), ["demo-0", "demo-1", "demo-2"])
     }
 
     func testSelectionPreservesModesAndCanSwitchWithNoTransfers() async throws {
@@ -57,7 +57,7 @@ final class SwitchSessionSelectionTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(state.pending?.followCandidates).contains { $0.id == "demo-1" })
         await state.setPendingFollow(false, sessionID: "demo-1")
         XCTAssertEqual(state.pending?.selectionReady, true)
-        XCTAssertEqual(state.pending?.plan.conversationIDs, ["demo-2"])
+        XCTAssertEqual(state.pending?.plan.conversationIDs, ["demo-0", "demo-2"])
         await state.setPendingFollow(true, sessionID: "demo-1")
         XCTAssertEqual(state.pending?.selectionReady, false)
         XCTAssertEqual(try JSONEncoder().encode(state.library.follows), before)
@@ -74,8 +74,9 @@ final class SwitchSessionSelectionTests: XCTestCase {
                                                 mode: .selectedAccounts, targetAccountIDs: [otherTarget]))
         let target = state.library.accounts[1]
         await state.prepare(.switchAccount, target: target)
-        state.applySwitchFollowSelection(try XCTUnwrap(state.pending))
         XCTAssertEqual(state.library.follows.first { $0.matches(recent) }?.targetAccountIDs, [otherTarget])
+        state.applySwitchFollowSelection(try XCTUnwrap(state.pending))
+        XCTAssertEqual(state.library.follows.first { $0.matches(recent) }?.targetAccountIDs, [otherTarget, target.id])
         await state.setPendingFollow(false, sessionID: "demo-1")
         await state.setPendingFollow(true, sessionID: "demo-0")
         state.applySwitchFollowSelection(try XCTUnwrap(state.pending))
@@ -86,13 +87,13 @@ final class SwitchSessionSelectionTests: XCTestCase {
         XCTAssertEqual(state.library.follows.first { $0.matches(unrelated) }?.targetAccountIDs, [otherTarget])
     }
 
-    func testNewSelectionBecomesFollowAndUnknownRowsCannotEnterPlan() async throws {
+    func testAutomaticSelectionBecomesFollowAndUnknownRowsCannotEnterPlan() async throws {
         let state = AppState(demo: true)
         state.library.follows = []
         await state.prepare(.switchAccount, target: state.library.accounts[1])
-        XCTAssertTrue(try XCTUnwrap(state.pending).sessions.isEmpty)
+        XCTAssertEqual(try XCTUnwrap(state.pending).sessions.map(\.id), ["demo-0"])
         await state.setPendingFollow(true, sessionID: "demo-3")
-        XCTAssertTrue(try XCTUnwrap(state.pending).sessions.isEmpty)
+        XCTAssertEqual(try XCTUnwrap(state.pending).sessions.map(\.id), ["demo-0"])
         await state.setPendingFollow(true, sessionID: "demo-0")
         state.setPendingTransferMode(.copy, sessionID: "demo-0")
         state.applySwitchFollowSelection(try XCTUnwrap(state.pending))
@@ -100,5 +101,41 @@ final class SwitchSessionSelectionTests: XCTestCase {
         XCTAssertEqual(state.library.follows.first?.conversationID, "demo-0")
         XCTAssertEqual(state.library.follows.first?.transferMode, .copy)
         XCTAssertEqual(state.library.follows.first?.mode, .allSavedAccounts)
+    }
+
+    func testAllRecentlyActiveCurrentSessionsArePreselectedAndCanBeDeselected() async throws {
+        let state = AppState(demo: true), now = Date()
+        let base = try XCTUnwrap(state.inventory?.conversations.first { $0.id == "demo-0" })
+        let recent = (0..<5).map { index -> Conversation in
+            var item = base
+            item.id = "recent-\(index)"
+            item.sessionID = "0a1b2c3d-1111-4aaa-8bbb-00000000010\(index)"
+            item.modifiedAt = now.addingTimeInterval(-Double(index * 30 + 1))
+            return item
+        }
+        state.inventory?.conversations = recent
+        state.library.follows = []
+        await state.prepare(.switchAccount, target: state.library.accounts[1])
+        let operation = try XCTUnwrap(state.pending)
+        XCTAssertEqual(operation.followCandidates?.map(\.id), recent.map(\.id))
+        XCTAssertEqual(operation.sessions.map(\.id), recent.map(\.id))
+        XCTAssertTrue(operation.initialFollowIDs.isEmpty)
+        XCTAssertTrue(state.library.follows.isEmpty)
+        await state.setPendingFollow(false, sessionID: recent[3].id)
+        XCTAssertFalse(try XCTUnwrap(state.pending).sessions.contains { $0.id == recent[3].id })
+        XCTAssertTrue(state.pending?.selectionReady == true)
+        XCTAssertTrue(state.library.follows.isEmpty)
+        state.applySwitchFollowSelection(try XCTUnwrap(state.pending))
+        XCTAssertEqual(Set(state.library.follows.map(\.sessionID)), Set(recent.filter { $0.id != recent[3].id }.map { Optional($0.sessionID) }))
+    }
+
+    func testOlderRecentCandidateStaysUncheckedWithoutAFollow() async throws {
+        let state = AppState(demo: true)
+        let index = try XCTUnwrap(state.inventory?.conversations.firstIndex { $0.id == "demo-0" })
+        state.inventory?.conversations[index].modifiedAt = Date().addingTimeInterval(-301)
+        state.library.follows = []
+        await state.prepare(.switchAccount, target: state.library.accounts[1])
+        XCTAssertTrue(try XCTUnwrap(state.pending?.followCandidates).contains { $0.id == "demo-0" })
+        XCTAssertTrue(try XCTUnwrap(state.pending).sessions.isEmpty)
     }
 }

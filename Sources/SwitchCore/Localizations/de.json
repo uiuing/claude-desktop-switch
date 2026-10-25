@@ -482,5 +482,5 @@
   "Waiting for your reply": "Wartet auf Antwort",
   "{0} running · {1} waiting": "{0} aktiv · {1} warten",
   "Follow with this switch ({0})": "Beim Wechsel mitnehmen ({0})",
-  "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching.": "Gefolgte Gespräche und die 3 zuletzt aktiven Code-Gespräche. Die Auswahl wird nach erfolgreichem Wechsel gespeichert."
+  "Code conversations active in the last 5 minutes are preselected. Choices are saved after switching.": "Code-Gespräche mit Aktivität in den letzten 5 Minuten sind vorausgewählt. Die Auswahl wird nach dem Wechsel gespeichert."
 }

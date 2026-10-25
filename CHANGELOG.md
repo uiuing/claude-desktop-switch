@@ -9,6 +9,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - Choose which Code conversations follow an account switch directly in its confirmation: saved follows and the current account's three most recently active conversations appear together, with move/copy choices. Successful switches remember the selection.
+- Automatically select all eligible Code conversations active in the last five minutes when reviewing an account switch, including those beyond the three most recent suggestions. Each can still be deselected.
 
 ### Fixed
 

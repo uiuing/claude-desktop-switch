@@ -119,7 +119,7 @@ struct OperationSheet: View {
             }.card(radius: 10)
             VStack(alignment: .leading, spacing: 3) {
                 if current.followCandidates != nil {
-                    Text(L10n.tr("Followed conversations and the 3 most recent Code conversations. Changes are saved after switching."))
+                    Text(L10n.tr("Code conversations active in the last 5 minutes are preselected. Choices are saved after switching."))
                 }
                 if !current.sessions.isEmpty {
                     Text(uniformMode?.explanation ?? L10n.tr("Move: the original account no longer keeps it. Copy: both accounts keep it."))

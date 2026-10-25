@@ -86,11 +86,20 @@ public enum SessionLibrary {
         }
     }
 
-    public static func switchCandidates(_ sessions: [Conversation], followed: [Conversation], activeAccountID: String?) -> [Conversation] {
+    public static func recentlyActiveForSwitch(_ session: Conversation, activeAccountID: String?, now: Date) -> Bool {
+        let age = now.timeIntervalSince(session.modifiedAt)
+        return session.accountID == activeAccountID && !session.archived && session.kind == .code && session.cliSessionID != nil
+            && age >= 0 && age <= 5 * 60
+    }
+
+    public static func switchCandidates(_ sessions: [Conversation], followed: [Conversation], activeAccountID: String?,
+                                        now: Date = Date()) -> [Conversation] {
         var recentIDs = Set<String>()
         let recent = sorted(sessions.filter {
             $0.accountID == activeAccountID && !$0.archived && $0.kind == .code && $0.cliSessionID != nil
-        }, order: .time, accounts: []).filter { recentIDs.insert($0.sessionID).inserted }.prefix(3)
+        }, order: .time, accounts: []).filter { recentIDs.insert($0.sessionID).inserted }.enumerated().filter {
+            $0.offset < 3 || recentlyActiveForSwitch($0.element, activeAccountID: activeAccountID, now: now)
+        }.map(\.element)
         var seen = Set<String>()
         return (followed + recent).filter { seen.insert($0.sessionID).inserted }
     }

@@ -482,5 +482,5 @@
   "Waiting for your reply": "Waiting for your reply",
   "{0} running · {1} waiting": "{0} running · {1} waiting",
   "Follow with this switch ({0})": "Follow with this switch ({0})",
-  "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching.": "Followed conversations and the 3 most recent Code conversations. Changes are saved after switching."
+  "Code conversations active in the last 5 minutes are preselected. Choices are saved after switching.": "Code conversations active in the last 5 minutes are preselected. Choices are saved after switching."
 }

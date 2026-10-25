@@ -97,4 +97,35 @@ final class FollowRuleTests: XCTestCase {
         let selected = SessionLibrary.followedSessions(sessions, rules: [rule], activeAccountID: "a", targetAccountID: "b")
         XCTAssertEqual(SessionLibrary.switchCandidates(sessions, followed: selected, activeAccountID: "a"), [current])
     }
+
+    func testSwitchCandidatesIncludeAllActivityWithinFiveMinutesBeyondTheTopThree() {
+        let now = Date(timeIntervalSince1970: 1000)
+        let sessions = [999.0, 998, 997, 996, 700, 699].enumerated().map { index, date -> Conversation in
+            var item = session("a", date: date)
+            item.sessionID = "recent-\(index)"; item.id = "a/org/code/" + item.sessionID
+            return item
+        }
+        var duplicate = sessions[0]; duplicate.id = "a/other-org/code/" + duplicate.sessionID
+        let candidates = SessionLibrary.switchCandidates(sessions + [duplicate], followed: [sessions[0]], activeAccountID: "a", now: now)
+        XCTAssertEqual(candidates.map(\.sessionID), Array(sessions.prefix(5)).map(\.sessionID))
+    }
+
+    func testRecentSwitchActivityRejectsOldFutureArchivedForeignAndUntransferableSessions() {
+        let now = Date(timeIntervalSince1970: 1000)
+        for age in [0.0, 299, 300] {
+            XCTAssertTrue(SessionLibrary.recentlyActiveForSwitch(session("a", date: 1000 - age), activeAccountID: "a", now: now))
+        }
+        for age in [-1.0, 300.001] {
+            XCTAssertFalse(SessionLibrary.recentlyActiveForSwitch(session("a", date: 1000 - age), activeAccountID: "a", now: now))
+        }
+        let current = session("a", date: 999)
+        var archived = current; archived.archived = true
+        var cowork = current; cowork.kind = .cowork
+        var chat = current; chat.kind = .chat
+        var missing = current; missing.cliSessionID = nil
+        for item in [archived, cowork, chat, missing, session("b", date: 999)] {
+            XCTAssertFalse(SessionLibrary.recentlyActiveForSwitch(item, activeAccountID: "a", now: now))
+        }
+        XCTAssertFalse(SessionLibrary.recentlyActiveForSwitch(current, activeAccountID: nil, now: now))
+    }
 }
