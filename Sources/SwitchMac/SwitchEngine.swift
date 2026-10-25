@@ -1,8 +1,10 @@
 import Foundation
+import OSLog
 import SwitchCore
 import SwitchStorage
 
 public actor SwitchEngine: SwitchService {
+    private static let logger = Logger(subsystem: "dev.claudeswitch.desktop", category: "operations")
     private let environment: MacEnvironment
     private let vault: CredentialVault
     private var busy = false
@@ -284,6 +286,7 @@ public actor SwitchEngine: SwitchService {
             catch { if wasRunning { try? await desktop.launch(application) }; throw error }
         }
         let transaction = try FileTransaction(parent: transactions, live: environment.desktop, plan: plan, claudeVersion: version)
+        var stage = "staging-login"
         do {
             if swapsLogin {
                 // Signing out installs an empty identity: Claude's login moves into the vault, nothing else is touched.
@@ -305,21 +308,33 @@ public actor SwitchEngine: SwitchService {
                     try transaction.stage(relative: "config.json.journal", data: nil)
                 }
             }
-            // Re-read after shutdown: a session still changing during the preview must be re-reviewed.
+            stage = "revalidating-conversations"
+            let preparedTransfers = Dictionary(uniqueKeysWithValues: changes.compactMap { change in
+                change.data.map { (change.relative, $0) }
+            })
             let finalChanges = try MigrationBuilder.changes(sessions: sessions, target: target, environment: environment,
-                expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations, modes: plan.transferModes)
+                expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations, modes: plan.transferModes,
+                preparedTransfers: preparedTransfers)
             guard changes.map(\.relative) == finalChanges.map(\.relative) else { throw SwitchError.changed }
+            stage = "staging-conversations"
             for change in finalChanges {
                 try transaction.stage(relative: change.relative, data: change.data, expectation: change.expectation)
             }
+            stage = "applying"
             try await transaction.apply { try await desktop.waitUntilStopped() }
             if plan.kind == .switchAccount, try environment.currentAccount() != target.id { throw SwitchError.changed }
             if plan.kind == .signOut, try environment.lastKnownAccount() != nil { throw SwitchError.changed }
+            stage = "committing"
             try transaction.commit()
         } catch {
+            Self.logger.error("Operation failed during \(stage, privacy: .public); rolling back.")
             let reason = (error as? SwitchError)?.localizedDescription ?? error.localizedDescription
             do { try await transaction.rollback { try await desktop.waitUntilStopped() } }
-            catch { throw SwitchError.blocked(L10n.tr("The operation did not finish. Use Recover in Settings before trying again.")) }
+            catch {
+                Self.logger.error("Rollback did not finish; manual recovery required.")
+                throw SwitchError.blocked(L10n.tr("The operation did not finish. Use Recover in Settings before trying again."))
+            }
+            Self.logger.notice("Rollback completed.")
             try? await transaction.archive(vault: vault)
             // Every original is back in place, so the previous login is safe to reopen.
             if wasRunning, (try? await desktop.launch(application)) != nil {

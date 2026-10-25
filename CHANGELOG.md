@@ -12,6 +12,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Account switches with followed Code conversations no longer fail when Claude's quit cleanup changes only JSON formatting or excluded connection state. Preserved metadata and destination changes still stop the operation; transaction failures now log their stage without account data.
 - Quota refresh can use an eligible Code credential when the preferred Desktop credential was already rejected, including after restarting Switch.
 
 ## [0.2.2] - 2026-10-16

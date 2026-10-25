@@ -15,10 +15,13 @@ final class SessionTransferTests: XCTestCase {
         let sourceData: Data
         let destinationData: Data
         var destinationRelative: String { "claude-code-sessions/\(target.id)/\(target.organizationID!)/\(session.sessionID).json" }
-        func changes(_ mode: SessionTransferMode = .move) throws -> [MigrationChange] {
+        func changes(_ mode: SessionTransferMode = .move, prepared: [MigrationChange] = []) throws -> [MigrationChange] {
             try MigrationBuilder.changes(sessions: [session], target: target, environment: env,
                 expectedDigests: [session.id: digest(sourceData)],
-                destinations: [destinationRelative: .sha256(digest(destinationData))], modes: [session.id: mode])
+                destinations: [destinationRelative: .sha256(digest(destinationData))], modes: [session.id: mode],
+                preparedTransfers: Dictionary(uniqueKeysWithValues: prepared.compactMap { change in
+                    change.data.map { (change.relative, $0) }
+                }))
         }
         func transaction(_ changes: [MigrationChange]) throws -> FileTransaction {
             let plan = OperationPlan(kind: .migrate, sourceAccountID: session.accountID, targetAccountID: target.id,
@@ -284,6 +287,80 @@ final class SessionTransferTests: XCTestCase {
         try SafeFiles.atomicWrite(Data("changed target".utf8), to: f.destination)
         XCTAssertThrowsError(try f.changes())
         XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
+    }
+
+    func testQuitOnlyConnectionChangesKeepThePreparedTransfer() throws {
+        let f = try fixture(), prepared = try f.changes()
+        var record = try XCTUnwrap(JSONSerialization.jsonObject(with: f.sourceData) as? [String: Any])
+        record["remoteControlLiveAtUpdateQuit"] = true
+        record["armedWorkAtQuit"] = ["fixture": true]
+        let stopped = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys, .prettyPrinted])
+        try SafeFiles.atomicWrite(stopped, to: f.source)
+        XCTAssertThrowsError(try f.changes())
+        let final = try f.changes(prepared: prepared)
+        XCTAssertEqual(final.first?.data, prepared.first?.data)
+        XCTAssertEqual(final.last?.expectation, .sha256(digest(stopped)))
+    }
+
+    func testQuitRevalidationRejectsChangesToPreservedMetadataAndIdentity() throws {
+        for fields: [String: Any] in [
+            ["permissionMode": "plan"], ["cwd": "/fixture/other"], ["title": "Changed"], ["lastActivityAt": 300],
+            ["sessionId": UUID().uuidString], ["cliSessionId": UUID().uuidString], ["futureSetting": true],
+            ["sessionSettings": ["outputStyle": "verbose"]]
+        ] {
+            let f = try fixture(), prepared = try f.changes()
+            var record = try XCTUnwrap(JSONSerialization.jsonObject(with: f.sourceData) as? [String: Any])
+            record.merge(fields) { _, new in new }
+            let changed = try JSONSerialization.data(withJSONObject: record, options: .sortedKeys)
+            try SafeFiles.atomicWrite(changed, to: f.source)
+            XCTAssertThrowsError(try f.changes(prepared: prepared))
+            XCTAssertEqual(try Data(contentsOf: f.source), changed)
+            XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
+        }
+    }
+
+    func testQuitRevalidationStillRejectsTargetChanges() throws {
+        let f = try fixture(), prepared = try f.changes()
+        var record = try XCTUnwrap(JSONSerialization.jsonObject(with: f.destinationData) as? [String: Any])
+        record["remoteControlLiveAtUpdateQuit"] = true
+        let changed = try JSONSerialization.data(withJSONObject: record, options: .sortedKeys)
+        try SafeFiles.atomicWrite(changed, to: f.destination)
+        XCTAssertThrowsError(try f.changes(prepared: prepared))
+        XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
+        XCTAssertEqual(try Data(contentsOf: f.destination), changed)
+    }
+
+    func testQuitRevalidatedMoveAndCopyRollBackToTheStoppedSource() async throws {
+        try XCTSkipUnless(BuildAccess.allowsClaudeWrites, "Run isolated fixture tests with CLAUDE_WRITE_ENABLED")
+        for mode in SessionTransferMode.allCases {
+            let f = try fixture(), prepared = try f.changes(mode)
+            var record = try XCTUnwrap(JSONSerialization.jsonObject(with: f.sourceData) as? [String: Any])
+            record["armedWorkAtQuit"] = ["fixture": true]
+            let stopped = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys, .prettyPrinted])
+            try SafeFiles.atomicWrite(stopped, to: f.source)
+            let transaction = try f.transaction(f.changes(mode, prepared: prepared))
+            try await transaction.apply { }
+            XCTAssertEqual(try Data(contentsOf: f.destination), prepared.first?.data)
+            XCTAssertEqual(FileManager.default.fileExists(atPath: f.source.path), mode == .copy)
+            XCTAssertEqual(try Data(contentsOf: f.transcript), Data("shared transcript\n".utf8))
+            try await transaction.rollback { }
+            XCTAssertEqual(try Data(contentsOf: f.source), stopped)
+            XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
+        }
+    }
+
+    func testSourceChangesAfterQuitRevalidationStillBlockRemoval() async throws {
+        try XCTSkipUnless(BuildAccess.allowsClaudeWrites, "Run isolated fixture tests with CLAUDE_WRITE_ENABLED")
+        let f = try fixture(), prepared = try f.changes()
+        let transaction = try f.transaction(f.changes(prepared: prepared))
+        var record = try XCTUnwrap(JSONSerialization.jsonObject(with: f.sourceData) as? [String: Any])
+        record["armedWorkAtQuit"] = ["fixture": true]
+        let newer = try JSONSerialization.data(withJSONObject: record, options: .sortedKeys)
+        try SafeFiles.atomicWrite(newer, to: f.source)
+        do { try await transaction.apply { }; XCTFail("The revalidated source digest must prevent removal") }
+        catch { try await transaction.rollback { } }
+        XCTAssertEqual(try Data(contentsOf: f.source), newer)
+        XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
     }
 
     func testSourceChangesBeforeRemovalRollBackDestinationAndPreserveNewSource() async throws {

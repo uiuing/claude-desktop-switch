@@ -20,7 +20,7 @@ enum MigrationBuilder {
     }
     static func changes(sessions: [Conversation], target: Account, environment: MacEnvironment,
                         expectedDigests: [String: String], destinations: [String: FileExpectation],
-                        modes: [String: SessionTransferMode]) throws -> [MigrationChange] {
+                        modes: [String: SessionTransferMode], preparedTransfers: [String: Data] = [:]) throws -> [MigrationChange] {
         var updates: [MigrationChange] = [], removals: [MigrationChange] = []
         var seen = Set<String>()
         let accountRoot = environment.desktop.appendingPathComponent("claude-code-sessions").appendingPathComponent(target.id)
@@ -47,7 +47,6 @@ enum MigrationBuilder {
             guard session.recordRelativePath.lowercased() == expectedSource.lowercased() else { throw SwitchError.unsafePath }
             let source = try SafeFiles.child(session.recordRelativePath, of: environment.desktop)
             let data = try SafeFiles.read(source, limit: 2 * 1024 * 1024)
-            guard expectedDigests[session.id] == digest(data) else { throw SwitchError.changed }
             guard let record = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   record["sessionId"] as? String == session.sessionID, record["cliSessionId"] as? String == cli,
                   let cwd = record["cwd"] as? String, cwd.hasPrefix("/") else {
@@ -63,6 +62,12 @@ enum MigrationBuilder {
             }
             guard transcriptFound else { throw SwitchError.missing(L10n.tr("This conversation's local history is missing, so it cannot be transferred.")) }
             let relative = try destinationRelative(session: session, target: target)
+            let transferred = try SessionTransferRecord.data(from: record)
+            // Quit may rewrite excluded connection state or JSON formatting. The bytes actually
+            // transferred must still match the source validated before quitting Claude.
+            guard expectedDigests[session.id] == digest(data) || preparedTransfers[relative] == transferred else {
+                throw SwitchError.changed
+            }
             guard seen.insert(relative).inserted else { throw SwitchError.malformed(L10n.tr("Duplicate transaction target.")) }
             let destination = try SafeFiles.child(relative, of: environment.desktop)
             guard let expected = destinations[relative], try expectation(at: destination) == expected else { throw SwitchError.changed }
@@ -74,7 +79,7 @@ enum MigrationBuilder {
                     throw SwitchError.blocked(L10n.tr("The target record points to a different conversation and cannot be replaced."))
                 }
             }
-            updates.append(MigrationChange(relative: relative, data: try SessionTransferRecord.data(from: record), expectation: expected))
+            updates.append(MigrationChange(relative: relative, data: transferred, expectation: expected))
             if (modes[session.id] ?? .move) == .move {
                 removals.append(MigrationChange(relative: session.recordRelativePath, data: nil, expectation: .sha256(digest(data))))
             }
