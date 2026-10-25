@@ -47,10 +47,35 @@ final class ScreenshotTests: XCTestCase {
                 + Array(scrollOperation.plan.steps.dropFirst())
             scrollOperation.plan.warnings = [L10n.tr("Ongoing work will be interrupted. Finish your work first."),
                                             L10n.tr("Switching the Desktop login does not change the separate Claude Code CLI login."),
-                                            L10n.tr("This transfers local Code conversations; cloud state, organization permissions and attachments are not transferred.")]
+                                            L10n.tr("Account-bound services may require authorization again.")]
             state.pending = scrollOperation
             try save(captureSheet(OperationSheet(operation: try XCTUnwrap(state.pending)).environment(state)),
                      "switch-selection-scroll-\(language)", maxWidth: 1100)
+        }
+    }
+
+    func testRenderConversationTree() async throws {
+        guard let path = ProcessInfo.processInfo.environment["CLAUDE_SWITCH_SCREENSHOTS"] else {
+            throw XCTSkip("Set CLAUDE_SWITCH_SCREENSHOTS to render conversation trees.")
+        }
+        output = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        NSApplication.shared.setActivationPolicy(.accessory)
+        NSApplication.pretendActive
+        let previous = UserDefaults.standard.volatileDomain(forName: UserDefaults.registrationDomain)
+        defer { UserDefaults.standard.setVolatileDomain(previous, forName: UserDefaults.registrationDomain) }
+        for language in ["en", "de", "zh-Hans"] {
+            UserDefaults.standard.register(defaults: [L10n.preferenceKey: language])
+            let state = AppState(demo: true)
+            state.page = .conversations; state.selectedSessionIDs = ["demo-3"]; state.inventory?.warnings = []
+            for dark in [false, true] {
+                try save(captureWorkbench(state, dark: dark), "conversation-tree-\(language)-\(dark ? "dark" : "light")", maxWidth: 1600)
+            }
+            let root = try XCTUnwrap(state.inventory?.conversations.first { $0.id == "demo-3" })
+            await state.prepare(.migrate, target: state.library.accounts[0], sessions: [root])
+            let operation = try XCTUnwrap(state.pending)
+            XCTAssertTrue(operation.selectionReady)
+            try save(captureSheet(OperationSheet(operation: operation).environment(state)), "conversation-tree-confirm-\(language)", maxWidth: 1100)
         }
     }
 
@@ -171,7 +196,6 @@ final class ScreenshotTests: XCTestCase {
             state.operationFeedback = success; state.message = success.text
             try save(captureWorkbench(state, dark: false), "operation-switch-\(language)", maxWidth: 1600)
             plan.kind = .migrate; plan.conversationIDs = ["fixture-a", "fixture-b"]
-            plan.transferModes = ["fixture-b": .copy]
             let transferred = OperationFeedback.completed(plan: plan, target: state.identity(target), quota: [], result: .init())
             state.operationFeedback = transferred; state.message = transferred.text
             try save(captureWorkbench(state, dark: false), "operation-transfer-\(language)", maxWidth: 1600)

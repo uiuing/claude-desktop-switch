@@ -5,14 +5,13 @@ extension AppState {
     func makeSwitchOperation(target: Account, followed: [Conversation]) async throws -> PendingOperation {
         // An invalid followed record must remain deselectable in the confirmation.
         var operation = try await makeOperation(.switchAccount, target: target, sessions: [])
-        let now = Date(), followedIDs = Set(followed.map(\.id))
+        let now = Date(), followedIDs = Set(followed.map { conversationTree.root(of: $0).id })
         operation.followCandidates = SessionLibrary.switchCandidates(inventory?.conversations ?? [], followed: followed,
                                                                      activeAccountID: operation.plan.sourceAccountID, now: now)
         operation.sessions = (operation.followCandidates ?? []).filter {
-            followedIDs.contains($0.id) || SessionLibrary.recentlyActiveForSwitch($0, activeAccountID: operation.plan.sourceAccountID, now: now)
+            followedIDs.contains($0.id) || conversationTree.recentlyActive($0, accountID: operation.plan.sourceAccountID, now: now)
         }
         operation.initialFollowIDs = followedIDs
-        operation.plan.transferModes = Dictionary(uniqueKeysWithValues: (operation.followCandidates ?? []).map { ($0.id, transferMode($0)) })
         return await prepareSwitchSelection(operation)
     }
 
@@ -33,11 +32,9 @@ extension AppState {
     private func prepareSwitchSelection(_ draft: PendingOperation) async -> PendingOperation {
         var operation = draft
         do {
-            var prepared = try await makeOperation(.switchAccount, target: operation.target, sessions: operation.sessions,
-                                                   transferModes: operation.plan.transferModes)
+            var prepared = try await makeOperation(.switchAccount, target: operation.target, sessions: operation.sessions)
             guard prepared.plan.sourceAccountID == operation.plan.sourceAccountID else { throw SwitchError.changed }
             prepared.plan.id = operation.id
-            prepared.plan.transferModes.merge(operation.plan.transferModes) { _, choice in choice }
             operation.plan = prepared.plan
             operation.sessions = prepared.sessions
             operation.selectionError = nil
@@ -50,18 +47,15 @@ extension AppState {
     func applySwitchFollowSelection(_ operation: PendingOperation) {
         guard operation.plan.kind == .switchAccount, let candidates = operation.followCandidates else { return }
         let selected = Set(operation.sessions.map(\.id))
-        for session in candidates where selected.contains(session.id) != operation.initialFollowIDs.contains(session.id) {
-            if !selected.contains(session.id) {
-                library.follows.removeAll { $0.matches(session) }
-            } else if let index = library.follows.firstIndex(where: { $0.matches(session) }) {
-                if library.follows[index].mode == .selectedAccounts,
-                   !library.follows[index].targetAccountIDs.contains(operation.target.id) {
-                    library.follows[index].targetAccountIDs.append(operation.target.id)
-                }
-            } else {
-                library.follows.append(FollowRule(conversationID: session.id, sessionID: session.sessionID,
-                                                  transferMode: operation.plan.transferMode(for: session.id)))
-            }
+        for session in candidates {
+            let members = conversationTree.members(of: session)
+            let rules = library.follows.filter { rule in members.contains(where: rule.matches) }
+            library.follows.removeAll { rule in members.contains(where: rule.matches) }
+            guard selected.contains(session.id) else { continue }
+            let allAccounts = rules.isEmpty || rules.contains { $0.mode == .allSavedAccounts }
+            let targets = Set(rules.flatMap(\.targetAccountIDs)).union([operation.target.id]).sorted()
+            library.follows.append(FollowRule(conversationID: session.id, sessionID: session.sessionID,
+                mode: allAccounts ? .allSavedAccounts : .selectedAccounts, targetAccountIDs: allAccounts ? [] : targets))
         }
     }
 }

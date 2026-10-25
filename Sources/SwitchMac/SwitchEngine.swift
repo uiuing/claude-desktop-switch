@@ -11,9 +11,12 @@ public actor SwitchEngine: SwitchService {
     private var transactions: URL { environment.root.appendingPathComponent("transactions") }
     public init(environment: MacEnvironment, vault: CredentialVault) { self.environment = environment; self.vault = vault }
 
-    public func prepare(kind: OperationKind, target: Account, sessions: [Conversation] = [],
-                        transferModes: [String: SessionTransferMode] = [:]) throws -> OperationPlan {
-        guard Set(sessions.map(\.id)).count == sessions.count else { throw SwitchError.malformed(L10n.tr("Duplicate transaction target.")) }
+    public func prepare(kind: OperationKind, target: Account, sessions selected: [Conversation] = []) throws -> OperationPlan {
+        guard Set(selected.map(\.id)).count == selected.count else { throw SwitchError.malformed(L10n.tr("Duplicate transaction target.")) }
+        for session in selected {
+            if let reason = SessionLibrary.migrationBlocker(session, target: target) { throw SwitchError.blocked(reason) }
+        }
+        let sessions = try MigrationBuilder.resolve(sessions: selected, environment: environment)
         if kind == .migrate && sessions.isEmpty { throw SwitchError.missing(L10n.tr("No conversations")) }
         let current = try environment.lastKnownAccount()
         let signedIn = current != nil && environment.signedIn() != false
@@ -22,12 +25,13 @@ public actor SwitchEngine: SwitchService {
         case .capture: steps = [L10n.tr("Quit Claude normally and wait for workers to finish"), L10n.tr("Save the current account"), L10n.tr("Reopen Claude")]
         case .switchAccount: steps = [L10n.tr("Check the saved account before switching"), L10n.tr("Close Claude and save the current account"),
                                       L10n.tr("Switch to the selected account")]
-                + (sessions.isEmpty ? [] : [L10n.tr("Bring followed conversations along, replacing matching copies in the target account")])
+                + (sessions.isEmpty ? [] : [L10n.tr("Bring selected conversations and their subtasks to this account")])
                 + [L10n.tr("Reopen Claude")]
         case .signOut: steps = [L10n.tr("Close Claude and save the current account"), L10n.tr("Save the current account"),
                                 L10n.tr("Reopen Claude on its sign-in screen"), L10n.tr("After you sign in to the new account, Claude Switch saves it")]
-        case .migrate: steps = [L10n.tr("Quit Claude and verify the conversation records"), L10n.tr("Write the conversations to the target account, replacing matching copies"),
-                                L10n.tr("Remove or keep the conversations in the original account as selected"), L10n.tr("Reopen Claude")]
+        case .migrate: steps = [L10n.tr("Quit Claude and verify the conversation records"),
+                                L10n.tr("Bring selected conversations and their subtasks to this account"),
+                                L10n.tr("Verify conversation resources"), L10n.tr("Reopen Claude")]
         case .recover: throw SwitchError.blocked(L10n.tr("Open Settings and choose Recover."))
         }
         if kind == .capture && target.id != current { throw SwitchError.changed }
@@ -44,18 +48,24 @@ public actor SwitchEngine: SwitchService {
                                  configDigest: try environment.configDigest(), steps: steps,
                                  conversationIDs: sessions.map(\.id), warnings: warnings)
         plan.targetOrganizationID = target.organizationID
-        plan.transferModes = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, transferModes[$0.id] ?? .move) })
+        plan.transferSessions = sessions
+        let companions = try ConversationResources.companions(sessions: sessions, target: target, environment: environment)
+        plan.resourceExpectations = MigrationBuilder.companionExpectations(companions)
         for session in sessions {
             if let reason = SessionLibrary.migrationBlocker(session, target: target) { throw SwitchError.blocked(reason) }
             let bytes = try SafeFiles.read(SafeFiles.child(session.recordRelativePath, of: environment.desktop), limit: 2 * 1024 * 1024)
             plan.sourceDigests[session.id] = digest(bytes)
             let relative = try MigrationBuilder.destinationRelative(session: session, target: target)
             plan.destinationExpectations[relative] = try MigrationBuilder.expectation(at: SafeFiles.child(relative, of: environment.desktop))
+            let presentation = try ConversationPresentation.relative(session, target: target)
+            plan.resourceExpectations?["presentation:" + presentation] = try ConversationResources.fingerprint(SafeFiles.child(presentation, of: environment.desktop))
         }
         if !sessions.isEmpty {
+            _ = try ConversationResources.retained(sessions: sessions, environment: environment)
             _ = try MigrationBuilder.changes(sessions: sessions, target: target, environment: environment,
-                expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations, modes: plan.transferModes)
-            plan.warnings.append(L10n.tr("This transfers local Code conversations; cloud state, organization permissions and attachments are not transferred."))
+                expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations,
+                resources: plan.resourceExpectations ?? [:])
+            plan.warnings.append(L10n.tr("Account-bound services may require authorization again."))
         }
         return plan
     }
@@ -253,13 +263,14 @@ public actor SwitchEngine: SwitchService {
         } else { try plan.validate(digest: environment.configDigest()) }
         guard try environment.lastKnownAccount() == plan.sourceAccountID,
               let application = environment.application, let version = environment.version else { throw SwitchError.changed }
-        let targetSnapshot = plan.kind == .switchAccount ? try await vault.load(accountID: target.id) : nil
+        var targetSnapshot = plan.kind == .switchAccount ? try await vault.load(accountID: target.id) : nil
         if let targetSnapshot, !DesktopVersion.canRestore(saved: targetSnapshot.version, installed: version) {
             throw SwitchError.blocked(L10n.tr("The saved login of the target account comes from Claude {0} and can't be restored into the installed Claude {1}. Update Claude Desktop, then try again.",
                                               targetSnapshot.version, version))
         }
         let changes = try MigrationBuilder.changes(sessions: sessions, target: target, environment: environment,
-            expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations, modes: plan.transferModes)
+            expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations,
+            resources: plan.resourceExpectations ?? [:])
         let desktop = await DesktopController(environment: environment)
         let wasRunning = try await desktop.quitGracefully()
         // Exiting writes some config fields. Revalidate identity, not the pre-quit whole-file hash.
@@ -288,6 +299,40 @@ public actor SwitchEngine: SwitchService {
         let transaction = try FileTransaction(parent: transactions, live: environment.desktop, plan: plan, claudeVersion: version)
         var stage = "staging-login"
         do {
+            let localStorage = environment.desktop.appendingPathComponent("Local Storage")
+            let localFiles = FileManager.default.fileExists(atPath: localStorage.path)
+                ? try ConversationResources.contents(localStorage, relative: "Local Storage").files : []
+            var presentationSources: [String: [[ArchiveFile]]] = [:]
+            for accountID in Set(sessions.map(\.accountID)) {
+                presentationSources[accountID] = [localFiles]
+                if accountID != plan.sourceAccountID, await vault.contains(accountID: accountID) {
+                    presentationSources[accountID]?.append(try await vault.load(accountID: accountID).files)
+                }
+            }
+            let presentationChanges = try ConversationPresentation.changes(sessions: sessions, sources: presentationSources,
+                target: target, environment: environment, expectations: plan.resourceExpectations ?? [:])
+            var targetSessions: [Conversation] = []
+            if let org = target.organizationID {
+                targetSessions = try ConversationRecords.readScope(desktop: environment.desktop, accountID: target.id, organizationID: org)
+                    .filter { record in !sessions.contains { $0.sessionID == record.sessionID } }
+                targetSessions += sessions.map { session in
+                    var record = session; record.accountID = target.id; record.organizationID = org; return record
+                }
+            }
+            if let snapshot = targetSnapshot {
+                let restored = try ConversationPresentation.restoring(snapshot, sessions: targetSessions, changes: [], environment: environment)
+                let merged = try ConversationPresentation.merge(source: localFiles, target: restored,
+                    ids: ConversationPresentation.localIDs(environment: environment))
+                targetSnapshot = try ConversationPresentation.restoring(merged, sessions: targetSessions.filter { record in sessions.contains { $0.sessionID == record.sessionID } },
+                    changes: presentationChanges, environment: environment)
+            } else if plan.kind == .migrate, target.id == plan.sourceAccountID, !localFiles.isEmpty {
+                let current = LoginSnapshot(accountID: target.id, version: version, createdAt: Date(), auth: [:],
+                                            files: localFiles, directories: ["Local Storage", "Local Storage/leveldb"])
+                let merged = try ConversationPresentation.restoring(current, sessions: targetSessions.filter { record in sessions.contains { $0.sessionID == record.sessionID } },
+                    changes: presentationChanges, environment: environment)
+                try transaction.stageContainer("Local Storage", files: merged.files, directories: merged.directories,
+                    expectation: ConversationResources.fingerprint(localStorage))
+            }
             if swapsLogin {
                 // Signing out installs an empty identity: Claude's login moves into the vault, nothing else is touched.
                 for container in IdentitySchema.containers {
@@ -309,19 +354,25 @@ public actor SwitchEngine: SwitchService {
                 }
             }
             stage = "revalidating-conversations"
+            let retained = sessions.isEmpty ? [:] : try ConversationResources.retained(sessions: sessions, environment: environment)
             let preparedTransfers = Dictionary(uniqueKeysWithValues: changes.compactMap { change in
                 change.data.map { (change.relative, $0) }
             })
-            let finalChanges = try MigrationBuilder.changes(sessions: sessions, target: target, environment: environment,
-                expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations, modes: plan.transferModes,
+            var finalChanges = try MigrationBuilder.changes(sessions: sessions, target: target, environment: environment,
+                expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations,
+                resources: plan.resourceExpectations ?? [:],
                 preparedTransfers: preparedTransfers)
-            guard changes.map(\.relative) == finalChanges.map(\.relative) else { throw SwitchError.changed }
+            let replaced = Set(presentationChanges.map(\.relative))
+            finalChanges.removeAll { replaced.contains($0.relative) }
+            finalChanges.insert(contentsOf: presentationChanges, at: finalChanges.firstIndex(where: \.removesSource) ?? finalChanges.endIndex)
             stage = "staging-conversations"
-            for change in finalChanges {
-                try transaction.stage(relative: change.relative, data: change.data, expectation: change.expectation)
-            }
+            try MigrationBuilder.stage(finalChanges, in: transaction)
             stage = "applying"
-            try await transaction.apply { try await desktop.waitUntilStopped() }
+            try await transaction.apply(stopped: { try await desktop.waitUntilStopped() },
+                                        verify: {
+                try ConversationResources.validate(retained)
+                try MigrationBuilder.verifyDestination(sessions: sessions, target: target, environment: self.environment)
+            })
             if plan.kind == .switchAccount, try environment.currentAccount() != target.id { throw SwitchError.changed }
             if plan.kind == .signOut, try environment.lastKnownAccount() != nil { throw SwitchError.changed }
             stage = "committing"

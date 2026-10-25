@@ -10,15 +10,14 @@ final class FollowRuleTests: XCTestCase {
     func testLegacyDefaultsAndFollowSurvivesMove() throws {
         let data = Data(#"{"conversationID":"a/org/code/shared","mode":"allSavedAccounts","targetAccountIDs":[]}"#.utf8)
         let rule = try JSONDecoder().decode(FollowRule.self, from: data)
-        XCTAssertEqual(rule.transferMode, .move)
         let moved = session("b")
         XCTAssertTrue(rule.matches(moved))
         let following = SessionLibrary.followedSessions([moved], rules: [rule], activeAccountID: "b", targetAccountID: "c")
         XCTAssertEqual(following.map(\.id), [moved.id])
     }
-    func testCopyFollowsCurrentOwnerInsteadOfStaleCopyAndStillUpdatesExistingTarget() {
+    func testFollowUsesCurrentOwnerInsteadOfHistoricalIndexAndUpdatesTarget() {
         let a = session("a", date: 100), b = session("b", date: 10), c = session("c", date: 200)
-        let rule = FollowRule(conversationID: a.id, sessionID: a.sessionID, transferMode: .copy)
+        let rule = FollowRule(conversationID: a.id, sessionID: a.sessionID)
         let following = SessionLibrary.followedSessions([a, b, c], rules: [rule], activeAccountID: "b", targetAccountID: "c")
         XCTAssertEqual(following.map(\.id), [b.id])
         var archived = b; archived.archived = true
@@ -55,12 +54,11 @@ final class FollowRuleTests: XCTestCase {
         let rule = FollowRule(conversationID: old.id, sessionID: old.sessionID)
         XCTAssertEqual(SessionLibrary.followedSessions([old, other], rules: [rule], activeAccountID: "a", targetAccountID: "b").map(\.id), [old.id])
     }
-    func testSavedModeAndTargetRestrictionRoundTrip() throws {
+    func testTargetRestrictionRoundTrip() throws {
         let a = session("a")
-        let rule = FollowRule(conversationID: a.id, sessionID: a.sessionID, transferMode: .copy,
+        let rule = FollowRule(conversationID: a.id, sessionID: a.sessionID,
                               mode: .selectedAccounts, targetAccountIDs: ["b"])
         let restored = try JSONDecoder().decode(FollowRule.self, from: JSONEncoder().encode(rule))
-        XCTAssertEqual(restored.transferMode, .copy)
         XCTAssertEqual(SessionLibrary.followedSessions([a], rules: [restored], activeAccountID: "a", targetAccountID: "b").count, 1)
         XCTAssertTrue(SessionLibrary.followedSessions([a], rules: [restored], activeAccountID: "a", targetAccountID: "c").isEmpty)
     }

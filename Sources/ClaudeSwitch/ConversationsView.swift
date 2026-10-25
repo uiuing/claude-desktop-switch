@@ -109,11 +109,16 @@ private struct SessionRow: View {
                 HStack(spacing: 4) {
                     if showAccount { Text(state.identity(id: session.accountID)).truncationMode(.middle); Text("·") }
                     if let project = session.project { Text(URL(fileURLWithPath: project).lastPathComponent); Text("·") }
-                    Text(Format.age(session.modifiedAt, now: Date()))
+                    Text(Format.age(state.conversationTree.modifiedAt(of: session), now: Date()))
                     if session.archived { Text(L10n.tr("· Archived")) }
                 }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
+            let count = state.conversationTree.childCount(of: session)
+            if count > 0 {
+                Text(L10n.tr("Subtasks: {0}", L10n.argument(count)))
+                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize()
+            }
             if state.follows(session) {
                 Image(systemName: "link").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.brand)
                     .help(L10n.tr("Follow account switches"))
@@ -124,16 +129,13 @@ private struct SessionRow: View {
         .contextMenu {
             if session.kind == .code {
                 let targets = state.accounts.filter { $0.id != session.accountID }
-                ForEach(SessionTransferMode.allCases, id: \.self) { mode in
-                    Menu(mode == .move ? L10n.tr("Move to") : L10n.tr("Copy to")) {
-                        ForEach(targets) { account in
-                            Button(state.identity(account)) {
-                                state.setTransferMode(mode, sessions: [session])
-                                Task { await state.prepare(.migrate, target: account, sessions: [session]) }
-                            }
+                Menu(L10n.tr("Use with another account")) {
+                    ForEach(targets) { account in
+                        Button(state.identity(account)) {
+                            Task { await state.prepare(.migrate, target: account, sessions: [session]) }
                         }
-                    }.disabled(targets.isEmpty || state.working)
-                }
+                    }
+                }.disabled(targets.isEmpty || state.working)
                 Divider()
                 Button(state.follows(session) ? L10n.tr("Stop following switches") : L10n.tr("Follow account switches")) { state.toggleFollow(session) }
                     .disabled(session.cliSessionID == nil)
@@ -178,7 +180,7 @@ struct SessionInspector: View {
                 if session.kind == .code {
                     transferCard([session])
                 } else {
-                    Label(L10n.tr("Cowork conversations cannot yet be copied to other accounts"), systemImage: "info.circle")
+                    Label(L10n.tr("Cowork conversations cannot yet be used with another account"), systemImage: "info.circle")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }.padding(18)
@@ -200,17 +202,16 @@ struct SessionInspector: View {
             Spacer()
         }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
     }
-    /// The move/copy choice here is the same one the follow toggle and the confirmation sheet use.
     private func transferCard(_ sessions: [Conversation]) -> some View {
-        let mode = state.transferMode(sessions)
         let single = sessions.count == 1 ? sessions.first : nil
         return VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.tr("Transfer to another account")).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-            SessionTransferModePicker(selection: Binding(get: { mode },
-                                                         set: { if let new = $0 { state.setTransferMode(new, sessions: sessions) } }))
-                .controlSize(.regular).fixedSize()
-            Text(mode?.explanation ?? L10n.tr("The selected conversations use different choices. Pick one to apply to all."))
-                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(L10n.tr("Use with another account")).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+            if let session = single, state.conversationTree.childCount(of: session) > 0 {
+                Text(L10n.tr("Subtasks: {0}", L10n.argument(state.conversationTree.childCount(of: session))))
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(L10n.tr("Subtasks follow their main conversation."))
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
             if let session = single {
                 Divider().padding(.vertical, 2)
                 Toggle(isOn: Binding(get: { state.follows(session) }, set: { _ in state.toggleFollow(session) })) {
@@ -221,24 +222,21 @@ struct SessionInspector: View {
                     }
                 }.toggleStyle(.switch).controlSize(.small).disabled(session.cliSessionID == nil)
             }
-            transferMenu(sessions, mode: mode).padding(.top, 2)
+            transferMenu(sessions).padding(.top, 2)
         }.padding(12).frame(maxWidth: .infinity, alignment: .leading).card(radius: 10)
     }
     private func followCaption(_ session: Conversation) -> String {
         guard session.cliSessionID != nil else { return L10n.tr("This conversation's local history is missing, so it cannot be transferred.") }
-        return state.transferMode(session) == .move
-            ? L10n.tr("When you switch accounts, it moves along and replaces the older version in the target account.")
-            : L10n.tr("When you switch accounts, it is copied along and replaces the older version in the target account.")
+        return L10n.tr("Bring this conversation and its subtasks when you switch accounts.")
     }
-    private func transferMenu(_ sessions: [Conversation], mode: SessionTransferMode?) -> some View {
+    private func transferMenu(_ sessions: [Conversation]) -> some View {
         let targets = transferTargets(sessions)
-        let title = mode == .move ? L10n.tr("Move to…") : mode == .copy ? L10n.tr("Copy to…") : L10n.tr("Transfer to…")
         return Menu {
             ForEach(targets) { account in
                 Button(state.identity(account)) { Task { await state.prepare(.migrate, target: account, sessions: sessions) } }
             }
         } label: {
-            Label(title, systemImage: mode == .copy ? "plus.square.on.square" : "arrow.right.square").frame(maxWidth: .infinity)
+            Label(L10n.tr("Choose account"), systemImage: "person.crop.circle").frame(maxWidth: .infinity)
         }
         .menuStyle(.button).buttonStyle(.bordered).controlSize(.large).fixedSize()
         .disabled(targets.isEmpty || state.working)

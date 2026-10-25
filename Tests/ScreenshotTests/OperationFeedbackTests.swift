@@ -45,14 +45,12 @@ final class OperationFeedbackTests: XCTestCase {
             XCTAssertFalse(result.body.contains("%"))
         }
     }
-    func testMoveAndCopyCountsDescribeTheSelectedPlanWithoutClaimingAnAccountSwitch() {
+    func testConversationCountDescribesTheSelectedPlanWithoutClaimingAnAccountSwitch() {
         var transfer = plan(.migrate)
         transfer.conversationIDs = ["fixture-a", "fixture-b", "fixture-c"]
-        transfer.transferModes = ["fixture-a": .copy]
         let result = OperationFeedback.completed(plan: transfer, target: target, quota: rows(), result: .init())
-        XCTAssertEqual(result.title, L10n.tr("Conversations transferred"))
-        XCTAssertTrue(result.body.contains(L10n.tr("Moved {0} conversations to {1}.", L10n.argument(2), L10n.argument(target))))
-        XCTAssertTrue(result.body.contains(L10n.tr("Copied one conversation to {0}.", L10n.argument(target))))
+        XCTAssertEqual(result.title, L10n.tr("Conversations ready"))
+        XCTAssertTrue(result.body.contains(L10n.tr("Conversations ready in {0}: {1}.", L10n.argument(target), L10n.argument(3))))
         XCTAssertFalse(result.body.contains(L10n.tr("Switched to {0}.", L10n.argument(target))))
         XCTAssertFalse(result.body.contains("%"))
     }

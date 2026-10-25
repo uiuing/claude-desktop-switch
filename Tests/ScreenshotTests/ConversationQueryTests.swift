@@ -4,6 +4,28 @@ import SwitchCore
 
 @MainActor
 final class ConversationQueryTests: XCTestCase {
+    func testArchivedMainWithVisibleChildRemainsSelectableAndFollowed() {
+        let state = AppState(demo: true)
+        var main = state.inventory!.conversations[0]; main.archived = true
+        var child = main; child.id = "fixture-child"; child.sessionID = "0a1b2c3d-1111-4aaa-8bbb-000000000099"
+        child.archived = false; child.parentSessionID = main.sessionID
+        state.inventory!.conversations = [main, child]
+        state.library.follows = [FollowRule(conversationID: main.id, sessionID: main.sessionID)]
+        state.selectedSessionIDs = [main.id]
+        XCTAssertEqual(state.sessions.map(\.id), [main.id])
+        XCTAssertEqual(state.selectedSessions.map(\.id), [main.id])
+        XCTAssertEqual(state.followedSessionCount, 1)
+    }
+    func testOnlyMainConversationsAreListedAndChildSearchFindsTheirMain() throws {
+        let state = AppState(demo: true)
+        XCTAssertFalse(state.sessions.contains { $0.id.hasPrefix("demo-child-") })
+        let child = try XCTUnwrap(state.inventory?.conversations.firstIndex { $0.id == "demo-child-1" })
+        state.inventory?.conversations[child].title = "Unique child fixture search"
+        state.search = "Unique child fixture search"
+        XCTAssertEqual(state.sessions.map(\.id), ["demo-3"])
+        state.selectedSessionIDs = ["demo-3"]
+        XCTAssertEqual(state.selectedSessions.map(\.id), ["demo-3"])
+    }
     func testSearchKeepsTitleProjectAccountAndFilterBehavior() {
         let state = AppState(demo: true)
         var first = state.inventory!.conversations[0]

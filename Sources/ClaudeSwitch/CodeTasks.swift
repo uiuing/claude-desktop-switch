@@ -61,7 +61,7 @@ extension AppState {
     }
     func canOpenCodeTask(_ task: CodeTask) -> Bool {
         library.preferences.showCodeTasks && !working && !openingCodeTask && task.destination != nil && codeTaskScope?.contains(task.conversation) == true &&
-            codeTasks.tasks.contains(where: { $0.id == task.id }) && (demo || BuildAccess.allowsClaudeWrites)
+            codeTasks.tasks.contains(where: { conversationTree.root(of: $0.conversation).id == task.id }) && (demo || BuildAccess.allowsClaudeWrites)
     }
     func openCodeTask(_ task: CodeTask) async {
         guard canOpenCodeTask(task) else { return }

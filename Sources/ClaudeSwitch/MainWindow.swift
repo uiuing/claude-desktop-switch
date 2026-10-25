@@ -133,7 +133,7 @@ private struct Sidebar: View {
     private func badge(_ page: NavigationPage) -> Int {
         switch page {
         case .accounts: return state.accounts.count
-        case .conversations: return state.unarchivedSessions.count
+        case .conversations: return state.conversationTree.visibleRoots.count
         default: return 0
         }
     }
@@ -204,8 +204,8 @@ struct QuickFind: View {
         state.accounts.filter { query.isEmpty || ($0.email ?? "").localizedStandardContains(query) || $0.id.localizedStandardContains(query) }
     }
     private var sessions: [Conversation] {
-        Array(state.unarchivedSessions
-            .filter { query.isEmpty || $0.title.localizedStandardContains(query) }
+        Array(state.conversationTree.visibleRoots
+            .filter { session in query.isEmpty || state.conversationTree.members(of: session).contains { $0.title.localizedStandardContains(query) } }
             .sorted { $0.modifiedAt > $1.modifiedAt }.prefix(12))
     }
     var body: some View {

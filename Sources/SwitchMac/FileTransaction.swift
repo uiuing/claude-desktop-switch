@@ -9,6 +9,10 @@ struct TransactionEntry: Codable {
     var started = false
     var restored = false
     var expectation: FileExpectation?
+    var installed: FileExpectation?
+    var removalAfterInstall: Bool?
+    var sourceRelative: String?
+    var sourceExpectation: FileExpectation?
 }
 struct TransactionJournal: Codable {
     var schema = 1
@@ -57,22 +61,31 @@ final class FileTransaction {
         journal = try JSONDecoder().decode(TransactionJournal.self, from: SafeFiles.read(existing.appendingPathComponent("journal.json")))
         guard journal.schema == 1, UUID(uuidString: journal.id) != nil,
               journal.id == existing.lastPathComponent else { throw SwitchError.malformed(L10n.tr("Recovery data could not be read. Update Claude Switch before trying again.")) }
-        for entry in journal.entries { try Self.validateAllowed(entry.relative) }
+        for entry in journal.entries {
+            try Self.validateAllowed(entry.relative)
+            if let source = entry.sourceRelative { try Self.validateAllowed(source) }
+        }
     }
     static func validateAllowed(_ relative: String) throws {
         let parts = relative.split(separator: "/")
         if IdentitySchema.containers.contains(relative) || ["config.json", "config.json.journal"].contains(relative) { return }
-        guard parts.count == 4, parts[0] == "claude-code-sessions",
-              UUID(uuidString: String(parts[1])) != nil, UUID(uuidString: String(parts[2])) != nil,
-              String(parts[3]).hasSuffix(".json"),
-              LocalID.isSession(String(parts[3].dropLast(5))) else { throw SwitchError.unsafePath }
+        guard parts.count >= 4, ConversationResources.isOwnedPath(relative) else { throw SwitchError.unsafePath }
     }
-    func stage(relative: String, data: Data?, expectation: FileExpectation? = nil) throws {
+    func stage(relative: String, data: Data?, expectation: FileExpectation? = nil, removalAfterInstall: Bool = false,
+               sourceRelative: String? = nil, sourceExpectation: FileExpectation? = nil) throws {
         try Self.validateAllowed(relative)
         guard !journal.entries.contains(where: { $0.relative == relative }) else { throw SwitchError.malformed(L10n.tr("Duplicate transaction target.")) }
         let destination = try SafeFiles.child(relative, of: live)
         if let expectation, try MigrationBuilder.expectation(at: destination) != expectation { throw SwitchError.changed }
-        journal.entries.append(.init(relative: relative, existed: fm.fileExists(atPath: destination.path), expectation: expectation))
+        if let source = sourceRelative {
+            try Self.validateAllowed(source)
+            guard let sourceExpectation,
+                  try ConversationResources.fingerprint(SafeFiles.child(source, of: live)) == sourceExpectation else { throw SwitchError.changed }
+        }
+        journal.entries.append(.init(relative: relative, existed: fm.fileExists(atPath: destination.path), expectation: expectation,
+                                     installed: data.map { .sha256(digest($0)) } ?? .absent,
+                                     removalAfterInstall: removalAfterInstall ? true : nil,
+                                     sourceRelative: sourceRelative, sourceExpectation: sourceExpectation))
         if let data {
             let file = try SafeFiles.child(relative, of: root.appendingPathComponent("staged"))
             try SafeFiles.privateDirectory(file.deletingLastPathComponent())
@@ -80,8 +93,9 @@ final class FileTransaction {
         }
         try persist()
     }
-    func stageContainer(_ name: String, files: [ArchiveFile], directories: [String]) throws {
-        try stage(relative: name, data: nil)
+    func stageContainer(_ name: String, files: [ArchiveFile], directories: [String], expectation: FileExpectation? = nil,
+                        sourceRelative: String? = nil, sourceExpectation: FileExpectation? = nil) throws {
+        try stage(relative: name, data: nil, expectation: expectation, sourceRelative: sourceRelative, sourceExpectation: sourceExpectation)
         let base = root.appendingPathComponent("staged")
         for directory in directories where directory == name || directory.hasPrefix(name + "/") {
             try SafeFiles.privateDirectory(SafeFiles.child(directory, of: base))
@@ -90,13 +104,23 @@ final class FileTransaction {
             let url = try SafeFiles.child(file.path, of: base)
             try SafeFiles.privateDirectory(url.deletingLastPathComponent()); try SafeFiles.atomicWrite(file.data, to: url)
         }
+        journal.entries[journal.entries.count - 1].installed = try ConversationResources.fingerprint(SafeFiles.child(name, of: base))
+        try persist()
     }
     func persist() throws { try SafeFiles.atomicWrite(JSONEncoder().encode(journal), to: journalURL) }
-    func apply(stopped: () async throws -> Void) async throws {
+    func apply(stopped: () async throws -> Void, verify: () async throws -> Void = {}) async throws {
         try BuildAccess.requireClaudeWrites()
+        try checkRecoveryCapacity()
         journal.phase = "applying"; try persist()
+        var checkedDestinations = false
         for index in journal.entries.indices {
             try await stopped()
+            try verifySource(journal.entries[index], removed: [])
+            if journal.entries[index].removalAfterInstall == true && !checkedDestinations {
+                guard journal.entries[index...].allSatisfy({ $0.removalAfterInstall == true }) else { throw SwitchError.changed }
+                try verifyInstalled(journal.entries.prefix(index)); try await verify()
+                checkedDestinations = true
+            }
             let relative = journal.entries[index].relative
             let target = try SafeFiles.child(relative, of: live)
             let previous = try SafeFiles.child(relative, of: root.appendingPathComponent("originals"))
@@ -119,7 +143,44 @@ final class FileTransaction {
             try SafeFiles.syncDirectory(target.deletingLastPathComponent())
             try persist()
         }
+        try verifyInstalled(journal.entries[...]); try await verify()
         journal.phase = "applied"; try persist()
+    }
+    /// Both sides can be needed after rollback. Reject an operation before the first rename when
+    /// its originals plus replacements cannot fit the encrypted recovery archive.
+    private func checkRecoveryCapacity() throws {
+        var bytes = 0, files = 0
+        func count(_ url: URL, depth: Int) throws {
+            try SafeFiles.validateAncestors(url)
+            guard FileManager.default.fileExists(atPath: url.path) else { return }
+            let info = try url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .fileSizeKey])
+            guard depth < 20 else { throw tooLarge }
+            if info.isDirectory == true { for child in try SafeFiles.strictChildren(url) { try count(child, depth: depth + 1) } }
+            else {
+                guard info.isRegularFile == true, let size = info.fileSize, size <= 64 * 1024 * 1024 else { throw tooLarge }
+                bytes += size; files += 1
+                guard bytes <= 128 * 1024 * 1024, files < 25_000 else { throw tooLarge }
+            }
+        }
+        for entry in journal.entries {
+            try count(SafeFiles.child(entry.relative, of: live), depth: entry.relative.split(separator: "/").count)
+            try count(SafeFiles.child(entry.relative, of: root.appendingPathComponent("staged")), depth: entry.relative.split(separator: "/").count)
+        }
+    }
+    private var tooLarge: SwitchError { .blocked(L10n.tr("The recovery backup is too large. Your data is preserved.")) }
+    private func verifyInstalled(_ entries: ArraySlice<TransactionEntry>) throws {
+        let removed = Set(journal.entries.filter { $0.started && $0.removalAfterInstall == true }.map(\.relative))
+        for entry in entries {
+            try verifySource(entry, removed: removed)
+            if let expected = entry.installed,
+               try ConversationResources.fingerprint(SafeFiles.child(entry.relative, of: live)) != expected {
+                throw SwitchError.changed
+            }
+        }
+    }
+    private func verifySource(_ entry: TransactionEntry, removed: Set<String>) throws {
+        if let source = entry.sourceRelative, !removed.contains(source), let expected = entry.sourceExpectation,
+           try ConversationResources.fingerprint(SafeFiles.child(source, of: live)) != expected { throw SwitchError.changed }
     }
     func rollback(stopped: () async throws -> Void) async throws {
         try BuildAccess.requireClaudeWrites()

@@ -7,22 +7,12 @@ struct OperationSheet: View {
     let operation: PendingOperation
     private var current: PendingOperation { state.pending ?? operation }
     private var source: Account? { current.plan.sourceAccountID.flatMap { id in state.knownAccounts.first { $0.id == id } } }
-    private var uniformMode: SessionTransferMode? {
-        let modes = Set(current.sessions.map { current.plan.transferMode(for: $0.id) })
-        return modes.count == 1 ? modes.first : nil
-    }
     private var title: String {
         switch current.plan.kind {
         case .capture: return L10n.tr("Save login for {0}", L10n.argument(state.identity(current.target)))
         case .switchAccount: return L10n.tr("Switch to {0}", L10n.argument(state.identity(current.target)))
         case .signOut: return L10n.tr("Add account")
-        case .migrate:
-            let count = L10n.argument(current.sessions.count)
-            switch uniformMode {
-            case .move: return L10n.tr("Move {0} conversations", count)
-            case .copy: return L10n.tr("Copy {0} conversations", count)
-            case nil: return L10n.tr("Transfer {0} conversations", count)
-            }
+        case .migrate: return L10n.tr("Conversations for {0}", L10n.argument(state.identity(current.target)))
         case .recover: return L10n.tr("Recover unfinished operation")
         }
     }
@@ -30,7 +20,7 @@ struct OperationSheet: View {
         switch current.plan.kind {
         case .capture: return "square.and.arrow.down"; case .switchAccount: return "arrow.left.arrow.right"
         case .signOut: return "person.crop.circle.badge.plus"
-        case .migrate: return uniformMode == .copy ? "plus.square.on.square" : "arrow.right.square"
+        case .migrate: return "arrow.right.square"
         case .recover: return "arrow.uturn.backward"
         }
     }
@@ -38,7 +28,7 @@ struct OperationSheet: View {
         switch current.plan.kind {
         case .capture: return L10n.tr("Save"); case .switchAccount: return L10n.tr("Switch")
         case .signOut: return L10n.tr("Start")
-        case .migrate: return uniformMode == .move ? L10n.tr("Move") : uniformMode == .copy ? L10n.tr("Copy") : L10n.tr("Confirm transfer")
+        case .migrate: return L10n.tr("Continue")
         case .recover: return L10n.tr("Recover")
         }
     }
@@ -54,7 +44,8 @@ struct OperationSheet: View {
         }
     }
     private var replacing: Bool { current.sessions.contains { state.replacesExisting($0, in: current) } }
-    private var listedSessions: [Conversation] { current.followCandidates ?? current.sessions }
+    private var selectedTree: ConversationTree { ConversationTree(current.sessions) }
+    private var listedSessions: [Conversation] { current.followCandidates ?? selectedTree.roots }
     private var rowHeight: CGFloat { current.followCandidates == nil ? 38 : 46 }
     private var visibleRows: Int { current.followCandidates == nil ? 5 : 4 }
 
@@ -100,17 +91,9 @@ struct OperationSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(current.plan.kind == .switchAccount
-                     ? L10n.tr("Follow with this switch ({0})", L10n.argument(current.sessions.count)) : L10n.tr("Conversations"))
+                     ? L10n.tr("Follow with this switch ({0})", L10n.argument(selectedTree.roots.count)) : L10n.tr("Conversations"))
                     .font(.system(size: 12, weight: .semibold))
                 Spacer()
-                if current.sessions.count > 1 {
-                    Menu(L10n.tr("Set all to")) {
-                        ForEach(SessionTransferMode.allCases, id: \.self) { mode in
-                            Button(mode.title) { state.setPendingTransferMode(mode) }
-                        }
-                    }.menuStyle(.borderlessButton).fixedSize().font(.system(size: 12))
-                        .hoverSurface().disabled(state.working || current.preparingSelection)
-                }
             }
             Group {
                 if listedSessions.count > visibleRows {
@@ -121,8 +104,8 @@ struct OperationSheet: View {
                 if current.followCandidates != nil {
                     Text(L10n.tr("Code conversations active in the last 5 minutes are preselected. Choices are saved after switching."))
                 }
-                if !current.sessions.isEmpty {
-                    Text(uniformMode?.explanation ?? L10n.tr("Move: the original account no longer keeps it. Copy: both accounts keep it."))
+                if listedSessions.contains(where: { state.conversationTree.childCount(of: $0) > 0 }) {
+                    Text(L10n.tr("Subtasks follow their main conversation."))
                 }
                 if replacing { Text(L10n.tr("“Replaces” means the target account already has this conversation; it will be replaced with the current version.")) }
             }.font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -141,7 +124,11 @@ struct OperationSheet: View {
                         })).toggleStyle(.checkbox).labelsHidden().disabled(state.working || current.preparingSelection)
                     } else { KindIcon(kind: session.kind, size: 20) }
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(session.title).font(.system(size: 13)).lineLimit(1).truncationMode(.tail)
+                        HStack(spacing: 6) {
+                            Text(session.title).font(.system(size: 13)).lineLimit(1).truncationMode(.tail)
+                            let count = selected && current.selectionReady ? selectedTree.childCount(of: session) : state.conversationTree.childCount(of: session)
+                            if count > 0 { Text(L10n.tr("Subtasks: {0}", L10n.argument(count))).font(.system(size: 10)).foregroundStyle(.secondary).fixedSize() }
+                        }
                         if current.followCandidates != nil {
                             Text(Format.age(session.modifiedAt, now: Date())).font(.system(size: 10)).foregroundStyle(.secondary)
                         }
@@ -150,13 +137,6 @@ struct OperationSheet: View {
                         StatusBadge(text: L10n.tr("Replaces"), color: Color(nsColor: .systemOrange))
                     }
                     Spacer(minLength: 8)
-                    Picker(L10n.tr("Transfer mode"), selection: Binding(
-                        get: { current.plan.transferMode(for: session.id) },
-                        set: { state.setPendingTransferMode($0, sessionID: session.id) })) {
-                        ForEach(SessionTransferMode.allCases, id: \.self) { Text($0.title).tag($0) }
-                    }
-                    .pickerStyle(.menu).labelsHidden().fixedSize().controlSize(.small)
-                        .disabled(!selected || state.working || current.preparingSelection)
                 }
                 .padding(.horizontal, 12).frame(height: rowHeight)
             }
@@ -205,16 +185,6 @@ struct OperationSheet: View {
     }
 }
 
-/// Move or copy. A nil selection means several sessions with different choices, so no segment is lit.
-struct SessionTransferModePicker: View {
-    @Binding var selection: SessionTransferMode?
-    var body: some View {
-        Picker(L10n.tr("Transfer mode"), selection: $selection) {
-            ForEach(SessionTransferMode.allCases, id: \.self) { mode in Text(mode.title).tag(SessionTransferMode?.some(mode)) }
-        }.pickerStyle(.segmented).labelsHidden()
-    }
-}
-
 struct AddAccountSheet: View {
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) var dismiss
@@ -236,7 +206,7 @@ struct AddAccountSheet: View {
                     step(1, L10n.tr("Sign in to the account to add on Claude's sign-in screen"))
                     step(2, L10n.tr("Claude Switch saves it; switch with one click afterwards"))
                 }
-                Text(L10n.tr("After sign-in, Code conversations marked to follow need your confirmation before they move or copy to the new account."))
+                Text(L10n.tr("After sign-in, confirm which conversations to bring to the new account."))
                     .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(16).frame(maxWidth: .infinity, alignment: .leading).card(radius: 10)
             Group {

@@ -17,7 +17,7 @@ struct OperationFeedback {
         case .switchAccount:
             title = L10n.tr("Account switched")
             lines.append(L10n.tr("Switched to {0}.", L10n.argument(target)))
-        case .migrate: title = L10n.tr("Conversations transferred")
+        case .migrate: title = L10n.tr("Conversations ready")
         case .capture:
             title = L10n.tr("Account saved")
             lines.append(L10n.tr("Saved {0}.", L10n.argument(target)))
@@ -27,12 +27,8 @@ struct OperationFeedback {
         case .recover: title = L10n.tr("Recovery complete")
         }
         if plan.kind == .switchAccount || plan.kind == .migrate {
-            let moved = plan.conversationIDs.filter { plan.transferMode(for: $0) == .move }.count
-            let copied = plan.conversationIDs.count - moved
-            if moved == 1 { lines.append(L10n.tr("Moved one conversation to {0}.", L10n.argument(target))) }
-            else if moved > 1 { lines.append(L10n.tr("Moved {0} conversations to {1}.", L10n.argument(moved), L10n.argument(target))) }
-            if copied == 1 { lines.append(L10n.tr("Copied one conversation to {0}.", L10n.argument(target))) }
-            else if copied > 1 { lines.append(L10n.tr("Copied {0} conversations to {1}.", L10n.argument(copied), L10n.argument(target))) }
+            let count = plan.transferSessions.map { ConversationTree($0).roots.count } ?? plan.conversationIDs.count
+            if count > 0 { lines.append(L10n.tr("Conversations ready in {0}: {1}.", L10n.argument(target), L10n.argument(count))) }
             if plan.kind == .switchAccount {
                 let readings = quota.filter { $0.state == .recorded && $0.origin == .live && $0.remainingPercent != nil }
                 if readings.isEmpty { lines.append(L10n.tr("Quota not available yet.")) }

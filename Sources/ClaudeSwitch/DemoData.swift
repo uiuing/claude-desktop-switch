@@ -41,19 +41,28 @@ enum DemoData {
         let sessions: [(title: String, account: Account, kind: SessionKind, model: String, project: String)] = [
             (L10n.tr("demo.menuBarQuota"), personal, .code, "claude-opus", "~/Developer/menubar-app"),
             (L10n.tr("demo.designNavigation"), personal, .code, "claude-opus", "~/Developer/menubar-app"),
-            (L10n.tr("demo.copyConflicts"), personal, .code, "claude-sonnet", "~/Developer/menubar-app"),
+            (L10n.tr("Verify conversation resources"), personal, .code, "claude-sonnet", "~/Developer/menubar-app"),
             (L10n.tr("demo.apiMigration"), team, .code, "claude-opus", "~/Developer/billing-service"),
             (L10n.tr("demo.flakyTests"), team, .code, "claude-sonnet", "~/Developer/billing-service"),
             (L10n.tr("demo.homepage"), studio, .code, "claude-sonnet", "~/Developer/landing-page"),
             (L10n.tr("demo.onboardingFlow"), studio, .code, "claude-haiku", "~/Developer/landing-page"),
             (L10n.tr("demo.researchNotes"), research, .cowork, "claude-opus", "~/Documents/research"),
         ]
-        let conversations = sessions.enumerated().map { index, item in
+        var conversations = sessions.enumerated().map { index, item in
             Conversation(id: "demo-\(index)", sessionID: String(format: "local_0a1b2c3d-1111-4aaa-8bbb-%012d", index + 1), accountID: item.account.id,
                          organizationID: item.account.organizationID!, title: item.title, kind: item.kind,
                          modifiedAt: now.addingTimeInterval(-Double(index * index * 2400 + index * 1500 + 120)),
                          model: item.model, project: item.project, recordRelativePath: "demo",
                          cliSessionID: String(format: "1a1b2c3d-2222-4aaa-8bbb-%012d", index + 1))
+        }
+        for index in 0..<2 {
+            var child = conversations[3]
+            child.id = "demo-child-\(index)"
+            child.sessionID = String(format: "local_0a1b2c3d-1111-4aaa-8bbb-%012d", 101 + index)
+            child.cliSessionID = String(format: "1a1b2c3d-2222-4aaa-8bbb-%012d", 101 + index)
+            child.parentSessionID = index == 0 ? conversations[3].sessionID : conversations[8].sessionID
+            child.title = index == 0 ? L10n.tr("Verify conversation resources") : L10n.tr("demo.flakyTests")
+            conversations.append(child)
         }
 
         var library = LibraryState()

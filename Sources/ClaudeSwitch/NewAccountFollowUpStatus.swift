@@ -14,7 +14,7 @@ struct NewAccountFollowUpStatus: View {
                         .disabled(state.demo || state.working || state.usageRefreshingAccountID != nil)
                 }
             } else {
-                Text(L10n.tr("Review {0} followed conversations and their move or copy settings. Claude will restart only after you confirm the transfer.",
+                Text(L10n.tr("Review {0} followed conversations. Claude will restart after you confirm.",
                              L10n.argument(state.newAccountFollowSessions.count)))
                 if let error = state.newAccountFollowError {
                     Text(L10n.tr("Could not prepare the transfer: {0}", L10n.argument(error))).foregroundStyle(.orange)

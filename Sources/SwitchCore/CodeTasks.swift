@@ -78,6 +78,24 @@ public struct CodeTask: Identifiable, Equatable, Sendable {
     }
 }
 
+public extension ConversationTree {
+    func mainTasks(_ tasks: [CodeTask]) -> [CodeTask] {
+        var order: [String] = [], grouped: [String: CodeTask] = [:]
+        for task in tasks {
+            let main = root(of: task.conversation)
+            if var existing = grouped[main.id] {
+                if task.status.precedes(existing.status) { existing.status = task.status }
+                if task.id == main.id { existing.process = task.process }
+                grouped[main.id] = existing
+            } else {
+                order.append(main.id)
+                grouped[main.id] = CodeTask(conversation: main, status: task.status, process: task.id == main.id ? task.process : nil)
+            }
+        }
+        return order.compactMap { grouped[$0] }
+    }
+}
+
 public struct CodeTaskSnapshot: Equatable, Sendable {
     public enum Availability: Equatable, Sendable { case connecting, ready, incomplete, switching, offline, unavailable }
     public var scope: CodeTaskScope?

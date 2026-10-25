@@ -30,7 +30,7 @@ flowchart TB
 
 The interface only reflects state and starts explicit user actions. Rules that decide what is safe to do live in `SwitchCore` and `SwitchMac`, so the UI is never the only safeguard.
 
-`SessionTransferRecord` removes explicit account authorization/cloud binding containers and live connection fields, plus the verified pending-start and task-suggestion binding paths. It distinguishes local dispatch lineage and task suggestions from their cloud counterparts; it does not scan arbitrary text for keywords or interpret every metadata field. `MigrationBuilder` uses Foundation JSON serialization to retain nested values and integer precision, validates source and target identity during preview and after shutdown, and keeps the existing path, transcript and fingerprint checks. `SessionLibrary` gives the current account's copy priority and prevents unrelated fallback copies from overwriting an existing target. Activity and file timestamps do not decide whether a selected source may replace the target. The [session transfer field policy](session-fields.md) defines the preservation and exclusion rules.
+`ConversationTree` resolves account/organization-local native ancestry; UI and follow selection operate on roots, while `MigrationBuilder` expands the full group from disk. `SessionTransferRecord` preserves ordinary JSON metadata by default, removing only evidenced identity, authorization and live handles. `ConversationResources` inventories session-owned companion trees, verifies queues and shared history, and retains original resource paths. `ConversationPresentation` separates known task-store namespaces from credentials, retains opaque scoped fields, and persists conversation-owned presentation for delayed switches. `LevelDBSnapshot` reads MANIFEST-selected tables and WALs with sequence/tombstone/checksum validation and rebuilds the complete target keyspace after a bounded merge. No production dependency or native browser automation is required. [Session fields](session-fields.md) and [continuity](session-continuity.md) define the contract.
 
 The workbench's minimum size belongs to its `NSWindow`. The split-view detail accepts a zero minimum width so page content can shrink while the conversation inspector closes, preserving the user's window width during navigation.
 
@@ -38,7 +38,7 @@ Prominent action buttons retain their native button behavior and add a hover ove
 
 ## The write gate
 
-Every action that changes Claude's files or processes (quitting or opening Claude, replacing the login, moving or copying sessions, recovering a transaction) first calls `BuildAccess.requireClaudeWrites()`. It is controlled by the `CLAUDE_WRITE_ENABLED` compilation condition:
+Every action that changes Claude's files or processes (quitting or opening Claude, replacing the login, transferring conversation trees, recovering a transaction) first calls `BuildAccess.requireClaudeWrites()`. It is controlled by the `CLAUDE_WRITE_ENABLED` compilation condition:
 
 - `scripts/build.sh` builds the normal app with writes enabled.
 - `scripts/build.sh --read-only` builds an app that can inspect everything and preview operations, but cannot execute them.

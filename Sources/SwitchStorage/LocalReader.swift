@@ -55,13 +55,15 @@ public actor LocalReader: InventoryReader {
                             let r = try SafeFiles.json(file, limit: 2 * 1024 * 1024)
                             guard let sessionID = r["sessionId"].string ?? r["id"].string,
                                   LocalID.isSession(sessionID) else { continue }
+                            let lineage = kind == .code ? ConversationLineage.read(r, sessionID: sessionID) : (parent: nil as String?, invalid: false)
                             let conversation = Conversation(id: accountID + "/" + orgID + "/" + kind.rawValue + "/" + sessionID,
                                 sessionID: sessionID, accountID: accountID, organizationID: orgID,
                                 title: r["title"].string ?? r["name"].string ?? L10n.tr("Untitled conversation"), kind: kind,
                                 modifiedAt: Dates.parse(r["lastActivityAt"]) ?? Dates.parse(r["updatedAt"]) ?? stamp.modified,
                                 model: r["model"].string, project: r["cwd"].string,
                                 recordRelativePath: relative, cliSessionID: r["cliSessionId"].string,
-                                archived: r["isArchived"].bool ?? false)
+                                archived: r["isArchived"].bool ?? false, parentSessionID: lineage.parent,
+                                invalidLineage: lineage.invalid ? true : nil)
                             conversations.append(conversation); recordCache[relative] = (stamp, conversation)
                         } catch { warnings.append(L10n.tr("A conversation record changed or uses an unsupported format and was skipped.")) }
                     }

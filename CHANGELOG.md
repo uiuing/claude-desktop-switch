@@ -8,12 +8,20 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- Choose which Code conversations follow an account switch directly in its confirmation: saved follows and the current account's three most recently active conversations appear together, with move/copy choices. Successful switches remember the selection.
+- Choose which Code conversations follow an account switch directly in its confirmation: saved follows and the current account's three most recently active conversations appear together as main conversations with subtask counts. Successful switches remember the selection.
 - Automatically select all eligible Code conversations active in the last five minutes when reviewing an account switch, including those beyond the three most recent suggestions. Each can still be deselected.
+
+- Preserve entire Code conversation trees, unknown ordinary metadata, added-folder access, native subagent histories, session-owned resources and pending-input attachments. Conversation lists and task menus group descendants under their main conversation.
+- Preserve persisted Code pane/file-view state across immediate and later account switches, using conversation-owned snapshots and a credential-separated Local Storage merge.
+
+### Changed
+
+- Remove conversation-copy controls, saved mode preferences and execution branches. Selecting a main conversation transfers its entire tree after destination verification.
+- Reject incomplete queues, ambiguous lineage, conflicting files, unsafe paths and persistent browser-credential contexts; interrupted fixture transfers restore the complete original group. Automatic task continuation is not included.
 
 ### Fixed
 
-- Account switches with followed Code conversations no longer fail when Claude's quit cleanup changes only JSON formatting or excluded connection state. Preserved metadata and destination changes still stop the operation; transaction failures now log their stage without account data.
+- Account switches with followed Code conversations no longer fail when Claude's quit cleanup changes only JSON formatting or excluded connection state. Identity, ancestry, workspace and destination changes still stop the operation; transaction failures now log their stage without account data.
 - Quota refresh can use an eligible Code credential when the preferred Desktop credential was already rejected, including after restarting Switch.
 
 ## [0.2.2] - 2026-10-16

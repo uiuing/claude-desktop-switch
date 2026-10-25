@@ -14,9 +14,8 @@ final class NewAccountFollowUpTests: XCTestCase {
         state.inventory?.lastKnownAccountID = target.id
         return (state, source, try XCTUnwrap(state.activeAccount))
     }
-    func testSavedLoginOffersOnlyAPreviewWithOriginalModesAndSource() async throws {
+    func testSavedLoginOffersOnlyAPreviewWithOriginalSource() async throws {
         let (state, source, target) = try fixture()
-        state.library.follows[0].transferMode = .copy
         let original = try XCTUnwrap(state.inventory?.conversations.first { state.library.follows[0].matches($0) })
         var otherCopy = original
         otherCopy.id = "stale-copy"; otherCopy.accountID = state.library.accounts[2].id
@@ -32,8 +31,6 @@ final class NewAccountFollowUpTests: XCTestCase {
         XCTAssertEqual(operation.plan.sourceAccountID, target.id)
         XCTAssertEqual(operation.sessions.count, 2)
         XCTAssertTrue(operation.sessions.allSatisfy { $0.accountID == source.id })
-        XCTAssertEqual(operation.plan.transferMode(for: original.id), .copy)
-        XCTAssertEqual(operation.plan.transferModes.values.filter { $0 == .move }.count, 1)
         XCTAssertEqual(operation.newAccountFollowUpID, state.library.newAccountFollowUp?.id)
         XCTAssertEqual(state.inventory?.conversations.map(\.id), before)
         XCTAssertFalse(state.working)

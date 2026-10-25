@@ -32,7 +32,7 @@ Using personal and work accounts should not mean signing in over and over or fin
 - **Switch without signing in again.** Save your usual accounts once, then choose the one you need from the menu bar.
 - **See your quota at a glance.** Compare what is left across your accounts without switching between them.
 - **Get a heads-up when you run low.** A reminder points you to a suitable backup account when one is available.
-- **Pick up where you left off.** Move or copy local Claude Code conversations between accounts, or choose conversations to follow you when you switch.
+- **Pick up where you left off.** Bring local Claude Code conversations and their subtasks to another account, or choose conversations to follow you when you switch.
 - **Add an account, keep the others.** Sign in to another account without signing out of the ones you already saved.
 - **Understand your usage.** Look back at your local Code activity, daily usage and most-used models.
 

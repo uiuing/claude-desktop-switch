@@ -3,129 +3,88 @@ import XCTest
 @testable import SwitchMac
 
 final class SessionTransferRecordTests: XCTestCase {
-    func testNewFieldsNestedSettingsAndFutureModesArePreserved() throws {
-        let source: [String: Any] = [
+    private func transfer(_ source: [String: Any]) throws -> NSDictionary {
+        let data = try SessionTransferRecord.data(from: source)
+        let value = try JSONSerialization.jsonObject(with: data)
+        return try XCTUnwrap(value as? NSDictionary)
+    }
+
+    func testFutureMetadataAndAllNonCredentialContainersStayIntact() throws {
+        var source: [String: Any] = [
             "permissionMode": "future-mode", "autoChosenInApp": true, "bypassChosenInApp": false,
             "sessionSettings": ["outputStyle": "concise", "futureSetting": ["enabled": true]],
-            "futureField": ["values": [1, 2, 3], "nested": ["value": "fixture"]],
-            "prs": [["number": 17, "branch": "feature"]], "pendingFirstStart": ["futureOption": true],
-            "sshConfig": ["host": "fixture-host"], "worktreePath": "/fixture/worktrees/feature",
-            "title": NSNull()
+            "prs": [["number": 17, "branch": "feature"]], "title": NSNull(),
+            "worktreePath": "/fixture/worktrees/feature", "sshConfig": ["host": "fixture-host"],
+            "pendingFirstStart": ["task": "Original task", "options": ["remoteControlAtStart": true, "futureOption": true]],
+            "publishedArtifacts": [["url": "https://claude.ai/code/frame/fixture", "sourcePath": "/fixture/result.pdf"]],
+            "cloudSpawnedTasks": [["taskId": "fixture", "prompt": "Original child task"]],
+            "backgroundTaskSuggestions": [["target": "cloud", "acceptedPicks": ["cloudPoolId": "fixture"]]],
+            "resolvedBackgroundTaskSuggestions": ["fixture": "started"],
+            "movedToCloud": ["cloudSessionId": "fixture"], "spaceId": "fixture", "scheduledTaskId": "fixture",
+            "armedWorkAtQuit": ["cronCount": 1], "violinBowPrompts": ["Unabridged task"],
+            "enabledMcpTools": ["fixture-tool"], "withheldConnectorHosts": ["fixture-host"]
         ]
-        let transferred = try XCTUnwrap(JSONSerialization.jsonObject(with: SessionTransferRecord.data(from: source)) as? NSDictionary)
-        XCTAssertEqual(transferred, source as NSDictionary)
+        for index in 0..<50 {
+            source["futureField\(index)"] = ["values": [1, 2, 3], "unknown": ["token": "task metadata", "enabled": true]]
+        }
+        XCTAssertEqual(try transfer(source), source as NSDictionary)
     }
 
-    func testAuthorizationAndConnectionFieldsAreExcludedWithoutChangingMode() throws {
+    func testIdentityAndAuthorityAreRemovedWithoutErasingConnectorMetadata() throws {
         let source: [String: Any] = [
-            "permissionMode": "auto", "autoChosenInApp": true,
-            "remoteMcpServersConfig": ["fixture": ["authorization": "synthetic"]],
-            "sessionPermissionUpdates": [["type": "addRules"]], "alwaysAllowedReasons": ["fixture"],
-            "emailAddress": "synthetic", "cloudSessionId": "synthetic", "sshRemoteProcessId": 123,
-            "remoteControl": true, "remoteControlUserEnabled": true, "chromePermissionMode": "skip_all_permission_checks"
+            "permissionMode": "auto", "emailAddress": "synthetic", "accessToken": "synthetic-credential", "accountUUID": "synthetic",
+            "sshRemoteProcessId": 123, "bridgeSessionIds": ["synthetic"],
+            "sshConfig": ["host": "fixture-host", "port": 22, "identityFile": "/fixture/private-key", "privateKey": "synthetic-private-key"],
+            "chromePermissionMode": "skip_all_permission_checks", "alwaysAllowedReasons": ["synthetic"],
+            "remoteMcpServersConfig": ["fixture": ["url": "https://fixture.invalid/mcp", "futureOption": true,
+                "headers": ["Authorization": "synthetic-credential", "X-API-Key": "synthetic-credential", "Accept": "application/json"],
+                "env": ["SERVICE_API_KEY": "synthetic-credential", "TRANSPORT_VERSION": "2", "bearerToken": "synthetic-credential",
+                         "SSH_AUTH_SOCK": "synthetic-socket"]]]
         ]
-        let transferred = try XCTUnwrap(JSONSerialization.jsonObject(with: SessionTransferRecord.data(from: source)) as? NSDictionary)
-        XCTAssertEqual(transferred, ["permissionMode": "auto", "autoChosenInApp": true] as NSDictionary)
+        let expected: [String: Any] = ["permissionMode": "auto", "sshConfig": ["host": "fixture-host", "port": 22], "remoteMcpServersConfig": ["fixture": [
+            "url": "https://fixture.invalid/mcp", "futureOption": true, "headers": ["Accept": "application/json"],
+            "env": ["TRANSPORT_VERSION": "2"]]]]
+        XCTAssertEqual(try transfer(source), expected as NSDictionary)
     }
 
-    func testMissingModeStaysMissingAndLargeIntegerMetadataKeepsPrecision() throws {
+    func testDirectoryIntentSurvivesWhileToolGrantsDoNot() throws {
+        let directory: [String: Any] = ["type": "addDirectories", "directories": ["/fixture/files"],
+                                         "destination": "session", "futureMetadata": ["source": "person"]]
+        let removal: [String: Any] = ["type": "removeDirectories", "directories": ["/fixture/old"], "destination": "session"]
+        let source: [String: Any] = ["sessionPermissionUpdates": [directory,
+            ["type": "addRules", "rules": [["toolName": "Bash", "ruleContent": "*"]]], removal]]
+        XCTAssertEqual(try transfer(source), ["sessionPermissionUpdates": [directory, removal]] as NSDictionary)
+    }
+
+    func testUnknownAuthorizationFormatStopsInsteadOfDroppingOrGrantingIt() {
+        for updates: Any in ["unsupported", [["type": "futureGrant", "anything": true]],
+                             [["type": "addDirectories", "directories": ["relative"]]]] {
+            XCTAssertThrowsError(try transfer(["sessionPermissionUpdates": updates]))
+        }
+        for url in ["https://fixture-user:fixture-password@fixture.invalid/mcp", "https://fixture.invalid/mcp?access_token=synthetic"] {
+            XCTAssertThrowsError(try transfer(["remoteMcpServersConfig": ["fixture": ["url": url]]]))
+        }
+    }
+
+    func testCredentialWordsInTaskContentAreNotRedacted() throws {
+        let source: [String: Any] = ["futureTask": ["token": "token budgeting task", "authorization": "document this concept"],
+                                    "title": "Explain accessToken", "prompt": "Do not replace historical content", "futureRenderToken": "ordinary opaque metadata"]
+        XCTAssertEqual(try transfer(source), source as NSDictionary)
+    }
+
+    func testLargeIntegerMetadataKeepsPrecision() throws {
         let source = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(#"{"futureCounter":9007199254740993,"nested":{"counter":18446744073709551615}}"#.utf8)) as? [String: Any])
-        let data = try SessionTransferRecord.data(from: source)
-        let transferred = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let transferred = try XCTUnwrap(try transfer(source) as? [String: Any])
         XCTAssertNil(transferred["permissionMode"])
         XCTAssertEqual((transferred["futureCounter"] as? NSNumber)?.uint64Value, 9_007_199_254_740_993)
         XCTAssertEqual(((transferred["nested"] as? [String: Any])?["counter"] as? NSNumber)?.uint64Value, UInt64.max)
     }
 
-    func testCloudContainersAndNestedRemoteControlIntentAreRemoved() throws {
-        let source: [String: Any] = [
-            "permissionMode": "auto", "autoChosenInApp": true,
-            "movedToCloud": ["cloudSessionId": "cloud-session-fixture"],
-            "cloudSpawnedTasks": [["taskId": "cloud-task-fixture", "sessionId": "cloud-session-fixture"]],
-            "spaceId": "space-fixture", "scheduledTaskId": "routine-fixture", "scheduledRunContinued": true,
-            "dispatchParentId": "remote-parent-fixture", "dispatchParentOrigin": "remote",
-            "publishedArtifacts": [["url": "cloud-artifact-fixture", "sourcePath": "/fixture/result.pdf"]],
-            "remoteControlDescendant": true, "steeredByRemoteClient": true, "armedWorkAtQuit": ["cronCount": 1],
-            "violinBow": true, "violinBowHomeSettings": ["fixture": true], "violinBowPrompts": ["fixture"],
-            "pendingFirstStart": ["permissionMode": "auto", "task": "Local fixture task", "options": [
-                "remoteControlAtStart": true, "useWorktree": true, "futureLocalOption": "kept"]]
-        ]
-        let transferred = try XCTUnwrap(JSONSerialization.jsonObject(with: SessionTransferRecord.data(from: source)) as? [String: Any])
-        XCTAssertEqual(Set(transferred.keys), ["permissionMode", "autoChosenInApp", "pendingFirstStart"])
-        let pending = try XCTUnwrap(transferred["pendingFirstStart"] as? [String: Any])
-        XCTAssertEqual(pending["task"] as? String, "Local fixture task")
-        XCTAssertEqual(pending["permissionMode"] as? String, "auto")
-        XCTAssertEqual(pending["options"] as? NSDictionary, ["useWorktree": true, "futureLocalOption": "kept"] as NSDictionary)
-    }
-
-    func testCloudSuggestionsAreRemovedWithoutLosingLocalSuggestionsOrTheirResults() throws {
-        let source: [String: Any] = [
-            "backgroundTaskSuggestions": [
-                ["id": "cloud", "target": "cloud", "prompt": "Cloud fixture task"],
-                ["id": "automatic", "autoStart": "cloud"],
-                ["id": "implicit", "cloudEnvironmentId": "env-fixture"],
-                ["id": "picked", "target": "local", "acceptedPicks": ["target": "cloud", "cloudPoolId": "pool-fixture"]],
-                ["id": "local", "target": "local", "prompt": "Local fixture task", "useWorktree": true,
-                 "cloudEnvironmentId": "unused-env", "acceptedPicks": ["target": "local", "cloudPoolId": "unused-pool", "effort": "high"]],
-                ["id": "future", "futureLocalOption": ["keep": true]]
-            ],
-            "cloudSpawnedTasks": [["taskId": "old-cloud", "sessionId": "cloud-session-fixture"]],
-            "resolvedBackgroundTaskSuggestions": ["cloud": "started", "old-cloud": "started_notified", "local": "dismissed"]
-        ]
-        let transferred = try XCTUnwrap(JSONSerialization.jsonObject(with: SessionTransferRecord.data(from: source)) as? [String: Any])
-        let suggestions = try XCTUnwrap(transferred["backgroundTaskSuggestions"] as? [[String: Any]])
-        XCTAssertEqual(suggestions.compactMap { $0["id"] as? String }, ["local", "future"])
-        XCTAssertEqual(suggestions[0]["prompt"] as? String, "Local fixture task")
-        XCTAssertEqual(suggestions[0]["useWorktree"] as? Bool, true)
-        XCTAssertNil(suggestions[0]["cloudEnvironmentId"])
-        XCTAssertEqual(suggestions[0]["acceptedPicks"] as? NSDictionary, ["target": "local", "effort": "high"] as NSDictionary)
-        XCTAssertEqual(transferred["resolvedBackgroundTaskSuggestions"] as? NSDictionary, ["local": "dismissed"] as NSDictionary)
-    }
-
-    func testLocalLineageExecutionTargetsAndDisplayPreferenceStayIntact() throws {
-        let source: [String: Any] = [
-            "dispatchParentId": "local-parent-fixture", "dispatchParentOrigin": "local",
-            "spawnedFrom": ["sessionId": "local-parent-fixture", "taskId": "local-task-fixture", "sharedCheckout": true],
-            "forkedFromSessionId": "local-parent-fixture", "priorCliSessionIds": ["local-history-fixture"],
-            "sshConfig": ["host": "fixture-host"], "wslConfig": ["distro": "fixture-distro"],
-            "cuSelectedDisplayId": 7, "prs": [["number": 17]], "spaceInTitle": "cloud account fixture"
-        ]
-        let transferred = try XCTUnwrap(JSONSerialization.jsonObject(with: SessionTransferRecord.data(from: source)) as? NSDictionary)
-        XCTAssertEqual(transferred, source as NSDictionary)
-    }
-
-    func testOnlyExplicitLocalDispatchAncestrySurvives() throws {
-        for origin in [nil, "remote", "future-origin", "local"] {
-            var source: [String: Any] = ["dispatchParentId": "parent-fixture", "futureTask": ["target": "cloud"]]
-            source["dispatchParentOrigin"] = origin
-            let transferred = try XCTUnwrap(JSONSerialization.jsonObject(with: SessionTransferRecord.data(from: source)) as? [String: Any])
-            XCTAssertEqual(transferred["dispatchParentId"] as? String, origin == "local" ? "parent-fixture" : nil)
-            XCTAssertEqual(transferred["dispatchParentOrigin"] as? String, origin == "local" ? "local" : nil)
-            XCTAssertEqual(transferred["futureTask"] as? NSDictionary, source["futureTask"] as? NSDictionary)
-        }
-    }
-
-    func testMixedSuggestionValuesDoNotHideKnownCloudTasksOrEraseOpaqueMetadata() throws {
-        let source: [String: Any] = [
-            "backgroundTaskSuggestions": [
-                "future-value", NSNull(),
-                ["id": "cloud", "acceptedPicks": ["cloudPoolId": "pool-fixture"]],
-                ["id": "local", "acceptedPicks": ["target": "local", "cloudPoolId": "unused-pool"],
-                 "futureMetadata": ["target": "cloud", "cloudEnvironmentId": "opaque-fixture"]],
-                ["id": "future", "cloudEnvironmentId": NSNull()]
-            ],
-            "resolvedBackgroundTaskSuggestions": ["cloud": "started", "local": "dismissed", "unrelated": ["future": true]]
-        ]
-        let transferred = try XCTUnwrap(JSONSerialization.jsonObject(with: SessionTransferRecord.data(from: source)) as? [String: Any])
-        let suggestions = try XCTUnwrap(transferred["backgroundTaskSuggestions"] as? [Any])
-        XCTAssertEqual(suggestions.count, 4)
-        XCTAssertEqual(suggestions[0] as? String, "future-value")
-        XCTAssertTrue(suggestions[1] is NSNull)
-        let local = try XCTUnwrap(suggestions[2] as? [String: Any])
-        XCTAssertEqual(local["acceptedPicks"] as? NSDictionary, ["target": "local"] as NSDictionary)
-        XCTAssertEqual(local["futureMetadata"] as? NSDictionary, ["target": "cloud", "cloudEnvironmentId": "opaque-fixture"] as NSDictionary)
-        XCTAssertEqual((suggestions[3] as? [String: Any])?["id"] as? String, "future")
-        XCTAssertEqual(transferred["resolvedBackgroundTaskSuggestions"] as? NSDictionary,
-                       ["local": "dismissed", "unrelated": ["future": true]] as NSDictionary)
+    func testLineageAndPendingResultsRemainUnchanged() throws {
+        let source: [String: Any] = ["spawnedFrom": ["sessionId": "fixture-parent", "taskId": "fixture-task", "sharedCheckout": true],
+            "forkedFromSessionId": "fixture-parent", "dispatchParentId": "fixture-parent", "dispatchParentOrigin": "future-origin",
+            "priorCliSessionIds": ["fixture-history"], "sideSessionNotes": ["Full result"],
+            "queuedSideSessionNotes": [["id": "fixture-note", "text": "Unacknowledged result"]]]
+        XCTAssertEqual(try transfer(source), source as NSDictionary)
     }
 }

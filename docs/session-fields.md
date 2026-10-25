@@ -1,42 +1,42 @@
-# Code session transfer fields
+# Code conversation preservation policy
 
-Claude Switch transfers the selected Code session index as a complete JSON object, removing account authorization, cloud bindings and live connection state through `SessionTransferRecord`. Local transcripts remain in place. JSON formatting and key order may change; nested values and integer metadata are preserved.
+The boundary is layered: allow only established storage ownership locations; inside those locations preserve ordinary data by default; exclude evidenced identity, credentials, grants and unusable live handles. This is not a whitelist of title/model/settings fields, and there is no per-Claude-version gate for opaque metadata.
 
-## Preserved data
+## Complete records and relationships
 
-- Session and transcript IDs, titles, models, effort, permission modes and their provenance.
-- Working directories, worktrees, branches, PR metadata and repository associations.
-- Local preferences, resume settings, history, local task lineage and display selection.
-- SSH/WSL execution targets and transcript locations. Transferring an index does not provision remote access or move external resources.
-- New fields and nested metadata outside the explicit exclusions below.
+Indexes retain their complete JSON values, including future fields, nested objects, integer metadata, titles, model/effort preferences, workspace/worktree/branch associations, artifacts, cloud task descriptions and links, scheduling descriptions, interrupted intent and native lineage. Serialization may change whitespace and key order. Session and CLI transcript IDs remain unchanged. Native descendants, including archived ones, travel with their main conversation.
+
+Cloud IDs and publication references are retained as information. They do not confer access to the old account's server resources. SSH/WSL destinations remain descriptive execution context; the transfer neither provisions remote access nor restores a remote process.
 
 ## Excluded data
 
-The complete top-level exclusion list lives in [`SessionTransferRecord.swift`](../Sources/SwitchMac/SessionTransferRecord.swift). It covers:
+The authoritative implementation is [`SessionTransferRecord.swift`](../Sources/SwitchMac/SessionTransferRecord.swift).
 
-| Category | Examples |
+| Boundary | Treatment |
 | --- | --- |
-| Account and connector authorization | `emailAddress`, `envScopeId`, `enabledMcpTools`, `remoteMcpServersConfig`, `withheldConnectorHosts` |
-| Browser and computer-use grants | `chromePermissionMode`, `chromeAllowedDomains`, `cuAllowedApps`, `cuGrantFlags`, `sessionPermissionUpdates` |
-| Live connections and processes | Bridge IDs, remote-control state, SSH process and reattachment state, prior screenshot geometry |
-| Cloud handoffs and tasks | `cloudSessionId`, `movedToCloud`, `cloudSpawnedTasks`, `spaceId`, `scheduledTaskId`, `scheduledRunContinued` |
-| Cloud publications and process settings | `publishedArtifacts`, `armedWorkAtQuit`, `violinBow` and its settings/prompt companions |
+| Index account identity | Exclude `emailAddress`, `accountId`, `accountUuid`, `organizationId`, `organizationUuid`, `envScopeId` and recognized credential keys. |
+| Live bindings | Exclude `bridgeSessionIds`, `remoteControlSpawn`, `remoteControlLiveAtUpdateQuit`, `sshRemoteProcessId` and `sshReattach`. |
+| Browser/computer authority | Exclude `chromePermissionMode`, `chromeAllowedDomains`, `cuAllowedApps`, `cuGrantFlags`, `cuFlagsGrantedAt` and `alwaysAllowedReasons`. Persistent browser credential contexts require reauthorization through Claude before transfer. |
+| `sessionPermissionUpdates` | Preserve complete `addDirectories` and `removeDirectories` objects. Exclude tool-rule grants and permission-mode operations. An unknown authorization operation stops the transfer. |
+| Connector/SSH configuration | Preserve `remoteMcpServersConfig` and `sshConfig` recursively, excluding recognized credentials/authorization headers, cookies, token/secret/password/key fields and SSH identity-file/agent references. Credential-bearing URLs stop the operation. |
+| Task presentation stores | Import only scoped task data; exclude recognized embedded credential keys. All other target Local Storage keys remain byte-for-byte values from the target login. |
 
-Some containers need narrower cleanup:
+Credential classification examines keys inside evidenced authorization/presentation boundaries. It does not redact transcript text, attachment bytes or arbitrary task metadata because they contain a word such as “token”. Unknown ordinary fields remain. An as-yet-unidentified credential encoding still requires an explicit policy update; preservation is not proof that every future field has known semantics.
 
-| Path | Handling |
-| --- | --- |
-| `dispatchParentId`, `dispatchParentOrigin` | Keep only explicitly local ancestry. |
-| `pendingFirstStart.options.remoteControlAtStart` | Remove this member; preserve other startup options. |
-| `backgroundTaskSuggestions` | Remove cloud suggestions. Keep local suggestions and remove unused cloud environment/pool choices from them and their accepted choices. |
-| `resolvedBackgroundTaskSuggestions` | Remove results belonging to removed cloud suggestions or cloud child tasks. |
+## Files and ownership
 
-## Source selection and validation
+`ConversationResources` retains every file and directory inside a selected session/CLI-owned companion root, including hidden files, empty directories and new extensions. Overlapping directories retain both sets of attachments; conflicting content at the same path stops the operation. Target-only pending manifests stop rather than accepting stale work.
 
-The current account's copy is authoritative for followed sessions, including preference changes without new activity. If it has no copy and the target already does, the target stays intact. A fallback from another account is offered only when the target has no copy. An archived current copy is not resurrected from a different account. Manual transfers use the explicitly selected source and show target replacements in the preview.
+Main JSONL histories and complete native subagent directories remain shared in place. Referenced native agent histories must exist; missing or ambiguous histories stop the operation. Working directories, worktrees and effective additional-folder grants must be available. Removed folder grants are not incorrectly required to exist.
 
-Every transfer requires valid JSON, matching session and transcript IDs, an absolute working directory, an available local transcript and a verified destination. The preview and pre-quit check require exact source and destination file fingerprints. After Claude quits, source formatting and already-excluded state may differ only when `SessionTransferRecord` produces identical transfer bytes to the pre-quit check. Every preserved field, including unknown metadata, must remain unchanged; destination fingerprints stay exact. Source removals use the exact post-quit digest, so later writes still stop removal. Unsafe paths and conflicting identities stop the operation. Writes and target replacements use the same journal and rollback as account switching.
+Account-scoped waiting-input manifests retain their original message IDs, order, data and future metadata. Blob references must resolve to the expected SHA-256 bytes. The target is verified before the source manifest is removed, so a committed operation has one queue owner. Switch does not send those messages.
 
-Transaction failures log only their fixed operation stage and rollback outcome to the macOS log (`dev.claudeswitch.desktop`, category `operations`). Account identities, paths, record contents and error descriptions are not logged.
+Original non-queue companion payload paths remain available for historical references. Active resources never depend solely on a login recovery archive. `switch-presentation/<sessionId>.json` is conversation-owned and contains only selected non-credential view data; it supports a transfer performed before the eventual login switch.
 
-Claude owns the metadata format. Preserving unknown fields avoids discarding ordinary settings, but does not establish that every future field is safe to carry between accounts. Add a specific exclusion when an account-bound field is identified; do not infer authorization from keywords in arbitrary metadata or user content.
+## Revalidation and recovery
+
+The preview and pre-quit check pin source and target fingerprints. After normal quit, Claude may flush ordinary metadata and resources. The final complete values are retained while session identity, transcript identity, ancestry, cwd/worktree and the previewed destinations stay pinned. A changed descendant set stops the operation.
+
+The journal installs all target records, companions and presentation first. It verifies installed hashes, the full target tree and unchanged retained shared histories before source cleanup and again before commit. Each source removal uses its exact final digest. Recovery capacity is checked before the first rename. Old journals keep their original file-level semantics; removing copy capability does not add deletions to old recovery operations.
+
+Failure logs contain fixed operation stages and rollback results, without identities, paths or record contents. See [the integrity contract and verification](session-continuity.md) for coverage and runtime boundaries.

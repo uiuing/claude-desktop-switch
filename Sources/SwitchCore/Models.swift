@@ -149,12 +149,16 @@ public struct Conversation: Codable, Identifiable, Hashable, Sendable {
     public var recordRelativePath: String
     public var cliSessionID: String?
     public var archived: Bool
+    public var parentSessionID: String?
+    public var invalidLineage: Bool?
     public init(id: String, sessionID: String, accountID: String, organizationID: String, title: String,
                 kind: SessionKind, modifiedAt: Date, model: String? = nil, project: String? = nil,
-                recordRelativePath: String, cliSessionID: String? = nil, archived: Bool = false) {
+                recordRelativePath: String, cliSessionID: String? = nil, archived: Bool = false,
+                parentSessionID: String? = nil, invalidLineage: Bool? = nil) {
         self.id = id; self.sessionID = sessionID; self.accountID = accountID; self.organizationID = organizationID
         self.title = title; self.kind = kind; self.modifiedAt = modifiedAt; self.model = model; self.project = project
         self.recordRelativePath = recordRelativePath; self.cliSessionID = cliSessionID; self.archived = archived
+        self.parentSessionID = parentSessionID; self.invalidLineage = invalidLineage
     }
 }
 
@@ -164,12 +168,11 @@ public struct FollowRule: Codable, Identifiable, Sendable {
     public var id: String { conversationID }
     public var conversationID: String
     public var sessionID: String?
-    public var transferMode: SessionTransferMode
     public var mode: FollowMode
     public var targetAccountIDs: [String]
-    public init(conversationID: String, sessionID: String? = nil, transferMode: SessionTransferMode = .move,
+    public init(conversationID: String, sessionID: String? = nil,
                 mode: FollowMode = .allSavedAccounts, targetAccountIDs: [String] = []) {
-        self.conversationID = conversationID; self.sessionID = sessionID; self.transferMode = transferMode
+        self.conversationID = conversationID; self.sessionID = sessionID
         self.mode = mode; self.targetAccountIDs = targetAccountIDs
     }
     public func matches(_ session: Conversation) -> Bool {
@@ -177,12 +180,11 @@ public struct FollowRule: Codable, Identifiable, Sendable {
         // Legacy rules included the desktop session ID at the end of the index identity.
         return conversationID == session.id || conversationID.split(separator: "/").last.map(String.init) == session.sessionID
     }
-    private enum CodingKeys: String, CodingKey { case conversationID, sessionID, transferMode, mode, targetAccountIDs }
+    private enum CodingKeys: String, CodingKey { case conversationID, sessionID, mode, targetAccountIDs }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         conversationID = try c.decode(String.self, forKey: .conversationID)
         sessionID = try c.decodeIfPresent(String.self, forKey: .sessionID)
-        transferMode = try c.decodeIfPresent(SessionTransferMode.self, forKey: .transferMode) ?? .move
         mode = try c.decodeIfPresent(FollowMode.self, forKey: .mode) ?? .allSavedAccounts
         targetAccountIDs = try c.decodeIfPresent([String].self, forKey: .targetAccountIDs) ?? []
     }
@@ -268,7 +270,7 @@ public protocol UsageProvider: Sendable { func fetchCurrent(accountID: String) a
 public protocol AccountVault: Sendable { func contains(accountID: String) async -> Bool }
 public protocol TranscriptReader: Sendable { func scan(since: Date) async throws -> TokenReport }
 public protocol SwitchService: Sendable {
-    func prepare(kind: OperationKind, target: Account, sessions: [Conversation], transferModes: [String: SessionTransferMode]) async throws -> OperationPlan
+    func prepare(kind: OperationKind, target: Account, sessions: [Conversation]) async throws -> OperationPlan
     func execute(_ plan: OperationPlan, confirmedPlanID: UUID, target: Account, sessions: [Conversation]) async throws -> OperationResult
     func pendingRecovery() async throws -> [String]
     func recover(transactionID: String) async throws

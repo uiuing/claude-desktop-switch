@@ -15,10 +15,10 @@ final class SessionTransferTests: XCTestCase {
         let sourceData: Data
         let destinationData: Data
         var destinationRelative: String { "claude-code-sessions/\(target.id)/\(target.organizationID!)/\(session.sessionID).json" }
-        func changes(_ mode: SessionTransferMode = .move, prepared: [MigrationChange] = []) throws -> [MigrationChange] {
+        func changes(prepared: [MigrationChange] = []) throws -> [MigrationChange] {
             try MigrationBuilder.changes(sessions: [session], target: target, environment: env,
                 expectedDigests: [session.id: digest(sourceData)],
-                destinations: [destinationRelative: .sha256(digest(destinationData))], modes: [session.id: mode],
+                destinations: [destinationRelative: .sha256(digest(destinationData))],
                 preparedTransfers: Dictionary(uniqueKeysWithValues: prepared.compactMap { change in
                     change.data.map { (change.relative, $0) }
                 }))
@@ -27,7 +27,7 @@ final class SessionTransferTests: XCTestCase {
             let plan = OperationPlan(kind: .migrate, sourceAccountID: session.accountID, targetAccountID: target.id,
                                      configDigest: "fixture", steps: [])
             let transaction = try FileTransaction(parent: env.root.appendingPathComponent("transactions"), live: env.desktop, plan: plan)
-            for change in changes { try transaction.stage(relative: change.relative, data: change.data, expectation: change.expectation) }
+            try MigrationBuilder.stage(changes, in: transaction)
             return transaction
         }
     }
@@ -46,8 +46,9 @@ final class SessionTransferTests: XCTestCase {
         let source = env.desktop.appendingPathComponent(relative)
         let destination = env.desktop.appendingPathComponent("claude-code-sessions/\(target.id)/\(target.organizationID!)/\(sid).json")
         let transcript = env.projects.appendingPathComponent("fixture-project/\(cli).jsonl")
-        var record: [String: Any] = ["sessionId": sid, "cliSessionId": cli, "cwd": "/fixture/project",
+        var record: [String: Any] = ["sessionId": sid, "cliSessionId": cli, "cwd": home.appendingPathComponent("workspace").path,
                                     "title": "Latest", "remoteControl": true, "lastActivityAt": 200]
+        try SafeFiles.privateDirectory(home.appendingPathComponent("workspace"))
         if let permissionMode { record["permissionMode"] = permissionMode }
         record.merge(sourceFields) { _, new in new }
         let sourceData = try JSONSerialization.data(withJSONObject: record, options: .sortedKeys)
@@ -55,7 +56,7 @@ final class SessionTransferTests: XCTestCase {
             "cwd": "/old/project", "title": "Old", "permissionMode": "plan", "lastActivityAt": 100]
         targetRecord.merge(targetFields) { _, new in new }
         let destinationData = try JSONSerialization.data(withJSONObject: targetRecord, options: .sortedKeys)
-        for (url, data) in [(source, sourceData), (destination, destinationData), (transcript, Data("shared transcript\n".utf8))] {
+        for (url, data) in [(source, sourceData), (destination, destinationData), (transcript, Data(#"{"type":"user","message":{"content":"shared transcript"}}"#.utf8))] {
             try SafeFiles.privateDirectory(url.deletingLastPathComponent()); try SafeFiles.atomicWrite(data, to: url)
         }
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 200)], ofItemAtPath: source.path)
@@ -65,11 +66,10 @@ final class SessionTransferTests: XCTestCase {
                        transcript: transcript, sourceData: sourceData, destinationData: destinationData)
     }
 
-    func testPreviewDefaultsToMoveAndCapturesExistingTarget() async throws {
+    func testPreviewCapturesExistingTarget() async throws {
         let f = try fixture(), vault = CredentialVault(root: f.env.root.appendingPathComponent("vault"))
         let engine = SwitchEngine(environment: f.env, vault: vault)
         let plan = try await engine.prepare(kind: .migrate, target: f.target, sessions: [f.session])
-        XCTAssertEqual(plan.transferMode(for: f.session.id), .move)
         XCTAssertEqual(plan.destinationExpectations[f.destinationRelative], .sha256(digest(f.destinationData)))
         XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
         XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
@@ -85,58 +85,52 @@ final class SessionTransferTests: XCTestCase {
         XCTAssertTrue(empty.conversationIDs.isEmpty)
         XCTAssertTrue(empty.sourceDigests.isEmpty)
         XCTAssertTrue(empty.destinationExpectations.isEmpty)
-        XCTAssertFalse(empty.steps.contains(L10n.tr("Bring followed conversations along, replacing matching copies in the target account")))
-        let reselected = try await engine.prepare(kind: .switchAccount, target: f.target, sessions: [f.session],
-                                                  transferModes: [f.session.id: .copy])
-        XCTAssertEqual(reselected.transferMode(for: f.session.id), .copy)
+        XCTAssertFalse(empty.steps.contains(L10n.tr("Bring selected conversations and their subtasks to this account")))
+        let reselected = try await engine.prepare(kind: .switchAccount, target: f.target, sessions: [f.session])
         XCTAssertEqual(reselected.destinationExpectations[f.destinationRelative], .sha256(digest(f.destinationData)))
         XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
         XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
     }
 
-    func testMoveAndCopyReplaceSameSessionAndKeepSharedTranscript() async throws {
+    func testTransferReplacesSameSessionAndKeepsSharedTranscript() async throws {
         try XCTSkipUnless(BuildAccess.allowsClaudeWrites, "Run isolated fixture tests with CLAUDE_WRITE_ENABLED")
-        for mode in SessionTransferMode.allCases {
-            let f = try fixture(), changes = try f.changes(mode), transaction = try f.transaction(changes)
-            XCTAssertEqual(changes.first?.relative, f.destinationRelative)
-            try await transaction.apply { }
-            try transaction.commit()
-            XCTAssertEqual(FileManager.default.fileExists(atPath: f.source.path), mode == .copy)
-            let updated = try SafeFiles.json(f.destination)
-            XCTAssertEqual(updated["title"].string, "Latest")
-            XCTAssertEqual(updated["permissionMode"].string, "bypassPermissions")
-            XCTAssertNil(updated["remoteControl"].bool)
-            XCTAssertEqual(try Data(contentsOf: f.transcript), Data("shared transcript\n".utf8))
-            XCTAssertEqual(try Data(contentsOf: transaction.root.appendingPathComponent("originals/" + f.destinationRelative)), f.destinationData)
-        }
+        let f = try fixture(), changes = try f.changes(), transaction = try f.transaction(changes)
+        XCTAssertEqual(changes.first?.relative, f.destinationRelative)
+        try await transaction.apply { }
+        try transaction.commit()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.source.path))
+        let updated = try SafeFiles.json(f.destination)
+        XCTAssertEqual(updated["title"].string, "Latest")
+        XCTAssertEqual(updated["permissionMode"].string, "bypassPermissions")
+        XCTAssertEqual(updated["remoteControl"].bool, true)
+        XCTAssertEqual(try Data(contentsOf: f.transcript), Data(#"{"type":"user","message":{"content":"shared transcript"}}"#.utf8))
+        XCTAssertEqual(try Data(contentsOf: transaction.root.appendingPathComponent("originals/" + f.destinationRelative)), f.destinationData)
+
     }
 
-    func testFollowedMoveAndCopyKeepOriginalPermissionMode() async throws {
+    func testFollowedTransferKeepsOriginalPermissionMode() async throws {
         try XCTSkipUnless(BuildAccess.allowsClaudeWrites, "Run isolated fixture tests with CLAUDE_WRITE_ENABLED")
         let permissionModes: [String?] = ["auto", "default", "acceptEdits", "plan", "bypassPermissions", "dontAsk", nil]
-        for mode in SessionTransferMode.allCases {
-            for permissionMode in permissionModes {
-                let f = try fixture(permissionMode: permissionMode)
-                let rule = FollowRule(conversationID: f.session.id, sessionID: f.session.sessionID, transferMode: mode)
-                let sessions = SessionLibrary.followedSessions([f.session], rules: [rule],
-                    activeAccountID: f.session.accountID, targetAccountID: f.target.id)
-                let engine = SwitchEngine(environment: f.env, vault: CredentialVault(root: f.env.root.appendingPathComponent("vault")))
-                let plan = try await engine.prepare(kind: .switchAccount, target: f.target, sessions: sessions,
-                                                    transferModes: [f.session.id: rule.transferMode])
-                let changes = try MigrationBuilder.changes(sessions: sessions, target: f.target, environment: f.env,
-                    expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations, modes: plan.transferModes)
-                let transaction = try f.transaction(changes)
-                try await transaction.apply { }
-                let updated = try SafeFiles.json(f.destination)
-                XCTAssertEqual(updated.object?["permissionMode"], permissionMode.map { JSONValue.string($0) })
-                XCTAssertNil(updated.object?["remoteControl"])
-                XCTAssertEqual(FileManager.default.fileExists(atPath: f.source.path), mode == .copy)
-                if mode == .copy { XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData) }
-                try await transaction.rollback { }
-                XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
-                XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
-            }
+        for permissionMode in permissionModes {
+            let f = try fixture(permissionMode: permissionMode)
+            let rule = FollowRule(conversationID: f.session.id, sessionID: f.session.sessionID)
+            let sessions = SessionLibrary.followedSessions([f.session], rules: [rule],
+                activeAccountID: f.session.accountID, targetAccountID: f.target.id)
+            let engine = SwitchEngine(environment: f.env, vault: CredentialVault(root: f.env.root.appendingPathComponent("vault")))
+            let plan = try await engine.prepare(kind: .switchAccount, target: f.target, sessions: sessions)
+            let changes = try MigrationBuilder.changes(sessions: sessions, target: f.target, environment: f.env,
+                expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations)
+            let transaction = try f.transaction(changes)
+            try await transaction.apply { }
+            let updated = try SafeFiles.json(f.destination)
+            XCTAssertEqual(updated.object?["permissionMode"], permissionMode.map { JSONValue.string($0) })
+            XCTAssertEqual(updated["remoteControl"].bool, true)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: f.source.path))
+            try await transaction.rollback { }
+            XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
+            XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
         }
+
     }
 
     func testRestartRecoveryRestoresBothSidesAfterMove() async throws {
@@ -150,7 +144,7 @@ final class SessionTransferTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
     }
 
-    func testMoveAndCopyKeepWorktreePreferencesAndHistory() async throws {
+    func testTransferKeepsWorktreePreferencesAndHistory() async throws {
         try XCTSkipUnless(BuildAccess.allowsClaudeWrites, "Run isolated fixture tests with CLAUDE_WRITE_ENABLED")
         let metadata: [String: Any] = [
             "worktreePath": "/fixture/worktrees/feature", "worktreeName": "feature", "branch": "feature", "sourceBranch": "main",
@@ -159,20 +153,19 @@ final class SessionTransferTests: XCTestCase {
             "priorCliSessionIds": ["0a1b2c3d-1111-4aaa-8bbb-000000000099"],
             "prs": [["number": 17, "branch": "feature"]], "futureState": ["nested": ["enabled": true]]
         ]
-        for mode in SessionTransferMode.allCases {
-            let f = try fixture(permissionMode: "auto", sourceFields: metadata)
-            let transaction = try f.transaction(f.changes(mode))
-            try await transaction.apply { }
-            let source = try JSONDecoder().decode(JSONValue.self, from: f.sourceData)
-            let target = try SafeFiles.json(f.destination)
-            for key in metadata.keys { XCTAssertEqual(target[key], source[key], key) }
-            XCTAssertEqual(target["permissionMode"].string, "auto")
-            XCTAssertEqual(try Data(contentsOf: f.transcript), Data("shared transcript\n".utf8))
-            XCTAssertEqual(FileManager.default.fileExists(atPath: f.source.path), mode == .copy)
-            try await transaction.rollback { }
-            XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
-            XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
-        }
+        let f = try fixture(permissionMode: "auto", sourceFields: metadata)
+        let transaction = try f.transaction(f.changes())
+        try await transaction.apply { }
+        let source = try JSONDecoder().decode(JSONValue.self, from: f.sourceData)
+        let target = try SafeFiles.json(f.destination)
+        for key in metadata.keys { XCTAssertEqual(target[key], source[key], key) }
+        XCTAssertEqual(target["permissionMode"].string, "auto")
+        XCTAssertEqual(try Data(contentsOf: f.transcript), Data(#"{"type":"user","message":{"content":"shared transcript"}}"#.utf8))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.source.path))
+        try await transaction.rollback { }
+        XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
+        XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
+
     }
 
     func testSelectedSourceCanReplaceRegardlessOfActivityTime() async throws {
@@ -183,8 +176,7 @@ final class SessionTransferTests: XCTestCase {
                 let plan = try await engine.prepare(kind: kind, target: f.target, sessions: [f.session])
                 XCTAssertEqual(plan.conversationIDs, [f.session.id])
             }
-            XCTAssertNoThrow(try f.changes(.move))
-            XCTAssertNoThrow(try f.changes(.copy))
+            XCTAssertNoThrow(try f.changes())
             XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
             XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
         }
@@ -222,7 +214,7 @@ final class SessionTransferTests: XCTestCase {
             activeAccountID: f.session.accountID, targetAccountID: f.target.id)
         XCTAssertEqual(selected.map(\.id), [f.session.id])
         let changes = try MigrationBuilder.changes(sessions: selected, target: f.target, environment: f.env,
-            expectedDigests: [f.session.id: digest(f.sourceData)], destinations: [f.destinationRelative: .sha256(digest(f.destinationData))], modes: [:])
+            expectedDigests: [f.session.id: digest(f.sourceData)], destinations: [f.destinationRelative: .sha256(digest(f.destinationData))])
         let transaction = try f.transaction(changes)
         try await transaction.apply { }
         let transferred = try SafeFiles.json(f.destination)
@@ -237,14 +229,13 @@ final class SessionTransferTests: XCTestCase {
         let f = try fixture()
         var targetSession = f.session
         targetSession.accountID = f.target.id; targetSession.id = "target-copy"
-        for mode in SessionTransferMode.allCases {
-            let rule = FollowRule(conversationID: f.session.id, sessionID: f.session.sessionID, transferMode: mode)
-            let selected = SessionLibrary.followedSessions([f.session, targetSession], rules: [rule],
-                activeAccountID: "0a1b2c3d-1111-4aaa-8bbb-000000000099", targetAccountID: f.target.id)
-            let changes = try MigrationBuilder.changes(sessions: selected, target: f.target, environment: f.env,
-                expectedDigests: [:], destinations: [:], modes: [:])
-            XCTAssertTrue(changes.isEmpty)
-        }
+        let rule = FollowRule(conversationID: f.session.id, sessionID: f.session.sessionID)
+        let selected = SessionLibrary.followedSessions([f.session, targetSession], rules: [rule],
+            activeAccountID: "0a1b2c3d-1111-4aaa-8bbb-000000000099", targetAccountID: f.target.id)
+        let changes = try MigrationBuilder.changes(sessions: selected, target: f.target, environment: f.env,
+            expectedDigests: [:], destinations: [:])
+        XCTAssertTrue(changes.isEmpty)
+
         XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
         XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
     }
@@ -258,28 +249,27 @@ final class SessionTransferTests: XCTestCase {
         }
     }
 
-    func testMoveAndCopyRemoveCloudBindingsButRollbackRestoresOriginals() async throws {
+    func testTransferPreservesNonCredentialMetadataAndRollbackRestoresOriginals() async throws {
         try XCTSkipUnless(BuildAccess.allowsClaudeWrites, "Run isolated fixture tests with CLAUDE_WRITE_ENABLED")
-        for mode in SessionTransferMode.allCases {
-            let f = try fixture(permissionMode: "auto", sourceFields: [
-                "movedToCloud": ["cloudSessionId": "cloud-fixture"], "spaceId": "space-fixture", "scheduledTaskId": "routine-fixture",
-                "pendingFirstStart": ["options": ["remoteControlAtStart": true, "useWorktree": true]],
-                "sessionSettings": ["outputStyle": "concise"], "cuSelectedDisplayId": 7
-            ])
-            let transaction = try f.transaction(f.changes(mode))
-            try await transaction.apply { }
-            let transferred = try SafeFiles.json(f.destination)
-            for key in ["movedToCloud", "spaceId", "scheduledTaskId"] { XCTAssertNil(transferred.object?[key]) }
-            XCTAssertNil(transferred["pendingFirstStart"]["options"].object?["remoteControlAtStart"])
-            XCTAssertEqual(transferred["pendingFirstStart"]["options"]["useWorktree"].bool, true)
-            XCTAssertEqual(transferred["permissionMode"].string, "auto")
-            XCTAssertEqual(transferred["sessionSettings"]["outputStyle"].string, "concise")
-            XCTAssertEqual(transferred["cuSelectedDisplayId"].number, 7)
-            XCTAssertEqual(FileManager.default.fileExists(atPath: f.source.path), mode == .copy)
-            try await transaction.rollback { }
-            XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
-            XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
-        }
+        let f = try fixture(permissionMode: "auto", sourceFields: [
+            "movedToCloud": ["cloudSessionId": "cloud-fixture"], "spaceId": "space-fixture", "scheduledTaskId": "routine-fixture",
+            "pendingFirstStart": ["options": ["remoteControlAtStart": true, "useWorktree": true]],
+            "sessionSettings": ["outputStyle": "concise"], "cuSelectedDisplayId": 7
+        ])
+        let transaction = try f.transaction(f.changes())
+        try await transaction.apply { }
+        let transferred = try SafeFiles.json(f.destination)
+        for key in ["movedToCloud", "spaceId", "scheduledTaskId"] { XCTAssertNotNil(transferred.object?[key]) }
+        XCTAssertEqual(transferred["pendingFirstStart"]["options"]["remoteControlAtStart"].bool, true)
+        XCTAssertEqual(transferred["pendingFirstStart"]["options"]["useWorktree"].bool, true)
+        XCTAssertEqual(transferred["permissionMode"].string, "auto")
+        XCTAssertEqual(transferred["sessionSettings"]["outputStyle"].string, "concise")
+        XCTAssertEqual(transferred["cuSelectedDisplayId"].number, 7)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.source.path))
+        try await transaction.rollback { }
+        XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
+        XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
+
     }
 
     func testTargetChangesAfterPreviewAreRejected() throws {
@@ -298,15 +288,15 @@ final class SessionTransferTests: XCTestCase {
         try SafeFiles.atomicWrite(stopped, to: f.source)
         XCTAssertThrowsError(try f.changes())
         let final = try f.changes(prepared: prepared)
-        XCTAssertEqual(final.first?.data, prepared.first?.data)
+        XCTAssertEqual(try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(final.first?.data))["armedWorkAtQuit"]["fixture"].bool, true)
         XCTAssertEqual(final.last?.expectation, .sha256(digest(stopped)))
     }
 
-    func testQuitRevalidationRejectsChangesToPreservedMetadataAndIdentity() throws {
+    func testQuitRevalidationRejectsChangesToIdentityAndWorkspace() throws {
         for fields: [String: Any] in [
-            ["permissionMode": "plan"], ["cwd": "/fixture/other"], ["title": "Changed"], ["lastActivityAt": 300],
-            ["sessionId": UUID().uuidString], ["cliSessionId": UUID().uuidString], ["futureSetting": true],
-            ["sessionSettings": ["outputStyle": "verbose"]]
+            ["cwd": "/fixture/other"], ["worktreePath": "/fixture/new-worktree"],
+            ["sessionId": UUID().uuidString], ["cliSessionId": UUID().uuidString],
+            ["forkedFromSessionId": UUID().uuidString], ["lineageDetached": true]
         ] {
             let f = try fixture(), prepared = try f.changes()
             var record = try XCTUnwrap(JSONSerialization.jsonObject(with: f.sourceData) as? [String: Any])
@@ -330,23 +320,22 @@ final class SessionTransferTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: f.destination), changed)
     }
 
-    func testQuitRevalidatedMoveAndCopyRollBackToTheStoppedSource() async throws {
+    func testQuitRevalidatedTransferRollsBackToTheStoppedSource() async throws {
         try XCTSkipUnless(BuildAccess.allowsClaudeWrites, "Run isolated fixture tests with CLAUDE_WRITE_ENABLED")
-        for mode in SessionTransferMode.allCases {
-            let f = try fixture(), prepared = try f.changes(mode)
-            var record = try XCTUnwrap(JSONSerialization.jsonObject(with: f.sourceData) as? [String: Any])
-            record["armedWorkAtQuit"] = ["fixture": true]
-            let stopped = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys, .prettyPrinted])
-            try SafeFiles.atomicWrite(stopped, to: f.source)
-            let transaction = try f.transaction(f.changes(mode, prepared: prepared))
-            try await transaction.apply { }
-            XCTAssertEqual(try Data(contentsOf: f.destination), prepared.first?.data)
-            XCTAssertEqual(FileManager.default.fileExists(atPath: f.source.path), mode == .copy)
-            XCTAssertEqual(try Data(contentsOf: f.transcript), Data("shared transcript\n".utf8))
-            try await transaction.rollback { }
-            XCTAssertEqual(try Data(contentsOf: f.source), stopped)
-            XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
-        }
+        let f = try fixture(), prepared = try f.changes()
+        var record = try XCTUnwrap(JSONSerialization.jsonObject(with: f.sourceData) as? [String: Any])
+        record["armedWorkAtQuit"] = ["fixture": true]
+        let stopped = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys, .prettyPrinted])
+        try SafeFiles.atomicWrite(stopped, to: f.source)
+        let transaction = try f.transaction(f.changes(prepared: prepared))
+        try await transaction.apply { }
+        XCTAssertEqual(try SafeFiles.json(f.destination)["armedWorkAtQuit"]["fixture"].bool, true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.source.path))
+        XCTAssertEqual(try Data(contentsOf: f.transcript), Data(#"{"type":"user","message":{"content":"shared transcript"}}"#.utf8))
+        try await transaction.rollback { }
+        XCTAssertEqual(try Data(contentsOf: f.source), stopped)
+        XCTAssertEqual(try Data(contentsOf: f.destination), f.destinationData)
+
     }
 
     func testSourceChangesAfterQuitRevalidationStillBlockRemoval() async throws {
@@ -385,7 +374,7 @@ final class SessionTransferTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: f.destination), newer)
     }
 
-    func testMixedBatchInstallsAllTargetsBeforeRemovingOnlyMoveSources() async throws {
+    func testBatchInstallsAllTargetsBeforeRemovingEverySource() async throws {
         try XCTSkipUnless(BuildAccess.allowsClaudeWrites, "Run isolated fixture tests with CLAUDE_WRITE_ENABLED")
         let f = try fixture()
         var second = f.session
@@ -400,15 +389,14 @@ final class SessionTransferTests: XCTestCase {
         let secondRelative = try MigrationBuilder.destinationRelative(session: second, target: f.target)
         let changes = try MigrationBuilder.changes(sessions: [f.session, second], target: f.target, environment: f.env,
             expectedDigests: [f.session.id: digest(f.sourceData), second.id: digest(bytes)],
-            destinations: [f.destinationRelative: .sha256(digest(f.destinationData)), secondRelative: .absent],
-            modes: [f.session.id: .move, second.id: .copy])
-        XCTAssertEqual(changes.count, 3)
+            destinations: [f.destinationRelative: .sha256(digest(f.destinationData)), secondRelative: .absent])
+        XCTAssertEqual(changes.count, 4)
         XCTAssertTrue(changes.prefix(2).allSatisfy { $0.data != nil })
-        XCTAssertEqual(changes.last?.relative, f.session.recordRelativePath)
+        XCTAssertEqual(Set(changes.suffix(2).map(\.relative)), [f.session.recordRelativePath, second.recordRelativePath])
         let transaction = try f.transaction(changes)
         try await transaction.apply { }
         XCTAssertFalse(FileManager.default.fileExists(atPath: f.source.path))
-        XCTAssertEqual(try Data(contentsOf: secondSource), bytes)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: secondSource.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: f.env.desktop.appendingPathComponent(secondRelative).path))
         try await transaction.rollback { }
         XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
@@ -422,7 +410,7 @@ final class SessionTransferTests: XCTestCase {
         try SafeFiles.atomicWrite(collision, to: f.destination)
         XCTAssertThrowsError(try MigrationBuilder.changes(sessions: [f.session], target: f.target, environment: f.env,
             expectedDigests: [f.session.id: digest(f.sourceData)],
-            destinations: [f.destinationRelative: .sha256(digest(collision))], modes: [:]))
+            destinations: [f.destinationRelative: .sha256(digest(collision))]))
     }
 
     func testSessionlessOrganizationFoldersDoNotBlockMigration() throws {
@@ -447,7 +435,7 @@ final class SessionTransferTests: XCTestCase {
         try SafeFiles.atomicWrite(Data("{}".utf8), to: elsewhere)
         func changes(_ target: Account) throws -> [MigrationChange] {
             try MigrationBuilder.changes(sessions: [f.session], target: target, environment: f.env,
-                expectedDigests: [f.session.id: digest(f.sourceData)], destinations: [f.destinationRelative: .absent], modes: [:])
+                expectedDigests: [f.session.id: digest(f.sourceData)], destinations: [f.destinationRelative: .absent])
         }
         XCTAssertThrowsError(try changes(f.target))
         var confirmed = f.target
@@ -459,45 +447,43 @@ final class SessionTransferTests: XCTestCase {
         let f = try fixture()
         try FileManager.default.removeItem(at: f.destination)
         let changes = try MigrationBuilder.changes(sessions: [f.session], target: f.target, environment: f.env,
-            expectedDigests: [f.session.id: digest(f.sourceData)], destinations: [f.destinationRelative: .absent], modes: [:])
+            expectedDigests: [f.session.id: digest(f.sourceData)], destinations: [f.destinationRelative: .absent])
         XCTAssertEqual(changes.count, 2)
         XCTAssertEqual(changes.first?.expectation, .absent)
         let updated = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(changes.first?.data))
         XCTAssertEqual(updated["permissionMode"].string, "bypassPermissions")
         try FileManager.default.removeItem(at: f.transcript)
         XCTAssertThrowsError(try MigrationBuilder.changes(sessions: [f.session], target: f.target, environment: f.env,
-            expectedDigests: [f.session.id: digest(f.sourceData)], destinations: [f.destinationRelative: .absent], modes: [:]))
+            expectedDigests: [f.session.id: digest(f.sourceData)], destinations: [f.destinationRelative: .absent]))
     }
 
     func testNewlySignedInTargetWithoutSessionDirectoryTransfersOnlyAfterConfirmation() async throws {
         try XCTSkipUnless(BuildAccess.allowsClaudeWrites, "Run isolated fixture tests with CLAUDE_WRITE_ENABLED")
-        for mode in SessionTransferMode.allCases {
-            let f = try fixture()
-            let targetRoot = f.env.desktop.appendingPathComponent("claude-code-sessions/\(f.target.id)")
-            try FileManager.default.removeItem(at: targetRoot)
-            let config = f.env.desktop.appendingPathComponent("config.json")
-            let signedIn = try JSONSerialization.data(withJSONObject: ["lastKnownAccountUuid": f.target.id])
-            try SafeFiles.atomicWrite(signedIn, to: config)
-            var target = f.target; target.organizationVerifiedAt = Date()
-            let engine = SwitchEngine(environment: f.env, vault: CredentialVault(root: f.env.root.appendingPathComponent("vault")))
-            let plan = try await engine.prepare(kind: .migrate, target: target, sessions: [f.session],
-                                                transferModes: [f.session.id: mode])
-            XCTAssertEqual(plan.sourceAccountID, target.id)
-            XCTAssertEqual(plan.destinationExpectations[f.destinationRelative], .absent)
-            XCTAssertFalse(FileManager.default.fileExists(atPath: targetRoot.path))
-            XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
+        let f = try fixture()
+        let targetRoot = f.env.desktop.appendingPathComponent("claude-code-sessions/\(f.target.id)")
+        try FileManager.default.removeItem(at: targetRoot)
+        let config = f.env.desktop.appendingPathComponent("config.json")
+        let signedIn = try JSONSerialization.data(withJSONObject: ["lastKnownAccountUuid": f.target.id])
+        try SafeFiles.atomicWrite(signedIn, to: config)
+        var target = f.target; target.organizationVerifiedAt = Date()
+        let engine = SwitchEngine(environment: f.env, vault: CredentialVault(root: f.env.root.appendingPathComponent("vault")))
+        let plan = try await engine.prepare(kind: .migrate, target: target, sessions: [f.session])
+        XCTAssertEqual(plan.sourceAccountID, target.id)
+        XCTAssertEqual(plan.destinationExpectations[f.destinationRelative], .absent)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: targetRoot.path))
+        XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
 
-            let changes = try MigrationBuilder.changes(sessions: [f.session], target: target, environment: f.env,
-                expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations, modes: plan.transferModes)
-            let transaction = try f.transaction(changes)
-            try await transaction.apply { }
-            XCTAssertEqual(try SafeFiles.json(f.destination)["cliSessionId"].string, f.session.cliSessionID)
-            XCTAssertEqual(FileManager.default.fileExists(atPath: f.source.path), mode == .copy)
-            XCTAssertEqual(try Data(contentsOf: config), signedIn)
-            XCTAssertEqual(try Data(contentsOf: f.transcript), Data("shared transcript\n".utf8))
-            try await transaction.rollback { }
-            XCTAssertFalse(FileManager.default.fileExists(atPath: f.destination.path))
-            XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
-        }
+        let changes = try MigrationBuilder.changes(sessions: [f.session], target: target, environment: f.env,
+            expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations)
+        let transaction = try f.transaction(changes)
+        try await transaction.apply { }
+        XCTAssertEqual(try SafeFiles.json(f.destination)["cliSessionId"].string, f.session.cliSessionID)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.source.path))
+        XCTAssertEqual(try Data(contentsOf: config), signedIn)
+        XCTAssertEqual(try Data(contentsOf: f.transcript), Data(#"{"type":"user","message":{"content":"shared transcript"}}"#.utf8))
+        try await transaction.rollback { }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: f.destination.path))
+        XCTAssertEqual(try Data(contentsOf: f.source), f.sourceData)
+
     }
 }

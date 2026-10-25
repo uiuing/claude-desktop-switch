@@ -68,6 +68,20 @@ public enum SafeFiles {
             .filter { (try? $0.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == false }
     }
 
+    /// Integrity inventories include hidden entries and reject links instead of silently skipping them.
+    public static func strictChildren(_ url: URL) throws -> [URL] {
+        try validateAncestors(url)
+        let entries = try FileManager.default.contentsOfDirectory(at: url,
+            includingPropertiesForKeys: [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey], options: [])
+        for entry in entries {
+            let attributes = try entry.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey, .isRegularFileKey])
+            guard attributes.isSymbolicLink != true, attributes.isDirectory == true || attributes.isRegularFile == true else {
+                throw SwitchError.unsafePath
+            }
+        }
+        return entries
+    }
+
     public static func validateAncestors(_ url: URL) throws {
         var path = URL(fileURLWithPath: "/", isDirectory: true)
         for c in url.standardizedFileURL.pathComponents where c != "/" {

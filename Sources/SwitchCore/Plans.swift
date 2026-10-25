@@ -1,12 +1,5 @@
 import Foundation
 
-public enum SessionTransferMode: String, Codable, CaseIterable, Sendable {
-    case move, copy
-    public var title: String { self == .move ? L10n.tr("Move") : L10n.tr("Copy") }
-    public var explanation: String {
-        self == .move ? L10n.tr("After moving, this conversation is removed from the original account.") : L10n.tr("After copying, both accounts keep this conversation.")
-    }
-}
 /// File changes have completed; opening Claude and securing the recovery copy can still need attention.
 public struct OperationResult: Sendable {
     public var needsManualOpen: Bool
@@ -19,6 +12,7 @@ public struct OperationResult: Sendable {
 public enum FileExpectation: Codable, Equatable, Sendable {
     case absent
     case sha256(String)
+    case directory(String)
 }
 
 /// `signOut` moves the signed-in login into Switch's vault so Claude opens to its sign-in screen.
@@ -35,10 +29,10 @@ public struct OperationPlan: Identifiable, Codable, Sendable {
     public var conversationIDs: [String] = []
     public var sourceDigests: [String: String] = [:]
     public var warnings: [String] = []
-    public var transferModes: [String: SessionTransferMode] = [:]
     public var destinationExpectations: [String: FileExpectation] = [:]
     public var targetOrganizationID: String?
-    public func transferMode(for id: String) -> SessionTransferMode { transferModes[id] ?? .move }
+    public var transferSessions: [Conversation]?
+    public var resourceExpectations: [String: FileExpectation]?
     public init(kind: OperationKind, sourceAccountID: String?, targetAccountID: String, configDigest: String,
                 steps: [String], conversationIDs: [String] = [], warnings: [String] = []) {
         self.kind = kind; self.sourceAccountID = sourceAccountID; self.targetAccountID = targetAccountID
@@ -65,15 +59,19 @@ public enum SessionLibrary {
     }
     public static func followedSessions(_ sessions: [Conversation], rules: [FollowRule], activeAccountID: String?,
                                        targetAccountID: String) -> [Conversation] {
-        let archivedCurrent = Set(sessions.filter { $0.accountID == activeAccountID && $0.archived }.map(\.sessionID))
+        let tree = ConversationTree(sessions)
+        let archivedCurrent = Set(tree.roots.filter {
+            $0.accountID == activeAccountID && tree.members(of: $0).allSatisfy(\.archived)
+        }.map(\.sessionID))
         let targetSessions = Set(sessions.filter { $0.accountID == targetAccountID }.map(\.sessionID))
-        let candidates = sessions.filter { session in
-            !session.archived && session.accountID != targetAccountID && rules.contains {
-                $0.matches(session) && ($0.mode == .allSavedAccounts || $0.targetAccountIDs.contains(targetAccountID))
+        let candidates = tree.visibleRoots.filter { session in
+            session.accountID != targetAccountID && rules.contains { rule in
+                tree.members(of: session).contains(where: rule.matches) &&
+                    (rule.mode == .allSavedAccounts || rule.targetAccountIDs.contains(targetAccountID))
             }
         }.sorted {
             if ($0.accountID == activeAccountID) != ($1.accountID == activeAccountID) { return $0.accountID == activeAccountID }
-            if $0.modifiedAt != $1.modifiedAt { return $0.modifiedAt > $1.modifiedAt }
+            if tree.modifiedAt(of: $0) != tree.modifiedAt(of: $1) { return tree.modifiedAt(of: $0) > tree.modifiedAt(of: $1) }
             return $0.id < $1.id
         }
         var seen = Set<String>()
@@ -94,14 +92,18 @@ public enum SessionLibrary {
 
     public static func switchCandidates(_ sessions: [Conversation], followed: [Conversation], activeAccountID: String?,
                                         now: Date = Date()) -> [Conversation] {
+        let tree = ConversationTree(sessions)
         var recentIDs = Set<String>()
-        let recent = sorted(sessions.filter {
-            $0.accountID == activeAccountID && !$0.archived && $0.kind == .code && $0.cliSessionID != nil
-        }, order: .time, accounts: []).filter { recentIDs.insert($0.sessionID).inserted }.enumerated().filter {
-            $0.offset < 3 || recentlyActiveForSwitch($0.element, activeAccountID: activeAccountID, now: now)
+        let recent = tree.visibleRoots.filter {
+            $0.accountID == activeAccountID && $0.kind == .code && $0.cliSessionID != nil
+        }.sorted {
+            if tree.modifiedAt(of: $0) != tree.modifiedAt(of: $1) { return tree.modifiedAt(of: $0) > tree.modifiedAt(of: $1) }
+            return $0.id < $1.id
+        }.filter { recentIDs.insert($0.sessionID).inserted }.enumerated().filter {
+            $0.offset < 3 || tree.recentlyActive($0.element, accountID: activeAccountID, now: now)
         }.map(\.element)
         var seen = Set<String>()
-        return (followed + recent).filter { seen.insert($0.sessionID).inserted }
+        return (followed.map { tree.root(of: $0) } + recent).filter { seen.insert($0.sessionID).inserted }
     }
 
     public static func migrationBlocker(_ session: Conversation, target: Account) -> String? {

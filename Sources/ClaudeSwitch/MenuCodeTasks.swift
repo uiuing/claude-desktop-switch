@@ -6,8 +6,8 @@ struct MenuCodeTasks: View {
     @State private var showsIdle = false
     var closeMenu: () -> Void = {}
     private var snapshot: CodeTaskSnapshot { state.codeTasks }
-    private var ordered: [CodeTask] { snapshot.ordered(follows: state.library.follows) }
-    private func followed(_ task: CodeTask) -> Bool { state.library.follows.contains { $0.matches(task.conversation) } }
+    private var ordered: [CodeTask] { state.conversationTree.mainTasks(snapshot.ordered(follows: state.library.follows)) }
+    private func followed(_ task: CodeTask) -> Bool { state.follows(task.conversation) }
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
@@ -69,6 +69,8 @@ struct MenuCodeTasks: View {
                         .lineLimit(2).multilineTextAlignment(.leading)
                     HStack(spacing: 5) {
                         Text(task.status.title).foregroundStyle(color(task.status))
+                        let count = state.conversationTree.childCount(of: task.conversation)
+                        if count > 0 { Text(L10n.tr("Subtasks: {0}", L10n.argument(count))).foregroundStyle(.secondary) }
                         if let project = task.conversation.project, !project.isEmpty {
                             Text("·").foregroundStyle(.tertiary)
                             Text(URL(fileURLWithPath: project).lastPathComponent).foregroundStyle(.secondary).lineLimit(1)

@@ -41,7 +41,9 @@ final class AppState {
     static let shared = AppState()
     var page: NavigationPage = .accounts
     var library = LibraryState()
+    var conversationTree = ConversationTree([])
     var inventory: LocalInventory? { didSet {
+        conversationTree = ConversationTree(inventory?.conversations ?? [])
         if oldValue?.activeAccountID != inventory?.activeAccountID || oldValue?.signedIn != inventory?.signedIn {
             codeTaskBinding.invalidate(.connecting, excludeProcesses: true)
         }
@@ -135,7 +137,6 @@ final class AppState {
     @ObservationIgnored private lazy var quotaRefreshQueue = QuotaRefreshQueue { [weak self] request in
         await self?.refreshLive(accountID: request.accountID, automatic: request)
     }
-    private var transferChoices: [String: SessionTransferMode] = [:]
 
     init(demo: Bool = ProcessInfo.processInfo.arguments.contains("--demo"), startupAccess: StartupAccess? = nil) {
         self.demo = demo
@@ -161,6 +162,7 @@ final class AppState {
             quotaSchedule.activity = .init(running: true, online: true)
             let data = DemoData.make()
             library = data.library; inventory = data.inventory; analytics = data.analytics
+            conversationTree = ConversationTree(data.inventory.conversations)
             installDemoCodeTasks()
             tokenScanDone = true
         }
@@ -210,16 +212,17 @@ final class AppState {
     func identity(id: String) -> String { knownAccounts.first { $0.id == id }.map(identity) ?? L10n.tr("Unassigned account") }
     var activeAccount: Account? { accounts.first { $0.id == activeID } }
     var unarchivedSessions: [Conversation] { (inventory?.conversations ?? []).filter { !$0.archived } }
-    var selectedSessions: [Conversation] { unarchivedSessions.filter { selectedSessionIDs.contains($0.id) } }
+    var selectedSessions: [Conversation] { conversationTree.visibleRoots.filter { selectedSessionIDs.contains($0.id) } }
     var sessions: [Conversation] {
         let known = knownAccounts
         let identities = search.isEmpty ? [:] : Dictionary(known.map { ($0.id, identity($0)) }, uniquingKeysWith: { first, _ in first })
         let unassigned = L10n.tr("Unassigned account")
-        let filtered = unarchivedSessions.filter { session in
+        let filtered = conversationTree.visibleRoots.filter { session in
             (sessionFilter == nil || session.kind == sessionFilter) &&
             (selectedAccountID == nil || selectedAccountID == session.accountID) &&
-            (search.isEmpty || session.title.localizedStandardContains(search) ||
-             (session.project ?? "").localizedStandardContains(search) || (identities[session.accountID] ?? unassigned).localizedStandardContains(search))
+            (search.isEmpty || conversationTree.members(of: session).contains {
+                $0.title.localizedStandardContains(search) || ($0.project ?? "").localizedStandardContains(search)
+             } || (identities[session.accountID] ?? unassigned).localizedStandardContains(search))
         }
         return SessionLibrary.sorted(filtered, order: library.preferences.sessionSort, accounts: known)
     }
@@ -268,34 +271,15 @@ final class AppState {
         library.usageHistory[snapshot.accountID] = Array(history.suffix(128))
     }
     func follows(_ session: Conversation) -> Bool {
-        return library.follows.contains { $0.matches(session) }
+        return library.follows.contains { rule in conversationTree.members(of: session).contains(where: rule.matches) }
     }
     var followedSessionCount: Int {
         guard !library.follows.isEmpty else { return 0 }
         let sessionIDs = Set(library.follows.compactMap { $0.sessionID ?? $0.conversationID.split(separator: "/").last.map(String.init) })
         let legacyIDs = Set(library.follows.filter { $0.sessionID == nil }.map(\.conversationID))
-        return Set(unarchivedSessions.lazy.filter { sessionIDs.contains($0.sessionID) || legacyIDs.contains($0.id) }.map(\.sessionID)).count
-    }
-    /// One choice per session, shared by following and by transferring it now. Moving is the default.
-    func transferMode(_ session: Conversation) -> SessionTransferMode {
-        library.follows.first { $0.matches(session) }?.transferMode ?? transferChoices[session.sessionID] ?? .move
-    }
-    /// The common choice of several sessions, or nil when they differ.
-    func transferMode(_ sessions: [Conversation]) -> SessionTransferMode? {
-        let modes = Set(sessions.map(transferMode))
-        return modes.count == 1 ? modes.first : nil
-    }
-    func setTransferMode(_ mode: SessionTransferMode, sessions: [Conversation]) {
-        var followed = false
-        for session in sessions {
-            transferChoices[session.sessionID] = mode
-            for index in library.follows.indices where library.follows[index].matches(session) {
-                library.follows[index].sessionID = session.sessionID
-                library.follows[index].transferMode = mode
-                followed = true
-            }
-        }
-        if followed { persist() }
+        let visible = Set(conversationTree.visibleRoots.map(\.id))
+        return Set((inventory?.conversations ?? []).lazy.filter { sessionIDs.contains($0.sessionID) || legacyIDs.contains($0.id) }
+            .map { self.conversationTree.root(of: $0) }.filter { visible.contains($0.id) }.map(\.sessionID)).count
     }
     /// The target already holds this session, so the transfer replaces it with the current version.
     func replacesExisting(_ session: Conversation, in operation: PendingOperation) -> Bool {
@@ -392,7 +376,7 @@ final class AppState {
             var changed = false
             inventory = result
             codeTasksNeedInventory = false
-            selectedSessionIDs.formIntersection(unarchivedSessions.map(\.id))
+            selectedSessionIDs.formIntersection(conversationTree.visibleRoots.map(\.id))
             if triggerQuotaEvents, let id = result.activeAccountID { quotaRefreshQueue.observedAccount(id) }
             if triggerQuotaEvents, let id = result.activeAccountID, let signature = try? environment.credentialDigest() {
                 quotaRefreshQueue.observedCredential(accountID: id, signature: signature)
@@ -827,21 +811,13 @@ final class AppState {
         } catch is CancellationError {
         } catch { tokenScanError = display(error); tokenScanDone = true }
     }
-    func toggleFollow(_ session: Conversation) {
+    func toggleFollow(_ selected: Conversation) {
+        let session = conversationTree.root(of: selected)
         guard session.kind == .code, session.cliSessionID != nil else { return }
-        if follows(session) { library.follows.removeAll { $0.matches(session) } }
-        else {
-            library.follows.append(FollowRule(conversationID: session.id, sessionID: session.sessionID,
-                                              transferMode: transferMode(session)))
-        }
+        let members = conversationTree.members(of: session)
+        if follows(session) { library.follows.removeAll { rule in members.contains(where: rule.matches) } }
+        else { library.follows.append(FollowRule(conversationID: session.id, sessionID: session.sessionID)) }
         persist()
-    }
-    func setPendingTransferMode(_ mode: SessionTransferMode, sessionID: String? = nil) {
-        guard !working, var operation = pending, !operation.preparingSelection else { return }
-        for session in operation.sessions where sessionID == nil || session.id == sessionID {
-            operation.plan.transferModes[session.id] = mode
-        }
-        pending = operation
     }
     func prepare(_ kind: OperationKind, target: Account, sessions explicitSessions: [Conversation]? = nil) async {
         if kind == .switchAccount, library.accounts.first(where: { $0.id == target.id })?.loginInvalidAt != nil {
@@ -860,29 +836,28 @@ final class AppState {
         }
         catch { message = display(error) }
     }
-    func makeOperation(_ kind: OperationKind, target: Account, sessions candidates: [Conversation],
-                       transferModes: [String: SessionTransferMode] = [:]) async throws -> PendingOperation {
+    func makeOperation(_ kind: OperationKind, target: Account, sessions candidates: [Conversation]) async throws -> PendingOperation {
         var seen = Set<String>()
-        let transfers = candidates.sorted {
+        let roots = candidates.map { conversationTree.root(of: $0) }.sorted {
             if ($0.accountID == activeID) != ($1.accountID == activeID) { return $0.accountID == activeID }
             return $0.modifiedAt > $1.modifiedAt
-        }.filter { $0.accountID != target.id && !$0.archived && seen.insert($0.sessionID).inserted }
-        let modes = Dictionary(uniqueKeysWithValues: transfers.map { ($0.id, transferModes[$0.id] ?? transferMode($0)) })
+        }.filter { $0.accountID != target.id && seen.insert($0.sessionID).inserted }
         var plan: OperationPlan
         if demo {
+            let transfers = try conversationTree.expanded(roots)
             for session in transfers {
                 if let reason = SessionLibrary.migrationBlocker(session, target: target) { throw SwitchError.blocked(reason) }
             }
             plan = OperationPlan(kind: kind, sourceAccountID: activeID, targetAccountID: target.id, configDigest: "demo",
-                steps: kind == .switchAccount
-                    ? [L10n.tr("Quit Claude normally"), L10n.tr("Switch to the selected account")]
-                        + (transfers.isEmpty ? [] : [L10n.tr("Bring followed conversations along, replacing matching copies in the target account")])
-                        + [L10n.tr("Reopen Claude")]
-                    : [L10n.tr("Quit Claude normally"), L10n.tr("Write the conversations to the target account, replacing matching copies"), L10n.tr("Remove or keep the conversations in the original account as selected"), L10n.tr("Reopen Claude")],
+                steps: [L10n.tr("Quit Claude normally")]
+                    + (kind == .switchAccount ? [L10n.tr("Switch to the selected account")] : [])
+                    + (transfers.isEmpty ? [] : [L10n.tr("Bring selected conversations and their subtasks to this account"),
+                                                 L10n.tr("Verify conversation resources")])
+                    + [L10n.tr("Reopen Claude")],
                 conversationIDs: transfers.map(\.id), warnings: [L10n.tr("This is an interface demo. No accounts will be changed.")])
-            plan.transferModes = modes; plan.targetOrganizationID = target.organizationID
-        } else { plan = try await engine.prepare(kind: kind, target: target, sessions: transfers, transferModes: modes) }
-        return PendingOperation(plan: plan, target: target, sessions: transfers)
+            plan.transferSessions = transfers; plan.targetOrganizationID = target.organizationID
+        } else { plan = try await engine.prepare(kind: kind, target: target, sessions: roots) }
+        return PendingOperation(plan: plan, target: target, sessions: plan.transferSessions ?? roots)
     }
     func executePending() async {
         guard canExecute, let operation = pending, operation.selectionReady else { return }
@@ -898,10 +873,8 @@ final class AppState {
             // Follow the logical session after either transfer. A move changes its index owner;
             // the stable session ID also survives a restart between commit and this preference save.
             for session in operation.sessions {
-                transferChoices[session.sessionID] = operation.plan.transferMode(for: session.id)
                 for index in library.follows.indices where library.follows[index].matches(session) {
                     library.follows[index].sessionID = session.sessionID
-                    library.follows[index].transferMode = operation.plan.transferMode(for: session.id)
                     if let org = operation.target.organizationID {
                         library.follows[index].conversationID = operation.target.id + "/" + org + "/" + session.kind.rawValue + "/" + session.sessionID
                     }
