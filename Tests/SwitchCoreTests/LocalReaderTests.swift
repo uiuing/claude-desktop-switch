@@ -33,7 +33,109 @@ final class LocalReaderTests: XCTestCase {
         let code = home.appendingPathComponent(".claude.json")
         try Data(#"{"projects":{"/fixture":{"history":[]}},"oauthAccount":{"accountUuid":"\#(account)","emailAddress":"mi•••el@gmail.com","organizationUuid":"\#(codeOrganization)"}}"#.utf8)
             .write(to: code)
-        return LocalReader(desktop: desktop, codeConfig: code)
+        return LocalReader(desktop: desktop, codeConfig: code, projects: home.appendingPathComponent(".claude/projects"))
+    }
+
+    private func setActivity(_ reader: LocalReader, last: Date, updated: Date? = nil) async throws {
+        let desktop = await reader.desktop
+        let file = desktop.appendingPathComponent("claude-code-sessions/\(account)/\(desktopOrganization)/0a1b2c3d-4444-4aaa-8bbb-000000000004.json")
+        var record = try XCTUnwrap(SafeFiles.json(file).object)
+        record["lastActivityAt"] = .number(last.timeIntervalSince1970 * 1000)
+        record["updatedAt"] = updated.map { .number($0.timeIntervalSince1970 * 1000) }
+        try JSONEncoder().encode(JSONValue.object(record)).write(to: file)
+    }
+
+    @discardableResult
+    private func transcript(_ reader: LocalReader, project: String = "fixture", name: String? = nil,
+                            at date: Date, empty: Bool = false) async throws -> URL {
+        let projects = await reader.projects
+        let file = try XCTUnwrap(projects).appendingPathComponent(project + "/" + (name ?? "0a1b2c3d-7777-4aaa-8bbb-000000000007.jsonl"))
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // The activity timestamp must require only metadata, not transcript contents.
+        try Data(repeating: 0xff, count: empty ? 0 : 10).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file.path)
+        return file
+    }
+
+    func testTranscriptActivityUpdatesCachedIndexAndSwitchPreselection() async throws {
+        let reader = try reader(sessionsIn: desktopOrganization), now = Date()
+        let old = now.addingTimeInterval(-3600), recent = now.addingTimeInterval(-30)
+        try await setActivity(reader, last: old)
+        try await transcript(reader, at: old)
+        let initial = try await reader.scan()
+        XCTAssertEqual(initial.conversations.first?.modifiedAt.timeIntervalSince1970 ?? 0, old.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertFalse(try XCTUnwrap(initial.conversations.first).modifiedAt > now.addingTimeInterval(-300))
+        try await transcript(reader, at: recent)
+        let updated = try await reader.scan()
+        let session = try XCTUnwrap(updated.conversations.first)
+        XCTAssertEqual(session.modifiedAt.timeIntervalSince1970, recent.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertTrue(SessionLibrary.recentlyActiveForSwitch(session, activeAccountID: account, now: now))
+        XCTAssertTrue(updated.warnings.isEmpty)
+    }
+
+    func testNewestIndexTimestampWinsWithoutUsingRewriteTimeAsActivity() async throws {
+        let reader = try reader(sessionsIn: desktopOrganization)
+        let old = Date().addingTimeInterval(-7200), newer = old.addingTimeInterval(600)
+        try await transcript(reader, at: old)
+        for (last, updated) in [(old, newer), (newer, old)] {
+            try await setActivity(reader, last: last, updated: updated)
+            let result = try await reader.scan()
+            XCTAssertEqual(result.conversations.first?.modifiedAt.timeIntervalSince1970 ?? 0, newer.timeIntervalSince1970, accuracy: 0.001)
+        }
+    }
+
+    func testNativeSubagentActivityUpdatesWithoutAnIndexOrMainTranscriptChange() async throws {
+        let reader = try reader(sessionsIn: desktopOrganization), now = Date()
+        let old = now.addingTimeInterval(-3600), recent = now.addingTimeInterval(-30)
+        try await setActivity(reader, last: old)
+        try await transcript(reader, at: old)
+        let initial = try await reader.scan()
+        XCTAssertEqual(initial.conversations.first?.modifiedAt.timeIntervalSince1970 ?? 0, old.timeIntervalSince1970, accuracy: 0.001)
+        let agents = "0a1b2c3d-7777-4aaa-8bbb-000000000007/subagents/"
+        try await transcript(reader, name: agents + "agent-fixture.jsonl", at: recent)
+        try await transcript(reader, name: agents + "agent-old.superseded-fixture.jsonl", at: now)
+        let result = try await reader.scan()
+        XCTAssertEqual(result.conversations.first?.modifiedAt.timeIntervalSince1970 ?? 0, recent.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func testSharedTranscriptDoesNotMakeAnInactiveAccountCopyRecent() async throws {
+        let reader = try reader(sessionsIn: desktopOrganization), now = Date()
+        let old = now.addingTimeInterval(-3600), recent = now.addingTimeInterval(-30)
+        try await setActivity(reader, last: old)
+        let desktop = await reader.desktop
+        let other = "0a1b2c3d-9999-4aaa-8bbb-000000000009", session = "0a1b2c3d-4444-4aaa-8bbb-000000000004.json"
+        let source = desktop.appendingPathComponent("claude-code-sessions/\(account)/\(desktopOrganization)/" + session)
+        let target = desktop.appendingPathComponent("claude-code-sessions/\(other)/\(desktopOrganization)/" + session)
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: source, to: target)
+        try await transcript(reader, at: recent)
+        let inventory = try await reader.scan()
+        XCTAssertEqual(inventory.conversations.first { $0.accountID == account }?.modifiedAt.timeIntervalSince1970 ?? 0,
+                       recent.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(inventory.conversations.first { $0.accountID == other }?.modifiedAt.timeIntervalSince1970 ?? 0,
+                       old.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func testUnrelatedAmbiguousAndUnsafeTranscriptsCannotMakeASessionRecent() async throws {
+        let reader = try reader(sessionsIn: desktopOrganization), now = Date()
+        let old = now.addingTimeInterval(-3600)
+        try await setActivity(reader, last: old)
+        try await transcript(reader, name: "0a1b2c3d-8888-4aaa-8bbb-000000000008.jsonl", at: now.addingTimeInterval(-10))
+        let target = try await transcript(reader, project: "first", at: now.addingTimeInterval(-20))
+        let duplicate = try await transcript(reader, project: "second", at: now.addingTimeInterval(-30))
+        for phase in 0..<4 {
+            if phase == 1 {
+                try FileManager.default.removeItem(at: duplicate)
+                try FileManager.default.createSymbolicLink(at: duplicate, withDestinationURL: target)
+                try FileManager.default.removeItem(at: target)
+            } else if phase == 2 {
+                try await transcript(reader, project: "first", at: now.addingTimeInterval(3600))
+            } else if phase == 3 {
+                try await transcript(reader, project: "first", at: now.addingTimeInterval(-10), empty: true)
+            }
+            let result = try await reader.scan()
+            XCTAssertEqual(result.conversations.first?.modifiedAt.timeIntervalSince1970 ?? 0, old.timeIntervalSince1970, accuracy: 0.001, "phase \(phase)")
+        }
     }
 
     func testDesktopSessionsDecideTheOrganizationOverClaudeCode() async throws {

@@ -51,6 +51,16 @@ final class ScreenshotTests: XCTestCase {
             state.pending = scrollOperation
             try save(captureSheet(OperationSheet(operation: try XCTUnwrap(state.pending)).environment(state)),
                      "switch-selection-scroll-\(language)", maxWidth: 1100)
+            state.pending = nil; state.library.follows = []
+            let root = try XCTUnwrap(state.inventory?.conversations.first { $0.id == "demo-3" })
+            state.inventory?.activeAccountID = root.accountID
+            let child = try XCTUnwrap(state.inventory?.conversations.firstIndex { $0.id == "demo-child-1" })
+            state.inventory?.conversations[child].modifiedAt = Date().addingTimeInterval(-30)
+            await state.prepare(.switchAccount, target: state.library.accounts[0])
+            let activeChild = try XCTUnwrap(state.pending)
+            XCTAssertEqual(Set(activeChild.sessions.map(\.id)), ["demo-3", "demo-child-0", "demo-child-1"])
+            try save(captureSheet(OperationSheet(operation: activeChild).environment(state)),
+                     "switch-selection-child-activity-\(language)", maxWidth: 1100)
         }
     }
 

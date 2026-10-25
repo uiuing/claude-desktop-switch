@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.5" width="112" alt="Claude Switch アイコン">
+<img src="docs/images/icon.png?v=0.2.6" width="112" alt="Claude Switch アイコン">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-ja-dark.jpg?v=0.2.5">
-  <img src="docs/images/hero-ja-light.jpg?v=0.2.5" alt="Claude Switch：アカウントウインドウとメニューバーのパネル">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-ja-dark.jpg?v=0.2.6">
+  <img src="docs/images/hero-ja-light.jpg?v=0.2.6" alt="Claude Switch：アカウントウインドウとメニューバーのパネル">
 </picture>
 
 </div>
@@ -41,8 +41,8 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 **会話の続きを別のアカウントで。**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-ja-dark.png?v=0.2.5">
-  <img src="docs/images/conversations-ja-light.png?v=0.2.5" alt="会話の続きを別のアカウントで。">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-ja-dark.png?v=0.2.6">
+  <img src="docs/images/conversations-ja-light.png?v=0.2.6" alt="会話の続きを別のアカウントで。">
 </picture>
 
 **引き継ぐ会話を、その場で選ぶ。**
@@ -50,8 +50,8 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
 切り替えの確認画面で会話を選べます。最近使った会話はあらかじめ選択され、確定した選択は次回にも引き継がれます。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-selection-ja-dark.png?v=0.2.5">
-  <img src="docs/images/switch-selection-ja-light.png?v=0.2.5" width="720" alt="引き継ぐ会話を、その場で選ぶ。">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-selection-ja-dark.png?v=0.2.6">
+  <img src="docs/images/switch-selection-ja-light.png?v=0.2.6" width="720" alt="引き継ぐ会話を、その場で選ぶ。">
 </picture>
 
 <table>
@@ -59,15 +59,15 @@ Claude Desktop のアカウントと残りの使用量を、Mac のメニュー�
     <td width="33%" valign="top">
       <p><b>残りが少なくなったらお知らせ。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-ja-dark.png?v=0.2.5">
-        <img src="docs/images/switch-reminder-menu-ja-light.png?v=0.2.5" alt="残りが少なくなったらお知らせ。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-ja-dark.png?v=0.2.6">
+        <img src="docs/images/switch-reminder-menu-ja-light.png?v=0.2.6" alt="残りが少なくなったらお知らせ。">
       </picture>
     </td>
     <td width="67%" valign="top">
       <p><b>自分の使い方を振り返る。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-ja-dark.png?v=0.2.5">
-        <img src="docs/images/usage-ja-light.png?v=0.2.5" alt="自分の使い方を振り返る。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-ja-dark.png?v=0.2.6">
+        <img src="docs/images/usage-ja-light.png?v=0.2.6" alt="自分の使い方を振り返る。">
       </picture>
     </td>
   </tr>

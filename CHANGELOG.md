@@ -6,6 +6,15 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-10-26
+
+More accurate recent conversations when switching accounts.
+
+### Fixed
+
+- Recently active conversations and subtasks are included in switch preselection, even when Claude has not updated its conversation list yet.
+- Conversation details, search and switch confirmation show consistent activity times.
+
 ## [0.2.5] - 2026-10-26
 
 Bring your Code conversations, subtasks and attachments to another account, with saved workspace views ready when you return.
@@ -134,7 +143,8 @@ First public release.
 - Links to the project on GitHub from the sidebar, the menu bar panel and Settings. There are no remote or automatic updates yet; new versions are published as GitHub releases.
 - `switch-inspect`, a read-only command-line diagnostic that prints counts only.
 
-[Unreleased]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.2...v0.2.5
 [0.2.2]: https://github.com/uiuing/claude-desktop-switch/compare/v0.2.0...v0.2.2
 [0.2.0]: https://github.com/uiuing/claude-desktop-switch/compare/v0.1.5...v0.2.0

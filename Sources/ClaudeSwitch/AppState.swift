@@ -361,6 +361,12 @@ final class AppState {
         guard Date().timeIntervalSince(lastTokenScan) >= 60 else { return }
         await scanTokens()
     }
+    private func scanInventory() async throws -> LocalInventory {
+        let verified = Dictionary(library.accounts.compactMap { account in
+            account.organizationVerifiedAt == nil ? nil : account.organizationID.map { (account.id, $0) }
+        }, uniquingKeysWith: { first, _ in first })
+        return try await reader.scan(verifiedOrganizations: verified)
+    }
     @discardableResult
     func refresh(triggerQuotaEvents: Bool = true) async -> Bool {
         guard startupAccess.isReady, !refreshing, !working else { return false }
@@ -368,10 +374,7 @@ final class AppState {
         refreshing = true; defer { refreshing = false; updateSwitchReminder() }
         var scanned = false
         do {
-            let verified = Dictionary(library.accounts.compactMap { account in
-                account.organizationVerifiedAt == nil ? nil : account.organizationID.map { (account.id, $0) }
-            }, uniquingKeysWith: { first, _ in first })
-            let result = try await reader.scan(verifiedOrganizations: verified)
+            let result = try await scanInventory()
             scanned = true
             var changed = false
             inventory = result
@@ -825,11 +828,12 @@ final class AppState {
             showAddAccount = true
             return
         }
-        let following = SessionLibrary.followedSessions(inventory?.conversations ?? [], rules: library.follows,
-            activeAccountID: activeID, targetAccountID: target.id)
-        let candidates = explicitSessions ?? (kind == .switchAccount ? following : [])
         message = nil
         do {
+            if kind == .switchAccount, !demo { inventory = try await scanInventory() }
+            let following = SessionLibrary.followedSessions(inventory?.conversations ?? [], rules: library.follows,
+                activeAccountID: activeID, targetAccountID: target.id)
+            let candidates = explicitSessions ?? (kind == .switchAccount ? following : [])
             pending = kind == .switchAccount
                 ? try await makeSwitchOperation(target: target, followed: candidates)
                 : try await makeOperation(kind, target: target, sessions: candidates)

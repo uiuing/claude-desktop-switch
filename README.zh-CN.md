@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/icon.png?v=0.2.5" width="112" alt="Claude Switch 图标">
+<img src="docs/images/icon.png?v=0.2.6" width="112" alt="Claude Switch 图标">
 
 # Claude Switch
 
@@ -17,8 +17,8 @@
 <br>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hans-dark.jpg?v=0.2.5">
-  <img src="docs/images/hero-zh-Hans-light.jpg?v=0.2.5" alt="Claude Switch：账号窗口与菜单栏面板">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-zh-Hans-dark.jpg?v=0.2.6">
+  <img src="docs/images/hero-zh-Hans-light.jpg?v=0.2.6" alt="Claude Switch：账号窗口与菜单栏面板">
 </picture>
 
 </div>
@@ -41,8 +41,8 @@
 **换账号，会话跟着走。**
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-zh-Hans-dark.png?v=0.2.5">
-  <img src="docs/images/conversations-zh-Hans-light.png?v=0.2.5" alt="换账号，会话跟着走。">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/conversations-zh-Hans-dark.png?v=0.2.6">
+  <img src="docs/images/conversations-zh-Hans-light.png?v=0.2.6" alt="换账号，会话跟着走。">
 </picture>
 
 **这次带走哪些会话，由你选择。**
@@ -50,8 +50,8 @@
 在切换确认页直接选择会话。最近活跃的会话会预先勾选，确认后的选择会在下次切换时记住。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-selection-zh-Hans-dark.png?v=0.2.5">
-  <img src="docs/images/switch-selection-zh-Hans-light.png?v=0.2.5" width="720" alt="这次带走哪些会话，由你选择。">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-selection-zh-Hans-dark.png?v=0.2.6">
+  <img src="docs/images/switch-selection-zh-Hans-light.png?v=0.2.6" width="720" alt="这次带走哪些会话，由你选择。">
 </picture>
 
 <table>
@@ -59,15 +59,15 @@
     <td width="33%" valign="top">
       <p><b>额度不足，及时提醒。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hans-dark.png?v=0.2.5">
-        <img src="docs/images/switch-reminder-menu-zh-Hans-light.png?v=0.2.5" alt="额度不足，及时提醒。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/switch-reminder-menu-zh-Hans-dark.png?v=0.2.6">
+        <img src="docs/images/switch-reminder-menu-zh-Hans-light.png?v=0.2.6" alt="额度不足，及时提醒。">
       </picture>
     </td>
     <td width="67%" valign="top">
       <p><b>看看自己的使用习惯。</b></p>
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hans-dark.png?v=0.2.5">
-        <img src="docs/images/usage-zh-Hans-light.png?v=0.2.5" alt="看看自己的使用习惯。">
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/usage-zh-Hans-dark.png?v=0.2.6">
+        <img src="docs/images/usage-zh-Hans-light.png?v=0.2.6" alt="看看自己的使用习惯。">
       </picture>
     </td>
   </tr>

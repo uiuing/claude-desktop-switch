@@ -130,7 +130,7 @@ struct OperationSheet: View {
                             if count > 0 { Text(L10n.tr("Subtasks: {0}", L10n.argument(count))).font(.system(size: 10)).foregroundStyle(.secondary).fixedSize() }
                         }
                         if current.followCandidates != nil {
-                            Text(Format.age(session.modifiedAt, now: Date())).font(.system(size: 10)).foregroundStyle(.secondary)
+                            Text(Format.age(state.conversationTree.modifiedAt(of: session), now: Date())).font(.system(size: 10)).foregroundStyle(.secondary)
                         }
                     }
                     if selected && current.selectionReady && state.replacesExisting(session, in: current) {

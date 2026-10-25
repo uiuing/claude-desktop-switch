@@ -59,7 +59,7 @@ public actor LocalReader: InventoryReader {
                             let conversation = Conversation(id: accountID + "/" + orgID + "/" + kind.rawValue + "/" + sessionID,
                                 sessionID: sessionID, accountID: accountID, organizationID: orgID,
                                 title: r["title"].string ?? r["name"].string ?? L10n.tr("Untitled conversation"), kind: kind,
-                                modifiedAt: Dates.parse(r["lastActivityAt"]) ?? Dates.parse(r["updatedAt"]) ?? stamp.modified,
+                                modifiedAt: [Dates.parse(r["lastActivityAt"]), Dates.parse(r["updatedAt"])].compactMap { $0 }.max() ?? stamp.modified,
                                 model: r["model"].string, project: r["cwd"].string,
                                 recordRelativePath: relative, cliSessionID: r["cliSessionId"].string,
                                 archived: r["isArchived"].bool ?? false, parentSessionID: lineage.parent,
@@ -95,10 +95,64 @@ public actor LocalReader: InventoryReader {
         let after = try SafeFiles.json(desktop.appendingPathComponent("config.json"))["lastKnownAccountUuid"].string?.lowercased()
         guard after == active else { throw SwitchError.changed }
         let signedIn = await loginState()
+        conversations = withTranscriptActivity(conversations, activeAccountID: signedIn == false ? nil : active)
         return LocalInventory(activeAccountID: signedIn == false ? nil : active, accounts: accounts.values.sorted { $0.id < $1.id },
                               conversations: conversations, usage: nil, warnings: Array(Set(warnings)).sorted(),
                               lastKnownAccountID: active, signedIn: signedIn,
                               desktopEmails: profile.emails.filter { accounts[$0.key] != nil })
+    }
+
+    /// Overlay metadata on every scan; transcript appends need not change the cached Desktop index.
+    private func withTranscriptActivity(_ conversations: [Conversation], activeAccountID: String?) -> [Conversation] {
+        let wanted = Set(conversations.filter { $0.kind == .code && $0.accountID == activeAccountID }.compactMap { session in
+            session.cliSessionID.flatMap { UUID(uuidString: $0)?.uuidString.lowercased() }
+        })
+        guard let projects, !wanted.isEmpty else { return conversations }
+        var files: [String: [URL]] = [:], budget = 10_000
+        func children(_ folder: URL) throws -> [URL] {
+            let entries = try SafeFiles.children(folder)
+            guard entries.count <= budget else { throw SwitchError.unsafePath }
+            budget -= entries.count
+            return entries
+        }
+        do {
+            for project in try children(projects) where (try? project.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                for file in try children(project) where file.pathExtension == "jsonl" {
+                    let id = file.deletingPathExtension().lastPathComponent.lowercased()
+                    if wanted.contains(id) { files[id, default: []].append(file) }
+                }
+            }
+        } catch { return conversations }
+        let now = Date()
+        func modified(_ file: URL) -> Date? {
+            guard let fd = try? SafeFiles.openRead(file) else { return nil }
+            let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+            defer { try? handle.close() }
+            guard let stamp = try? SafeFiles.stamp(fd), stamp.size > 0, stamp.modified <= now else { return nil }
+            return stamp.modified
+        }
+        var latest: [String: Date] = [:]
+        for (id, matches) in files {
+            // Shared histories can have duplicate filenames across projects; never guess which one belongs here.
+            guard matches.count == 1, let file = matches.first, let main = modified(file) else { continue }
+            var dates = [main]
+            let agents = file.deletingPathExtension().appendingPathComponent("subagents")
+            if let entries = try? children(agents) {
+                dates += entries.filter {
+                    $0.pathExtension == "jsonl" && $0.lastPathComponent.hasPrefix("agent-") && !$0.lastPathComponent.contains(".superseded-")
+                }.compactMap(modified)
+            }
+            latest[id] = dates.max()
+        }
+        return conversations.map { session in
+            var result = session
+            // Inactive copies retain their own index times; transcripts are shared between accounts.
+            if session.kind == .code, session.accountID == activeAccountID,
+               let cli = session.cliSessionID, let date = latest[cli.lowercased()] {
+                result.modifiedAt = max(session.modifiedAt, date)
+            }
+            return result
+        }
     }
 
     /// Re-read only when the file changed: Claude Code rewrites it often, and it can run to megabytes.

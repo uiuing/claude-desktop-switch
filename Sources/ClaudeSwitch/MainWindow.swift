@@ -204,9 +204,10 @@ struct QuickFind: View {
         state.accounts.filter { query.isEmpty || ($0.email ?? "").localizedStandardContains(query) || $0.id.localizedStandardContains(query) }
     }
     private var sessions: [Conversation] {
-        Array(state.conversationTree.visibleRoots
-            .filter { session in query.isEmpty || state.conversationTree.members(of: session).contains { $0.title.localizedStandardContains(query) } }
-            .sorted { $0.modifiedAt > $1.modifiedAt }.prefix(12))
+        let tree = state.conversationTree
+        return Array(tree.visibleRoots
+            .filter { session in query.isEmpty || tree.members(of: session).contains { $0.title.localizedStandardContains(query) } }
+            .sorted { tree.modifiedAt(of: $0) > tree.modifiedAt(of: $1) }.prefix(12))
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -237,7 +238,7 @@ struct QuickFind: View {
                                 KindIcon(kind: session.kind, size: 24)
                                 Text(session.title).font(.system(size: 13)).lineLimit(1)
                                 Spacer()
-                                Text(Format.age(session.modifiedAt, now: Date())).font(.system(size: 11)).foregroundStyle(.secondary)
+                                Text(Format.age(state.conversationTree.modifiedAt(of: session), now: Date())).font(.system(size: 11)).foregroundStyle(.secondary)
                             }
                         }
                     }

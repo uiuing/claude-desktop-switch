@@ -170,7 +170,7 @@ struct SessionInspector: View {
                 VStack(spacing: 0) {
                     info(L10n.tr("Account")) { Text(state.identity(id: session.accountID)) }
                     Divider()
-                    info(L10n.tr("Last active")) { Text(Format.date(session.modifiedAt)) }
+                    info(L10n.tr("Last active")) { Text(Format.date(state.conversationTree.modifiedAt(of: session))) }
                     if let model = session.model { Divider(); info(L10n.tr("Model")) { Text(Format.model(model)) } }
                     if let project = session.project {
                         Divider()
