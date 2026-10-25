@@ -33,6 +33,7 @@ public struct OperationPlan: Identifiable, Codable, Sendable {
     public var targetOrganizationID: String?
     public var transferSessions: [Conversation]?
     public var resourceExpectations: [String: FileExpectation]?
+    public var conversationFolders: [String: Bool]?
     public init(kind: OperationKind, sourceAccountID: String?, targetAccountID: String, configDigest: String,
                 steps: [String], conversationIDs: [String] = [], warnings: [String] = []) {
         self.kind = kind; self.sourceAccountID = sourceAccountID; self.targetAccountID = targetAccountID

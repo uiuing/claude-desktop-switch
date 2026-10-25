@@ -39,7 +39,6 @@ final class ConversationIntegrityTests: XCTestCase {
             var record: [String: Any] = ["sessionId": sid, "cliSessionId": cli, "cwd": cwd.path,
                 "title": "Fixture \(index)", "lastActivityAt": 1000, "isArchived": index == 3,
                 "futureMetadata": ["opaque": ["array": [1, 2, 3], "text": "Complete original content"]],
-                "remoteMcpServersConfig": index == 0 ? [["uuid": "fixture-server", "name": "Fixture", "tools": []]] : [],
                 "sshConfig": NSNull(),
                 "sessionPermissionUpdates": [["type": "addDirectories", "directories": [extra.path], "destination": "session"]]]
             if index > 0 { record["spawnedFrom"] = ["sessionId": id(index == 2 ? 11 : 10), "sideSession": true, "taskId": "fixture-task-\(index)"] }
@@ -162,16 +161,11 @@ final class ConversationIntegrityTests: XCTestCase {
             expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations, resources: plan.resourceExpectations ?? [:]))
     }
 
-    func testMissingNativeAgentOrFolderStopsBeforeTransfer() async throws {
-        for missingAgent in [true, false] {
-            let f = try fixture()
-            let missing = missingAgent
-                ? f.environment.projects.appendingPathComponent("fixture/\(id(20))/subagents/agent-fixture-agent.jsonl")
-                : f.environment.home.appendingPathComponent("attached-files")
-            try FileManager.default.removeItem(at: missing)
-            do { _ = try await prepare(f); XCTFail("Missing dependency must stop the preview") } catch { }
-            for (relative, bytes) in f.originalRecords { XCTAssertEqual(try SafeFiles.read(f.environment.desktop.appendingPathComponent(relative)), bytes) }
-        }
+    func testMissingNativeAgentStopsBeforeTransfer() async throws {
+        let f = try fixture()
+        try FileManager.default.removeItem(at: f.environment.projects.appendingPathComponent("fixture/\(id(20))/subagents/agent-fixture-agent.jsonl"))
+        do { _ = try await prepare(f); XCTFail("Missing agent history must stop the preview") } catch { }
+        for (path, bytes) in f.originalRecords { XCTAssertEqual(try SafeFiles.read(f.environment.desktop.appendingPathComponent(path)), bytes) }
     }
 
     func testConflictingResourceAndSymlinkAreNotSilentlySkipped() async throws {
@@ -252,5 +246,36 @@ final class ConversationIntegrityTests: XCTestCase {
         record["launchPreviewStorage"] = "none"
         try SafeFiles.atomicWrite(JSONSerialization.data(withJSONObject: record), to: config)
         _ = try await prepare(f)
+    }
+
+    func testAlreadyUnavailableArchivedFoldersKeepTheirPaths() async throws {
+        let f = try fixture(), path = f.environment.desktop.appendingPathComponent(f.sourcePrefix + "/" + id(13) + ".json")
+        var record = try JSONSerialization.jsonObject(with: SafeFiles.read(path)) as! [String: Any]
+        let missing = f.environment.home.appendingPathComponent("already-deleted-workspace").path
+        record["cwd"] = missing
+        try write(JSONSerialization.data(withJSONObject: record), to: path)
+        let (plan, changes, _) = try await prepare(f)
+        XCTAssertEqual(plan.conversationFolders?[missing], false)
+        XCTAssertTrue(plan.warnings.contains(L10n.tr("Some conversation folders are already unavailable. Their paths will be preserved.")))
+        let data = try XCTUnwrap(changes.first { $0.relative == f.targetPrefix + "/" + self.id(13) + ".json" }?.data)
+        XCTAssertEqual((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["cwd"] as? String, missing)
+    }
+
+    func testFolderLossAfterPreviewAndDuringTransactionIsDetected() async throws {
+        let f = try fixture(), (plan, _, _) = try await prepare(f)
+        let retained = try ConversationResources.retained(sessions: f.sessions, environment: f.environment)
+        try FileManager.default.moveItem(at: f.environment.home.appendingPathComponent("workspace"),
+                                        to: f.environment.home.appendingPathComponent("moved-workspace"))
+        XCTAssertThrowsError(try ConversationResources.retained(sessions: f.sessions, environment: f.environment, expectedFolders: plan.conversationFolders))
+        XCTAssertThrowsError(try ConversationResources.validate(retained))
+    }
+
+    func testSessionOwnedAuthenticationStoresCannotBeImportedAsAttachments() async throws {
+        for suffix in ["credentials", "credential-cache", "Cookies"] {
+            let f = try fixture()
+            try write(Data("synthetic-account-credential".utf8), to: f.environment.desktop.appendingPathComponent(f.sourcePrefix + "/" + id(10) + "." + suffix))
+            do { _ = try await prepare(f); XCTFail("An authentication companion needs an explicit safe boundary") } catch { }
+            for (path, data) in f.originalRecords { XCTAssertEqual(try SafeFiles.read(f.environment.desktop.appendingPathComponent(path)), data) }
+        }
     }
 }

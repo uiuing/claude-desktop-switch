@@ -6,6 +6,10 @@ import SwitchStorage
 enum ConversationResources {
     static let maximumBytes = 128 * 1024 * 1024
     static let maximumFiles = 10_000
+    struct Retained {
+        var files: [String: FileExpectation] = [:]
+        var folders: [String: Bool] = [:]
+    }
 
     /// These are ownership boundaries, not a list of fields or file extensions to retain.
     static func ownedComponent(_ name: String, ids: Set<String>) -> Bool {
@@ -78,6 +82,7 @@ enum ConversationResources {
                     let isDirectory = try item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true
                     if tail.isEmpty, name.hasSuffix(".json"), LocalID.isSession(String(name.dropLast(5))) { continue }
                     if ownedComponent(name, ids: ids) {
+                        try validateCompanionAuthority(path, ids: ids)
                         let destination = targetPrefix + "/" + path, source = sourcePrefix + "/" + path
                         guard seen.insert(destination).inserted else { throw ConversationTree.unresolved }
                         let expected = try fingerprint(SafeFiles.child(destination, of: environment.desktop))
@@ -147,8 +152,9 @@ enum ConversationResources {
     }
 
     /// Native transcripts and their entire companion directories stay shared and byte-for-byte intact.
-    static func retained(sessions: [Conversation], environment: MacEnvironment) throws -> [String: FileExpectation] {
-        var result: [String: FileExpectation] = [:]
+    static func retained(sessions: [Conversation], environment: MacEnvironment,
+                         expectedFolders: [String: Bool]? = nil) throws -> Retained {
+        var result = Retained()
         // Stable session IDs must not silently reattach the incoming login to a persistent browser
         // credential jar. Claude owns clearing/re-authorizing those mixed stores.
         let config = try environment.effectiveConfig(), partitions = environment.desktop.appendingPathComponent("Partitions")
@@ -172,11 +178,9 @@ enum ConversationResources {
                 throw SwitchError.blocked(L10n.tr("This conversation's local history is missing or ambiguous. Nothing was transferred."))
             }
             let transcript = project.appendingPathComponent(cli + ".jsonl")
-            let history = try SafeFiles.read(transcript, limit: maximumBytes)
-            result[transcript.path] = .sha256(digest(history))
             let companions = try SafeFiles.strictChildren(project).filter { ownedComponent($0.lastPathComponent, ids: [cli]) }
-            for file in companions { result[file.path] = try fingerprint(file) }
-            try verifySubagents(history, project: project, cli: cli, snapshots: &result)
+            for file in companions { result.files[file.path] = try ConversationHistory.fingerprint(file) }
+            try verifySubagents(transcript, project: project, cli: cli, snapshots: &result.files)
             let record = try SafeFiles.json(SafeFiles.child(session.recordRelativePath, of: environment.desktop), limit: 2 * 1024 * 1024)
             var directories = [record["cwd"].string, record["worktreePath"].string].compactMap { $0 }
             var granted = Set<String>()
@@ -190,9 +194,9 @@ enum ConversationResources {
                 guard path.hasPrefix("/"), !path.contains("\0") else { throw SwitchError.unsafePath }
                 let url = URL(fileURLWithPath: path); try SafeFiles.validateAncestors(url)
                 var directory: ObjCBool = false
-                guard FileManager.default.fileExists(atPath: path, isDirectory: &directory), directory.boolValue else {
-                    throw SwitchError.blocked(L10n.tr("A conversation folder is unavailable. Restore access before switching accounts."))
-                }
+                let available = FileManager.default.fileExists(atPath: path, isDirectory: &directory) && directory.boolValue
+                if expectedFolders?[path] == true, !available { throw SwitchError.changed }
+                result.folders[path] = available
             }
         }
         return result
@@ -234,34 +238,43 @@ enum ConversationResources {
         .malformed(L10n.tr("The conversation history could not be verified. Its original data is unchanged."))
     }
 
-    private static func verifySubagents(_ history: Data, project: URL, cli: String,
+    private static func verifySubagents(_ history: URL, project: URL, cli: String,
                                        snapshots: inout [String: FileExpectation]) throws {
         var pending = [history], seen = Set<String>()
-        while let data = pending.popLast() {
-            for line in data.split(separator: 10) where !line.isEmpty {
-                guard let row = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else {
-                    throw SwitchError.malformed(L10n.tr("The conversation history could not be verified. Its original data is unchanged."))
-                }
-                guard let result = row["toolUseResult"] as? [String: Any], let agent = result["agentId"] as? String else { continue }
-                guard !agent.isEmpty, agent.count <= 128, agent.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }) else {
-                    throw SwitchError.unsafePath
-                }
+        while let file = pending.popLast() {
+            let scan = try ConversationHistory.scan(file)
+            snapshots[file.path] = .sha256(scan.digest)
+            for agent in scan.agents {
                 guard seen.insert(agent).inserted else { continue }
                 guard seen.count <= 512 else { throw tooLarge }
                 let nested = project.appendingPathComponent(cli + "/subagents/agent-" + agent + ".jsonl")
                 let flat = project.appendingPathComponent("agent-" + agent + ".jsonl")
                 try SafeFiles.validateAncestors(nested); try SafeFiles.validateAncestors(flat)
                 let file = FileManager.default.fileExists(atPath: nested.path) ? nested : flat
-                let contents = try SafeFiles.read(file, limit: maximumBytes)
-                snapshots[file.path] = .sha256(digest(contents)); pending.append(contents)
+                pending.append(file)
                 let metadata = file.deletingPathExtension().appendingPathExtension("meta.json")
-                if FileManager.default.fileExists(atPath: metadata.path) { snapshots[metadata.path] = try fingerprint(metadata) }
+                if FileManager.default.fileExists(atPath: metadata.path) { snapshots[metadata.path] = try ConversationHistory.fingerprint(metadata) }
             }
         }
     }
 
-    static func validate(_ snapshots: [String: FileExpectation]) throws {
-        for (path, expected) in snapshots where try fingerprint(URL(fileURLWithPath: path)) != expected { throw SwitchError.changed }
+    static func validate(_ snapshots: Retained) throws {
+        for (path, expected) in snapshots.files where try ConversationHistory.fingerprint(URL(fileURLWithPath: path)) != expected { throw SwitchError.changed }
+        for (path, available) in snapshots.folders where available {
+            let url = URL(fileURLWithPath: path); try SafeFiles.validateAncestors(url)
+            var directory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &directory), directory.boolValue else { throw SwitchError.changed }
+        }
+    }
+    private static func validateCompanionAuthority(_ path: String, ids: Set<String>) throws {
+        for component in path.split(separator: "/").map(String.init) {
+            let suffix = ids.first(where: { component.hasPrefix($0 + ".") }).map { String(component.dropFirst($0.count + 1)) } ?? component
+            let name = suffix.lowercased().filter { $0.isLetter || $0.isNumber }
+            guard !["auth", "authentication", "credentials", "credentialcache", "cookies", "oauth", "tokencache",
+                    "indexeddb", "localstorage", "sessionstorage", "logindata"].contains(name) else {
+                throw SwitchError.blocked(L10n.tr("This conversation includes an authentication store that cannot be transferred safely."))
+            }
+        }
     }
     private static var tooLarge: SwitchError {
         .blocked(L10n.tr("The conversation resources exceed the safe transfer limit. Nothing was omitted or transferred."))

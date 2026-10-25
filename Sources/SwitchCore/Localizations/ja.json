@@ -471,5 +471,8 @@
   "The conversation's parent or child records could not be verified. Refresh and try again.": "会話の親子関係を確認できません。更新して再試行してください。",
   "Cowork conversations cannot yet be used with another account": "Cowork の会話はまだ別のアカウントで使用できません",
   "Conversations ready": "会話の準備が完了しました",
-  "Turn off persistent browser storage in Claude before transferring these conversations.": "これらの会話を転送する前に、Claude でブラウザーの永続ストレージをオフにしてください。"
+  "Turn off persistent browser storage in Claude before transferring these conversations.": "これらの会話を転送する前に、Claude でブラウザーの永続ストレージをオフにしてください。",
+  "Some conversation folders are already unavailable. Their paths will be preserved.": "すでに利用できない会話フォルダがあります。パスは保持されます。",
+  "This conversation has credentials in a connection URL. Reauthorize the connection in Claude before transferring.": "この会話の接続 URL に認証情報が含まれています。転送前に Claude で接続を再認証してください。",
+  "This conversation includes an authentication store that cannot be transferred safely.": "この会話には安全に転送できない認証ストレージが含まれています。"
 }

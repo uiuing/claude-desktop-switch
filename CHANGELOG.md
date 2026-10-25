@@ -21,6 +21,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Verify long shared Code histories with bounded streaming reads instead of the attachment-copy size limit. Preserve already-unavailable workspace paths with a warning while detecting folder loss after preview.
+- Preserve ordinary render tokens, drafts and tool schemas; exclude nested authentication, header-pair credentials and signed connection URLs, and block authentication-store companions.
 - Code conversation transfers accept Desktop's native MCP catalog arrays, including empty catalogs, and optional null authorization fields. Tool schema definitions remain intact while connection credentials are excluded.
 - Account switches with followed Code conversations no longer fail when Claude's quit cleanup changes only JSON formatting or excluded connection state. Identity, ancestry, workspace and destination changes still stop the operation; transaction failures now log their stage without account data.
 - Quota refresh can use an eligible Code credential when the preferred Desktop credential was already rejected, including after restarting Switch.

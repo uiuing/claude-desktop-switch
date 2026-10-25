@@ -471,5 +471,8 @@
   "The conversation's parent or child records could not be verified. Refresh and try again.": "대화의 상위 및 하위 관계를 확인할 수 없습니다. 새로 고친 후 다시 시도하세요.",
   "Cowork conversations cannot yet be used with another account": "Cowork 대화는 아직 다른 계정에서 사용할 수 없습니다",
   "Conversations ready": "대화 준비 완료",
-  "Turn off persistent browser storage in Claude before transferring these conversations.": "이 대화를 이전하기 전에 Claude에서 영구 브라우저 저장소를 끄세요."
+  "Turn off persistent browser storage in Claude before transferring these conversations.": "이 대화를 이전하기 전에 Claude에서 영구 브라우저 저장소를 끄세요.",
+  "Some conversation folders are already unavailable. Their paths will be preserved.": "일부 대화 폴더는 이미 사용할 수 없습니다. 경로는 유지됩니다.",
+  "This conversation has credentials in a connection URL. Reauthorize the connection in Claude before transferring.": "이 대화의 연결 URL에 자격 증명이 포함되어 있습니다. 전송하기 전에 Claude에서 연결을 다시 인증하세요.",
+  "This conversation includes an authentication store that cannot be transferred safely.": "이 대화에는 안전하게 전송할 수 없는 인증 저장소가 포함되어 있습니다."
 }

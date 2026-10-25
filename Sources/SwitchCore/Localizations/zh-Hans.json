@@ -471,5 +471,8 @@
   "The conversation's parent or child records could not be verified. Refresh and try again.": "无法验证会话的主子关系，请刷新后重试。",
   "Cowork conversations cannot yet be used with another account": "Cowork 会话暂不能在其他账号中使用",
   "Conversations ready": "会话已就绪",
-  "Turn off persistent browser storage in Claude before transferring these conversations.": "请先在 Claude 中关闭持久浏览器存储，再转移这些会话。"
+  "Turn off persistent browser storage in Claude before transferring these conversations.": "请先在 Claude 中关闭持久浏览器存储，再转移这些会话。",
+  "Some conversation folders are already unavailable. Their paths will be preserved.": "部分会话文件夹原本已不可用，将保留其路径。",
+  "This conversation has credentials in a connection URL. Reauthorize the connection in Claude before transferring.": "此会话的连接 URL 含有凭证。请先在 Claude 中重新授权该连接，再迁移。",
+  "This conversation includes an authentication store that cannot be transferred safely.": "此会话包含无法安全迁移的身份验证存储。"
 }

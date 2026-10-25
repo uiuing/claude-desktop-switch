@@ -21,6 +21,16 @@ final class ConversationPresentationTests: XCTestCase {
     private func read(_ snapshot: LoginSnapshot) throws -> [Data: Data] {
         try LevelDBSnapshot.read(Dictionary(uniqueKeysWithValues: snapshot.files.map { (String($0.path.dropFirst(ConversationPresentation.prefix.count)), $0.data) }))
     }
+    func testOrdinaryRenderTokensAndDraftContentSurvivePresentationTransfer() throws {
+        let state: [String: Any] = ["currentSessionId": sid, "renderToken": "ordinary-render-id",
+            "draft": ["text": "Original draft", "parameters": ["token": "historical value", "password": "example"]],
+            "auth": ["accessToken": "synthetic-source-credential"]]
+        let merged = try ConversationPresentation.mergeStore(["state": state], into: [:], ids: [sid])
+        let result = try XCTUnwrap(merged["state"] as? [String: Any])
+        XCTAssertEqual(result["renderToken"] as? String, "ordinary-render-id")
+        XCTAssertEqual(result["draft"] as? NSDictionary, state["draft"] as? NSDictionary)
+        XCTAssertFalse(String(decoding: try JSONSerialization.data(withJSONObject: merged), as: UTF8.self).contains("synthetic-source-credential"))
+    }
     func testMergePreservesUnknownScopedFieldsAndTargetCredentialsWithoutSourceCredentials() throws {
         let pane = key(ConversationPresentation.pane), auth = key("synthetic-login")
         let original: [String: Any] = ["version": 6, "state": ["currentSessionId": sid,

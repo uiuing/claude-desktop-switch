@@ -61,7 +61,11 @@ public actor SwitchEngine: SwitchService {
             plan.resourceExpectations?["presentation:" + presentation] = try ConversationResources.fingerprint(SafeFiles.child(presentation, of: environment.desktop))
         }
         if !sessions.isEmpty {
-            _ = try ConversationResources.retained(sessions: sessions, environment: environment)
+            let retained = try ConversationResources.retained(sessions: sessions, environment: environment)
+            plan.conversationFolders = retained.folders
+            if retained.folders.values.contains(false) {
+                plan.warnings.append(L10n.tr("Some conversation folders are already unavailable. Their paths will be preserved."))
+            }
             _ = try MigrationBuilder.changes(sessions: sessions, target: target, environment: environment,
                 expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations,
                 resources: plan.resourceExpectations ?? [:])
@@ -354,7 +358,8 @@ public actor SwitchEngine: SwitchService {
                 }
             }
             stage = "revalidating-conversations"
-            let retained = sessions.isEmpty ? [:] : try ConversationResources.retained(sessions: sessions, environment: environment)
+            let retained = sessions.isEmpty ? ConversationResources.Retained() : try ConversationResources.retained(sessions: sessions, environment: environment,
+                expectedFolders: plan.conversationFolders)
             let preparedTransfers = Dictionary(uniqueKeysWithValues: changes.compactMap { change in
                 change.data.map { (change.relative, $0) }
             })

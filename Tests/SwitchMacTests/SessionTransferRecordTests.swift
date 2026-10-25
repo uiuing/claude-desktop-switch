@@ -125,4 +125,38 @@ final class SessionTransferRecordTests: XCTestCase {
             "queuedSideSessionNotes": [["id": "fixture-note", "text": "Unacknowledged result"]]]
         XCTAssertEqual(try transfer(source), source as NSDictionary)
     }
+
+    func testExplicitCredentialsAreExcludedFromNestedMetadataWithoutScrubbingOrdinaryTokens() throws {
+        let source: [String: Any] = ["bearerToken": "synthetic-credential", "renderToken": "ordinary-render-id",
+            "connectionSettings": ["auth": ["accessToken": "synthetic-credential", "token": "synthetic-credential"]],
+            "nested": ["authorization": "Bearer synthetic-credential"],
+            "futureTask": ["token": "token budgeting", "authorization": "document this concept"],
+            "draft": ["parameters": ["password": "historical example"]]]
+        let result = try transfer(source)
+        XCTAssertNil(result["bearerToken"])
+        XCTAssertEqual(result["renderToken"] as? String, "ordinary-render-id")
+        XCTAssertEqual(result["connectionSettings"] as? NSDictionary, ["auth": [:]] as NSDictionary)
+        XCTAssertEqual(result["nested"] as? NSDictionary, NSDictionary())
+        XCTAssertEqual(result["futureTask"] as? NSDictionary, source["futureTask"] as? NSDictionary)
+        XCTAssertEqual(result["draft"] as? NSDictionary, source["draft"] as? NSDictionary)
+    }
+
+    func testHeaderPairsAreFilteredAndAuthCannotHideBehindASchemaField() throws {
+        for headers: Any in [[["name": "Authorization", "value": "synthetic-credential"], ["name": "Accept", "value": "application/json"]],
+                             [["Authorization", "synthetic-credential"], ["Accept", "application/json"]]] {
+            let result = try transfer(["remoteMcpServersConfig": [["uuid": "fixture", "name": "Fixture", "tools": [], "headers": headers]]])
+            let catalog = try XCTUnwrap(result["remoteMcpServersConfig"] as? [[String: Any]])
+            XCTAssertEqual((catalog[0]["headers"] as? [Any])?.count, 1)
+            XCTAssertFalse(String(decoding: try JSONSerialization.data(withJSONObject: result), as: UTF8.self).contains("synthetic-credential"))
+        }
+        let result = try SessionTransferRecord.withoutCredentials(["auth": ["inputSchema": ["token": "synthetic-credential"]]])
+        XCTAssertFalse(String(decoding: try JSONSerialization.data(withJSONObject: result), as: UTF8.self).contains("synthetic-credential"))
+    }
+
+    func testSignedAndGenericKeyConnectorURLsRequireReauthorization() {
+        for query in ["key=synthetic", "sig=synthetic", "X-Amz-Signature=synthetic", "X-Goog-Signature=synthetic"] {
+            XCTAssertThrowsError(try transfer(["remoteMcpServersConfig": [["uuid": "fixture", "name": "Fixture", "tools": [],
+                "url": "https://fixture.invalid/mcp?" + query]]]))
+        }
+    }
 }
