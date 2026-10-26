@@ -56,7 +56,11 @@ enum ProcessTable {
     /// session it started that outlived it, or one of its helpers.
     static func leftover(_ all: [ProcessEntry], codeBuilds: String, tree: Set<ProcessKey>) -> Leftover? {
         if all.contains(where: { isDesktopCode($0, codeBuilds: codeBuilds) || (tree.contains($0.key) && isClaudeCode($0)) }) { return .code }
-        if all.contains(where: { $0.path.contains("/Claude.app/Contents/") }) { return .helper }
+        // Crashpad only handles crash reports and can finish uploads after its clients exit.
+        if all.contains(where: {
+            $0.path.contains("/Claude.app/Contents/") &&
+                !$0.path.hasSuffix("/Claude.app/Contents/Frameworks/Electron Framework.framework/Helpers/chrome_crashpad_handler")
+        }) { return .helper }
         return nil
     }
     static func isDesktopCode(_ entry: ProcessEntry, codeBuilds: String) -> Bool { entry.path.hasPrefix(codeBuilds) }
