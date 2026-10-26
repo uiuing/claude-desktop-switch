@@ -6,6 +6,8 @@ public actor LocalReader: InventoryReader {
     public let codeConfig: URL
     public let projects: URL?
     private var recordCache: [String: (FileStamp, Conversation)] = [:]
+    private var activityCache: [String: (stamp: FileStamp, date: Date?)] = [:]
+    private struct ActivityRow: Decodable { var type: String; var timestamp: JSONValue? }
     private var profileCache: (signature: [String], profile: DesktopProfile.Cache) = ([], DesktopProfile.Cache())
     private var codeAccountCache: (stamp: FileStamp, account: CodeAccount?)?
     /// The Claude Code login in `~/.claude.json`. Only these fields are decoded; the file also holds project history.
@@ -59,7 +61,9 @@ public actor LocalReader: InventoryReader {
                             let conversation = Conversation(id: accountID + "/" + orgID + "/" + kind.rawValue + "/" + sessionID,
                                 sessionID: sessionID, accountID: accountID, organizationID: orgID,
                                 title: r["title"].string ?? r["name"].string ?? L10n.tr("Untitled conversation"), kind: kind,
-                                modifiedAt: [Dates.parse(r["lastActivityAt"]), Dates.parse(r["updatedAt"])].compactMap { $0 }.max() ?? stamp.modified,
+                                modifiedAt: kind == .code
+                                    ? Dates.parse(r["lastActivityAt"]) ?? Dates.parse(r["updatedAt"]) ?? .distantPast
+                                    : [Dates.parse(r["lastActivityAt"]), Dates.parse(r["updatedAt"])].compactMap { $0 }.max() ?? stamp.modified,
                                 model: r["model"].string, project: r["cwd"].string,
                                 recordRelativePath: relative, cliSessionID: r["cliSessionId"].string,
                                 archived: r["isArchived"].bool ?? false, parentSessionID: lineage.parent,
@@ -102,12 +106,12 @@ public actor LocalReader: InventoryReader {
                               desktopEmails: profile.emails.filter { accounts[$0.key] != nil })
     }
 
-    /// Overlay metadata on every scan; transcript appends need not change the cached Desktop index.
+    /// Overlay conversation activity on every scan; transcript appends need not change the cached Desktop index.
     private func withTranscriptActivity(_ conversations: [Conversation], activeAccountID: String?) -> [Conversation] {
         let wanted = Set(conversations.filter { $0.kind == .code && $0.accountID == activeAccountID }.compactMap { session in
             session.cliSessionID.flatMap { UUID(uuidString: $0)?.uuidString.lowercased() }
         })
-        guard let projects, !wanted.isEmpty else { return conversations }
+        guard let projects, !wanted.isEmpty else { activityCache.removeAll(); return conversations }
         var files: [String: [URL]] = [:], budget = 10_000
         func children(_ folder: URL) throws -> [URL] {
             let entries = try SafeFiles.children(folder)
@@ -124,23 +128,45 @@ public actor LocalReader: InventoryReader {
             }
         } catch { return conversations }
         let now = Date()
-        func modified(_ file: URL) -> Date? {
+        var seen = Set<String>(), readBudget = 16 * 1024 * 1024
+        defer { activityCache = activityCache.filter { seen.contains($0.key) } }
+        func activity(_ file: URL) -> Date? {
+            seen.insert(file.path)
             guard let fd = try? SafeFiles.openRead(file) else { return nil }
             let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
             defer { try? handle.close() }
             guard let stamp = try? SafeFiles.stamp(fd), stamp.size > 0, stamp.modified <= now else { return nil }
-            return stamp.modified
+            if let cached = activityCache[file.path], cached.stamp == stamp { return cached.date }
+            // Quit flushes append titles and other maintenance rows to idle histories too.
+            // Read only timestamp/type fields from a bounded tail, never message contents.
+            let count = Int(min(stamp.size, 1024 * 1024))
+            guard count <= readBudget else { return nil }
+            readBudget -= count
+            let offset = UInt64(stamp.size - Int64(count))
+            guard (try? handle.seek(toOffset: offset)) != nil,
+                  let data = try? handle.read(upToCount: count), data.count == count,
+                  (try? SafeFiles.stamp(fd)) == stamp else { return nil }
+            let lines = data.split(separator: 10, omittingEmptySubsequences: false).dropFirst(offset > 0 ? 1 : 0)
+            let decoder = JSONDecoder()
+            let date = lines.compactMap { line -> Date? in
+                guard let row = try? decoder.decode(ActivityRow.self, from: Data(line)),
+                      row.type == "user" || row.type == "assistant",
+                      let timestamp = row.timestamp, let date = Dates.parse(timestamp), date <= now else { return nil }
+                return date
+            }.max()
+            activityCache[file.path] = (stamp, date)
+            return date
         }
         var latest: [String: Date] = [:]
-        for (id, matches) in files {
+        for (id, matches) in files.sorted(by: { $0.key < $1.key }) {
             // Shared histories can have duplicate filenames across projects; never guess which one belongs here.
-            guard matches.count == 1, let file = matches.first, let main = modified(file) else { continue }
-            var dates = [main]
+            guard matches.count == 1, let file = matches.first else { continue }
+            var dates = [activity(file)].compactMap { $0 }
             let agents = file.deletingPathExtension().appendingPathComponent("subagents")
             if let entries = try? children(agents) {
                 dates += entries.filter {
                     $0.pathExtension == "jsonl" && $0.lastPathComponent.hasPrefix("agent-") && !$0.lastPathComponent.contains(".superseded-")
-                }.compactMap(modified)
+                }.sorted { $0.path < $1.path }.compactMap(activity)
             }
             latest[id] = dates.max()
         }

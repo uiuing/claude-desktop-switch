@@ -47,13 +47,14 @@ final class LocalReaderTests: XCTestCase {
 
     @discardableResult
     private func transcript(_ reader: LocalReader, project: String = "fixture", name: String? = nil,
-                            at date: Date, empty: Bool = false) async throws -> URL {
+                            at date: Date, empty: Bool = false, modified: Date? = nil) async throws -> URL {
         let projects = await reader.projects
         let file = try XCTUnwrap(projects).appendingPathComponent(project + "/" + (name ?? "0a1b2c3d-7777-4aaa-8bbb-000000000007.jsonl"))
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        // The activity timestamp must require only metadata, not transcript contents.
-        try Data(repeating: 0xff, count: empty ? 0 : 10).write(to: file)
-        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: file.path)
+        let timestamp = date.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true))
+        let row = #"{"type":"assistant","timestamp":"\#(timestamp)","message":{"content":"Fixture"}}"# + "\n"
+        try Data((empty ? "" : row).utf8).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: modified ?? date], ofItemAtPath: file.path)
         return file
     }
 
@@ -65,7 +66,7 @@ final class LocalReaderTests: XCTestCase {
         let initial = try await reader.scan()
         XCTAssertEqual(initial.conversations.first?.modifiedAt.timeIntervalSince1970 ?? 0, old.timeIntervalSince1970, accuracy: 0.001)
         XCTAssertFalse(try XCTUnwrap(initial.conversations.first).modifiedAt > now.addingTimeInterval(-300))
-        try await transcript(reader, at: recent)
+        try await transcript(reader, at: recent, modified: old.addingTimeInterval(1))
         let updated = try await reader.scan()
         let session = try XCTUnwrap(updated.conversations.first)
         XCTAssertEqual(session.modifiedAt.timeIntervalSince1970, recent.timeIntervalSince1970, accuracy: 0.001)
@@ -73,15 +74,63 @@ final class LocalReaderTests: XCTestCase {
         XCTAssertTrue(updated.warnings.isEmpty)
     }
 
-    func testNewestIndexTimestampWinsWithoutUsingRewriteTimeAsActivity() async throws {
+    func testLastActivityTakesPrecedenceOverIndexUpdateAndRewriteTime() async throws {
         let reader = try reader(sessionsIn: desktopOrganization)
         let old = Date().addingTimeInterval(-7200), newer = old.addingTimeInterval(600)
         try await transcript(reader, at: old)
         for (last, updated) in [(old, newer), (newer, old)] {
             try await setActivity(reader, last: last, updated: updated)
             let result = try await reader.scan()
-            XCTAssertEqual(result.conversations.first?.modifiedAt.timeIntervalSince1970 ?? 0, newer.timeIntervalSince1970, accuracy: 0.001)
+            XCTAssertEqual(result.conversations.first?.modifiedAt.timeIntervalSince1970 ?? 0, last.timeIntervalSince1970, accuracy: 0.001)
         }
+    }
+
+    func testQuitMaintenanceWritesDoNotResetActivityEvenAfterReaderRestart() async throws {
+        let reader = try reader(sessionsIn: desktopOrganization), now = Date()
+        let old = now.addingTimeInterval(-86400)
+        try await setActivity(reader, last: old)
+        let main = try await transcript(reader, at: old)
+        let agent = try await transcript(reader, name: "0a1b2c3d-7777-4aaa-8bbb-000000000007/subagents/agent-fixture.jsonl", at: old)
+        _ = try await reader.scan()
+        for file in [main, agent] {
+            let handle = try FileHandle(forWritingTo: file)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data((#"{"type":"last-prompt","lastPrompt":"Fixture"}"# + "\n" +
+                #"{"type":"system","timestamp":"\#(now.ISO8601Format())","subtype":"stop_hook_summary"}"# + "\n").utf8))
+            try handle.close()
+            try FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: file.path)
+        }
+        let restarted = await LocalReader(desktop: reader.desktop, codeConfig: reader.codeConfig, projects: reader.projects)
+        for inventory in [try await reader.scan(), try await restarted.scan()] {
+            let session = try XCTUnwrap(inventory.conversations.first)
+            XCTAssertEqual(session.modifiedAt.timeIntervalSince1970, old.timeIntervalSince1970, accuracy: 0.001)
+            XCTAssertFalse(SessionLibrary.recentlyActiveForSwitch(session, activeAccountID: account, now: now.addingTimeInterval(1)))
+        }
+    }
+
+    func testCodeRecordWithoutActivityNeverUsesItsFileModificationTime() async throws {
+        let reader = try reader(sessionsIn: desktopOrganization)
+        let inventory = try await reader.scan()
+        let session = try XCTUnwrap(inventory.conversations.first)
+        XCTAssertEqual(session.modifiedAt, .distantPast)
+        XCTAssertFalse(SessionLibrary.recentlyActiveForSwitch(session, activeAccountID: account, now: Date()))
+    }
+
+    func testBoundedTailIgnoresPartialFutureAndMaintenanceRows() async throws {
+        let reader = try reader(sessionsIn: desktopOrganization), now = Date()
+        let old = now.addingTimeInterval(-3600), recent = now.addingTimeInterval(-30)
+        try await setActivity(reader, last: old)
+        let file = try await transcript(reader, at: recent)
+        let message = try Data(contentsOf: file)
+        let future = now.addingTimeInterval(3600).ISO8601Format()
+        var data = Data((#"{"type":"custom-title","title":""# + String(repeating: "x", count: 1024 * 1024 + 100) + #""}"# + "\n").utf8)
+        data.append(message)
+        data.append(Data((#"{"type":"assistant","timestamp":"\#(future)"}"# + "\n" +
+            #"{"type":"queue-operation","timestamp":"\#(now.ISO8601Format())"}"# + "\n" +
+            #"{"type":"user","timestamp":"\#(now.ISO8601Format())","message":"unfinished"#).utf8))
+        try data.write(to: file)
+        let inventory = try await reader.scan()
+        XCTAssertEqual(inventory.conversations.first?.modifiedAt.timeIntervalSince1970 ?? 0, recent.timeIntervalSince1970, accuracy: 0.001)
     }
 
     func testNativeSubagentActivityUpdatesWithoutAnIndexOrMainTranscriptChange() async throws {
