@@ -474,5 +474,9 @@
   "Turn off persistent browser storage in Claude before transferring these conversations.": "Перед переносом этих бесед отключите постоянное хранилище браузера в Claude.",
   "Some conversation folders are already unavailable. Their paths will be preserved.": "Некоторые папки бесед уже недоступны. Их пути будут сохранены.",
   "This conversation has credentials in a connection URL. Reauthorize the connection in Claude before transferring.": "URL подключения этой беседы содержит учётные данные. Перед переносом заново авторизуйте подключение в Claude.",
-  "This conversation includes an authentication store that cannot be transferred safely.": "Эта беседа содержит хранилище аутентификации, которое нельзя безопасно перенести."
+  "This conversation includes an authentication store that cannot be transferred safely.": "Эта беседа содержит хранилище аутентификации, которое нельзя безопасно перенести.",
+  "Export diagnostics…": "Экспорт диагностики…",
+  "Runtime logs": "Журналы",
+  "Could not export diagnostics.": "Не удалось экспортировать диагностику.",
+  "Runtime logs are unavailable. Check disk space and permissions.": "Не удалось записать журналы. Проверьте место на диске и права доступа."
 }

@@ -474,5 +474,9 @@
   "Turn off persistent browser storage in Claude before transferring these conversations.": "Desactiva el almacenamiento persistente del navegador en Claude antes de transferir estas conversaciones.",
   "Some conversation folders are already unavailable. Their paths will be preserved.": "Algunas carpetas de conversaciones ya no están disponibles. Se conservarán sus rutas.",
   "This conversation has credentials in a connection URL. Reauthorize the connection in Claude before transferring.": "La URL de conexión de esta conversación contiene credenciales. Vuelve a autorizar la conexión en Claude antes de transferirla.",
-  "This conversation includes an authentication store that cannot be transferred safely.": "Esta conversación incluye un almacén de autenticación que no se puede transferir de forma segura."
+  "This conversation includes an authentication store that cannot be transferred safely.": "Esta conversación incluye un almacén de autenticación que no se puede transferir de forma segura.",
+  "Export diagnostics…": "Exportar diagnóstico…",
+  "Runtime logs": "Registros",
+  "Could not export diagnostics.": "No se pudo exportar el diagnóstico.",
+  "Runtime logs are unavailable. Check disk space and permissions.": "No se pueden escribir los registros. Comprueba el espacio y los permisos del disco."
 }

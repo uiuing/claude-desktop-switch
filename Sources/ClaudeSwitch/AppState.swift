@@ -89,6 +89,7 @@ final class AppState {
     var pending: PendingOperation?
     var newAccountFollowError: String?
     var preparingNewAccountFollowUp = false
+    var exportingDiagnostics = false
     @ObservationIgnored var presentWorkbench: (() -> Void)?
     var search = ""
     var selectedSessionIDs = Set<String>()
@@ -121,6 +122,7 @@ final class AppState {
     private let engine: SwitchEngine
     private let usageClient: ActiveUsageClient
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var loggingStarted = false
     private var libraryReadable = true
     @ObservationIgnored private var polling: Task<Void, Never>?
     @ObservationIgnored private var credentialObserver: DesktopUsageObserver?
@@ -291,6 +293,13 @@ final class AppState {
 
     func start() async {
         guard !demo else { return }
+        if !loggingStarted, Bundle.main.bundleIdentifier == "dev.claudeswitch.desktop" {
+            loggingStarted = true
+            let buildID = Bundle.main.executableURL.flatMap { try? SafeFiles.read($0, limit: 64 * 1024 * 1024) }.map(digest) ?? "unknown"
+            let logging = await RuntimeLog.shared.start(version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+                build: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown", buildID: buildID)
+            if !logging { message = L10n.tr("Runtime logs are unavailable. Check disk space and permissions.") }
+        }
         updates.start()
         await notifications.refreshAccess()
         await startupAccess.check(using: authorizeKeychainItem,
@@ -322,7 +331,10 @@ final class AppState {
         started = true
         guard !demo else { return }
         do { library = try await store.load() }
-        catch { libraryReadable = false; message = L10n.tr("Could not read the Switch library. Settings changed in this session will not be saved.") }
+        catch {
+            await RuntimeLog.shared.record(.failed, component: .storage, level: .error, failure: RuntimeFailure(error))
+            libraryReadable = false; message = L10n.tr("Could not read the Switch library. Settings changed in this session will not be saved.")
+        }
         sampleDesktopActivity()
         if quotaSchedule.activity.running { Task(priority: .utility) { [weak self] in await self?.scanTokens() } }
         do { try await engine.purgeMovedAsideLogins() } catch { message = display(error) }
@@ -736,6 +748,8 @@ final class AppState {
             quotaSchedule.deferRead(accountID, until: cooling.until)
             return manual ? nil : cooling.until
         } catch let failure as UsageFailure {
+            await RuntimeLog.shared.record(.failed, component: .usage, level: failure.isTransient ? .warning : .error,
+                failure: RuntimeFailure(failure), detail: RuntimeLog.Detail(rawValue: failure.rawValue))
             usageCooldowns[accountID] = nil
             if failure == .keychain && !usageClient.quotaAccessAvailable {
                 quotaSchedule.suspend(accountID, awaitingAccess: true)
@@ -1050,6 +1064,7 @@ final class AppState {
     }
 
     func display(_ error: Error) -> String {
-        (error as? SwitchError)?.localizedDescription ?? L10n.tr("Could not read: {0}", L10n.argument(error.localizedDescription))
+        RuntimeLog.failure(error, component: .app)
+        return (error as? SwitchError)?.localizedDescription ?? L10n.tr("Could not read: {0}", L10n.argument(error.localizedDescription))
     }
 }

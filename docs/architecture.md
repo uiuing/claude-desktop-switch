@@ -87,6 +87,8 @@ open "dist/Claude Switch.app" --args --demo
 
 ## Diagnostics
 
+`RuntimeLog` in `SwitchStorage` is the shared structured event service for the app, storage, operations, access, quota and update flows. A single actor serializes appends, bounded rotation and typed export; operation TaskLocal context connects validation checks to the originating switch. See [runtime logging](runtime-logging.md) for schema, privacy and retention.
+
 `switch-inspect` reads the same local files as the app and prints counts as JSON: whether a signed-in identity was found, the number of local accounts, quota slots and Claude Code records. It never prints emails, account IDs, titles or tokens, never touches the Keychain or the network, and never writes anything.
 
 ```sh

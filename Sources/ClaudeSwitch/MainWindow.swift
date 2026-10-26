@@ -68,7 +68,9 @@ private struct AuthorizedWorkbench: View {
         }
         .overlay(alignment: .bottomTrailing) {
             if let message = state.message {
-                OperationNoticeView(message: message, feedback: state.operationFeedback) { state.message = nil }
+                OperationNoticeView(message: message, feedback: state.operationFeedback,
+                    exportDiagnostics: { Task { await state.exportDiagnostics() } },
+                    canExport: !state.demo && !state.exportingDiagnostics) { state.message = nil }
                     .padding(20)
             }
         }

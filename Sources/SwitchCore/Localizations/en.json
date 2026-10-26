@@ -474,5 +474,9 @@
   "Turn off persistent browser storage in Claude before transferring these conversations.": "Turn off persistent browser storage in Claude before transferring these conversations.",
   "Some conversation folders are already unavailable. Their paths will be preserved.": "Some conversation folders are already unavailable. Their paths will be preserved.",
   "This conversation has credentials in a connection URL. Reauthorize the connection in Claude before transferring.": "This conversation has credentials in a connection URL. Reauthorize the connection in Claude before transferring.",
-  "This conversation includes an authentication store that cannot be transferred safely.": "This conversation includes an authentication store that cannot be transferred safely."
+  "This conversation includes an authentication store that cannot be transferred safely.": "This conversation includes an authentication store that cannot be transferred safely.",
+  "Export diagnostics…": "Export diagnostics…",
+  "Runtime logs": "Runtime logs",
+  "Could not export diagnostics.": "Could not export diagnostics.",
+  "Runtime logs are unavailable. Check disk space and permissions.": "Runtime logs are unavailable. Check disk space and permissions."
 }

@@ -1,10 +1,8 @@
 import Foundation
-import OSLog
 import SwitchCore
 import SwitchStorage
 
 public actor SwitchEngine: SwitchService {
-    private static let logger = Logger(subsystem: "dev.claudeswitch.desktop", category: "operations")
     private let environment: MacEnvironment
     private let vault: CredentialVault
     private var busy = false
@@ -249,6 +247,22 @@ public actor SwitchEngine: SwitchService {
 
     public func execute(_ plan: OperationPlan, confirmedPlanID: UUID, target: Account,
                         sessions: [Conversation]) async throws -> OperationResult {
+        try await RuntimeLogContext.$operationID.withValue(plan.id) {
+            var stage = RuntimeLog.Stage.validatingPlan
+            await RuntimeLog.shared.record(.operationStarted, component: .operation, stage: stage)
+            do {
+                let result = try await perform(plan, confirmedPlanID: confirmedPlanID, target: target, sessions: sessions, stage: &stage)
+                await RuntimeLog.shared.record(.operationCompleted, component: .operation, stage: stage)
+                return result
+            } catch {
+                await RuntimeLog.shared.record(.failed, component: .operation, level: .error, stage: stage, failure: RuntimeFailure(error))
+                throw error
+            }
+        }
+    }
+
+    private func perform(_ plan: OperationPlan, confirmedPlanID: UUID, target: Account,
+                         sessions: [Conversation], stage: inout RuntimeLog.Stage) async throws -> OperationResult {
         try BuildAccess.requireClaudeWrites()
         guard !busy else { throw SwitchError.busy }
         guard plan.kind != .recover else { throw SwitchError.blocked(L10n.tr("Open Settings and choose Recover.")) }
@@ -267,20 +281,30 @@ public actor SwitchEngine: SwitchService {
         } else { try plan.validate(digest: environment.configDigest()) }
         guard try environment.lastKnownAccount() == plan.sourceAccountID,
               let application = environment.application, let version = environment.version else { throw SwitchError.changed }
+        stage = .loadingTargetLogin
+        await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
         var targetSnapshot = plan.kind == .switchAccount ? try await vault.load(accountID: target.id) : nil
         if let targetSnapshot, !DesktopVersion.canRestore(saved: targetSnapshot.version, installed: version) {
             throw SwitchError.blocked(L10n.tr("The saved login of the target account comes from Claude {0} and can't be restored into the installed Claude {1}. Update Claude Desktop, then try again.",
                                               targetSnapshot.version, version))
         }
+        stage = .validatingConversations
+        await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
         let changes = try MigrationBuilder.changes(sessions: sessions, target: target, environment: environment,
             expectedDigests: plan.sourceDigests, destinations: plan.destinationExpectations,
             resources: plan.resourceExpectations ?? [:])
         let desktop = await DesktopController(environment: environment)
+        stage = .quittingClaude
+        await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
         let wasRunning = try await desktop.quitGracefully()
+        stage = .validatingStoppedLogin
+        await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
         // Exiting writes some config fields. Revalidate identity, not the pre-quit whole-file hash.
         guard try environment.lastKnownAccount() == plan.sourceAccountID else { throw SwitchError.changed }
         try await desktop.waitUntilStopped()
         if plan.kind == .capture {
+            stage = .savingLogin
+            await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
             let snapshot = try capture(version: version)
             try await vault.save(snapshot)
             var result = OperationResult()
@@ -297,12 +321,17 @@ public actor SwitchEngine: SwitchService {
             throw SwitchError.blocked(L10n.tr("Claude is signed out. Just sign in to the account to add in Claude."))
         }
         if swapsLogin && sourceSignedIn {
+            stage = .savingSourceLogin
+            await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
             do { try await vault.save(capture(version: version)) }
             catch { if wasRunning { try? await desktop.launch(application) }; throw error }
         }
+        stage = .creatingTransaction
+        await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
         let transaction = try FileTransaction(parent: transactions, live: environment.desktop, plan: plan, claudeVersion: version)
-        var stage = "staging-login"
         do {
+            stage = .readingLocalStorage
+            await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
             let localStorage = environment.desktop.appendingPathComponent("Local Storage")
             let localFiles = FileManager.default.fileExists(atPath: localStorage.path)
                 ? try ConversationResources.contents(localStorage, relative: "Local Storage").files : []
@@ -313,9 +342,13 @@ public actor SwitchEngine: SwitchService {
                     presentationSources[accountID]?.append(try await vault.load(accountID: accountID).files)
                 }
             }
+            stage = .preparingConversationPresentation
+            await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
             let presentationChanges = try ConversationPresentation.changes(sessions: sessions, sources: presentationSources,
                 target: target, environment: environment, expectations: plan.resourceExpectations ?? [:])
             var targetSessions: [Conversation] = []
+            stage = .readingTargetConversations
+            await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
             if let org = target.organizationID {
                 targetSessions = try ConversationRecords.readScope(desktop: environment.desktop, accountID: target.id, organizationID: org)
                     .filter { record in !sessions.contains { $0.sessionID == record.sessionID } }
@@ -324,9 +357,15 @@ public actor SwitchEngine: SwitchService {
                 }
             }
             if let snapshot = targetSnapshot {
+                stage = .restoringTargetPresentation
+                await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
                 let restored = try ConversationPresentation.restoring(snapshot, sessions: targetSessions, changes: [], environment: environment)
+                stage = .mergingConversationPresentation
+                await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
                 let merged = try ConversationPresentation.merge(source: localFiles, target: restored,
                     ids: ConversationPresentation.localIDs(environment: environment))
+                stage = .restoringTransferredPresentation
+                await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
                 targetSnapshot = try ConversationPresentation.restoring(merged, sessions: targetSessions.filter { record in sessions.contains { $0.sessionID == record.sessionID } },
                     changes: presentationChanges, environment: environment)
             } else if plan.kind == .migrate, target.id == plan.sourceAccountID, !localFiles.isEmpty {
@@ -338,6 +377,8 @@ public actor SwitchEngine: SwitchService {
                     expectation: ConversationResources.fingerprint(localStorage))
             }
             if swapsLogin {
+                stage = .stagingLogin
+                await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
                 // Signing out installs an empty identity: Claude's login moves into the vault, nothing else is touched.
                 for container in IdentitySchema.containers {
                     if let targetSnapshot {
@@ -346,6 +387,8 @@ public actor SwitchEngine: SwitchService {
                         try transaction.stage(relative: container, data: nil)
                     }
                 }
+                stage = .stagingLoginConfig
+                await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
                 guard var object = try environment.effectiveConfig().object else {
                     throw SwitchError.malformed(L10n.tr("Could not parse login settings. Stopped."))
                 }
@@ -357,7 +400,8 @@ public actor SwitchEngine: SwitchService {
                     try transaction.stage(relative: "config.json.journal", data: nil)
                 }
             }
-            stage = "revalidating-conversations"
+            stage = .revalidatingConversations
+            await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
             let retained = sessions.isEmpty ? ConversationResources.Retained() : try ConversationResources.retained(sessions: sessions, environment: environment,
                 expectedFolders: plan.conversationFolders)
             let preparedTransfers = Dictionary(uniqueKeysWithValues: changes.compactMap { change in
@@ -370,9 +414,11 @@ public actor SwitchEngine: SwitchService {
             let replaced = Set(presentationChanges.map(\.relative))
             finalChanges.removeAll { replaced.contains($0.relative) }
             finalChanges.insert(contentsOf: presentationChanges, at: finalChanges.firstIndex(where: \.removesSource) ?? finalChanges.endIndex)
-            stage = "staging-conversations"
+            stage = .stagingConversations
+            await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
             try MigrationBuilder.stage(finalChanges, in: transaction)
-            stage = "applying"
+            stage = .applying
+            await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
             try await transaction.apply(stopped: { try await desktop.waitUntilStopped() },
                                         verify: {
                 try ConversationResources.validate(retained)
@@ -380,17 +426,18 @@ public actor SwitchEngine: SwitchService {
             })
             if plan.kind == .switchAccount, try environment.currentAccount() != target.id { throw SwitchError.changed }
             if plan.kind == .signOut, try environment.lastKnownAccount() != nil { throw SwitchError.changed }
-            stage = "committing"
+            stage = .committing
+            await RuntimeLog.shared.record(.phaseStarted, component: .operation, stage: stage)
             try transaction.commit()
         } catch {
-            Self.logger.error("Operation failed during \(stage, privacy: .public); rolling back.")
+            await RuntimeLog.shared.record(.rollbackStarted, component: .operation, level: .error, stage: stage, failure: RuntimeFailure(error))
             let reason = (error as? SwitchError)?.localizedDescription ?? error.localizedDescription
             do { try await transaction.rollback { try await desktop.waitUntilStopped() } }
             catch {
-                Self.logger.error("Rollback did not finish; manual recovery required.")
+                await RuntimeLog.shared.record(.rollbackFailed, component: .operation, level: .error, stage: stage, failure: RuntimeFailure(error))
                 throw SwitchError.blocked(L10n.tr("The operation did not finish. Use Recover in Settings before trying again."))
             }
-            Self.logger.notice("Rollback completed.")
+            await RuntimeLog.shared.record(.rollbackCompleted, component: .operation, stage: stage)
             try? await transaction.archive(vault: vault)
             // Every original is back in place, so the previous login is safe to reopen.
             if wasRunning, (try? await desktop.launch(application)) != nil {
@@ -400,16 +447,35 @@ public actor SwitchEngine: SwitchService {
         }
         var result = OperationResult()
         do { try await transaction.archive(vault: vault) }
-        catch { result.backupIncomplete = true }
+        catch {
+            await RuntimeLog.shared.record(.failed, component: .storage, level: .warning, stage: .committing, failure: RuntimeFailure(error))
+            result.backupIncomplete = true
+        }
         prune(now: Date())
         if wasRunning || swapsLogin {
             do { try await desktop.launch(application) }
-            catch { result.needsManualOpen = true }
+            catch {
+                await RuntimeLog.shared.record(.failed, component: .operation, level: .warning, stage: .reopeningClaude, failure: RuntimeFailure(error))
+                result.needsManualOpen = true
+            }
         }
         return result
     }
 
     public func recover(transactionID: String) async throws {
+        try await RuntimeLogContext.$operationID.withValue(UUID(uuidString: transactionID)) {
+            await RuntimeLog.shared.record(.recoveryStarted, component: .operation)
+            do {
+                try await performRecovery(transactionID: transactionID)
+                await RuntimeLog.shared.record(.recoveryCompleted, component: .operation)
+            } catch {
+                await RuntimeLog.shared.record(.failed, component: .operation, level: .error, failure: RuntimeFailure(error))
+                throw error
+            }
+        }
+    }
+
+    private func performRecovery(transactionID: String) async throws {
         try BuildAccess.requireClaudeWrites()
         guard !busy, UUID(uuidString: transactionID) != nil else { throw SwitchError.busy }
         busy = true; defer { busy = false }

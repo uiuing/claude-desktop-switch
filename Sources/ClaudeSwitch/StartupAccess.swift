@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwitchStorage
 
 /// A successful permission check starts services exactly once, across both app scenes.
 @MainActor
@@ -49,6 +50,7 @@ final class StartupAccess {
                 try Task.checkCancellation()
                 confirmedItems.insert(item)
             } catch {
+                await RuntimeLog.shared.record(.failed, component: .startup, level: .warning, failure: RuntimeFailure(error), detail: .keychain)
                 if failureMessage == nil { failureMessage = (error as? LocalizedError)?.errorDescription }
                 if allowPrompt || error is CancellationError || Task.isCancelled { break }
             }

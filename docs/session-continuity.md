@@ -33,6 +33,8 @@ The format implementation follows the primary [LevelDB log](https://github.com/g
 
 A credential-free presentation snapshot lives under `claude-code-sessions/<account>/<org>/switch-presentation/<sessionId>.json`. It is part of the conversation transaction and follows subsequent transfers. It is not stored solely in the seven-day login recovery archive. When transferring an inactive account's conversation, the account's saved snapshot can supply persisted presentation. When the target is already active, presentation is installed in the same transaction; otherwise the next account switch restores it.
 
+A saved presentation can outlive its recorded CLI binding. Reuse requires the same stable Desktop session ID, valid file digests and UUID bindings, no previous-CLI reference in any logical key/value, and an exact keyspace match after selecting only that stable session ID into an empty store. Only then may the normal transaction rebuild the sidecar with the current CLI binding; the presentation payload is retained. A different session, previous-engine reference, lost/unrelated state or malformed storage still stops the operation. Transcript bindings and conversation indexes retain their existing identity checks.
+
 Persistent `launch-preview-*` browser partitions can reuse authentication under stable session IDs. When persistent contexts are configured and present, the operation stops and directs the user to disable persistent browser storage in Claude. Switch does not erase those mixed stores or silently confer their credentials. Browser layout/reference data is distinct from website authentication.
 
 ## Transaction and failure recovery

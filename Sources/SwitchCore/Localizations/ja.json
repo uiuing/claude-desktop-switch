@@ -474,5 +474,9 @@
   "Turn off persistent browser storage in Claude before transferring these conversations.": "これらの会話を転送する前に、Claude でブラウザーの永続ストレージをオフにしてください。",
   "Some conversation folders are already unavailable. Their paths will be preserved.": "すでに利用できない会話フォルダがあります。パスは保持されます。",
   "This conversation has credentials in a connection URL. Reauthorize the connection in Claude before transferring.": "この会話の接続 URL に認証情報が含まれています。転送前に Claude で接続を再認証してください。",
-  "This conversation includes an authentication store that cannot be transferred safely.": "この会話には安全に転送できない認証ストレージが含まれています。"
+  "This conversation includes an authentication store that cannot be transferred safely.": "この会話には安全に転送できない認証ストレージが含まれています。",
+  "Export diagnostics…": "診断情報を書き出す…",
+  "Runtime logs": "実行ログ",
+  "Could not export diagnostics.": "診断情報を書き出せませんでした。",
+  "Runtime logs are unavailable. Check disk space and permissions.": "実行ログを書き込めません。ディスク容量とアクセス権を確認してください。"
 }

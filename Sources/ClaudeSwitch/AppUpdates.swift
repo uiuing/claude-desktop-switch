@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import SwitchCore
 import SwitchMac
+import SwitchStorage
 
 @MainActor
 @Observable
@@ -75,6 +76,7 @@ final class AppUpdates {
             retryAfter = nil; defaults?.removeObject(forKey: "updates.releasePage.retryAfter")
             status = ReleaseVersion(currentVersion) == nil ? .unknownVersion : hasUpdate ? .available : .current
         } catch {
+            await RuntimeLog.shared.record(.failed, component: .update, level: .warning, failure: RuntimeFailure(error))
             if let date = (error as? ReleaseCheckError)?.retryAfter {
                 retryAfter = date; defaults?.set(date, forKey: "updates.releasePage.retryAfter")
             }

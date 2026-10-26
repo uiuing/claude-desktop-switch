@@ -474,5 +474,9 @@
   "Turn off persistent browser storage in Claude before transferring these conversations.": "請先在 Claude 中關閉持久瀏覽器儲存，再轉移這些對話。",
   "Some conversation folders are already unavailable. Their paths will be preserved.": "部分對話資料夾原本已無法使用，將保留其路徑。",
   "This conversation has credentials in a connection URL. Reauthorize the connection in Claude before transferring.": "此對話的連線 URL 含有憑證。請先在 Claude 中重新授權該連線，再移轉。",
-  "This conversation includes an authentication store that cannot be transferred safely.": "此對話包含無法安全移轉的驗證資料儲存區。"
+  "This conversation includes an authentication store that cannot be transferred safely.": "此對話包含無法安全移轉的驗證資料儲存區。",
+  "Export diagnostics…": "匯出診斷資訊…",
+  "Runtime logs": "執行日誌",
+  "Could not export diagnostics.": "無法匯出診斷資訊。",
+  "Runtime logs are unavailable. Check disk space and permissions.": "無法寫入執行日誌，請檢查磁碟空間與權限。"
 }

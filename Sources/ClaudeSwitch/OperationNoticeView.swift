@@ -4,6 +4,8 @@ import SwitchCore
 struct OperationNoticeView: View {
     let message: String
     var feedback: OperationFeedback?
+    var exportDiagnostics: (() -> Void)?
+    var canExport = true
     let close: () -> Void
     private var color: Color {
         switch feedback?.style {
@@ -30,6 +32,10 @@ struct OperationNoticeView: View {
                 Text(feedback?.title ?? L10n.tr("Notice")).font(.system(size: 13, weight: .semibold))
                 Text(feedback?.body ?? message).font(.system(size: 12)).foregroundStyle(.secondary)
                     .textSelection(.enabled)
+                if feedback?.style == .failure, let exportDiagnostics {
+                    Button(L10n.tr("Export diagnostics…"), action: exportDiagnostics)
+                        .font(.system(size: 12)).buttonStyle(.borderless).disabled(!canExport)
+                }
             }.frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
             Button(action: close) {
                 Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))

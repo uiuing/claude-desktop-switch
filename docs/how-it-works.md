@@ -85,6 +85,12 @@ An unreviewed recommendation also shows a dismissible in-app reminder, which fad
 After a commit, the recovery copies are archived in encrypted form and read back for verification before the temporary folder is removed.
 Finished operations are kept while they are useful: the two newest switches that moved each account's login out of Claude, and everything else for a week. Unfinished operations are always kept.
 
+Runtime diagnostics use a single `RuntimeLog` service. Structured JSON Lines are written to `~/Library/Logs/Claude Switch/` and mirrored to the `dev.claudeswitch.desktop` system-log subsystem's `runtime` category. Up to five 1 MiB files are retained automatically across restarts. Events include the version, executable fingerprint, run/operation IDs, preparation step, fixed error category and validation check/location, never storage contents or private paths. Errors before transaction creation are logged too. See [runtime logging](runtime-logging.md).
+
+Choose **Export diagnostics…** from Settings → About or a failed-operation notice to save a JSON report for a bug report. Exports contain typed runtime events and basic app/macOS version information. They do not attach accounts, credentials or conversation files and are never uploaded automatically. The separate **Report an issue** link opens GitHub; attach the exported file there when reporting a problem.
+
+`swift run switch-inspect --presentation-check` checks a bounded in-memory copy of local presentation storage and conversation-owned snapshots without Keychain access, network requests or writes to Claude. It reports counts, fixed statuses and recent transaction timestamps/phases, including whether invalid saved presentation belongs to a followed conversation for a recent failed switch. Current follow rules and current local files are evidence of a reproducible blocker, not a reconstruction of a past manual selection. An invalid result does not establish damaged conversation transcripts. Encrypted saved-login storage is outside this check.
+
 ### Recovering an unfinished operation
 
 If a switch is interrupted (power loss, crash, full disk), Claude Switch shows a recovery banner. Recovery requires Claude to be closed and restores the files to their state before the operation; anything written in between is kept aside rather than discarded. Transactions that were already committed are never rolled back, so a recovery cannot overwrite newer data.

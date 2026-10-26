@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import SwitchCore
+import SwitchStorage
 
 @main
 struct ClaudeSwitchApp: App {
@@ -79,6 +80,7 @@ struct MenuBarLabel: View {
 }
 
 final class SwitchAppDelegate: NSObject, NSApplicationDelegate {
+    private var terminating = false
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let identifier = Bundle.main.bundleIdentifier else { return }
         let current = ProcessInfo.processInfo.processIdentifier
@@ -87,6 +89,15 @@ final class SwitchAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !terminating else { return .terminateNow }
+        terminating = true
+        Task {
+            await RuntimeLog.shared.record(.appStopped, component: .app)
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         WorkbenchLifecycle.shared.prepareToOpen()
         return true

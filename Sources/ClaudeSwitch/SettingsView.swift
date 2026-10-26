@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import SwitchCore
+import SwitchStorage
 
 struct SettingsView: View {
     @Environment(AppState.self) private var state
@@ -104,6 +105,12 @@ struct SettingsView: View {
             }
             Section(L10n.tr("About")) {
                 Link(L10n.tr("Report an issue"), destination: ProjectLink.issues)
+                Button(L10n.tr("Export diagnostics…")) { Task { await state.exportDiagnostics() } }
+                    .disabled(state.demo || state.exportingDiagnostics || state.working)
+                LabeledContent(L10n.tr("Runtime logs")) {
+                    Button(L10n.tr("Show in Finder")) { NSWorkspace.shared.activateFileViewerSelecting([RuntimeLog.directory]) }
+                        .disabled(state.demo)
+                }
                 LabeledContent(L10n.tr("Source code")) {
                     Link(destination: ProjectLink.repository) {
                         HStack(spacing: 4) {

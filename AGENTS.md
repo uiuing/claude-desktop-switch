@@ -54,6 +54,7 @@ SwiftPM needs to run outside restrictive sandboxes (it uses `sandbox-exec` for t
 
 ## Conventions
 
+- **Runtime diagnostics**: use the shared `RuntimeLog` service and its typed event/stage/check fields; do not create per-file loggers or log arbitrary error descriptions, `userInfo`, paths or identifiers. Carry operation context with `RuntimeLogContext`. File writes, rotation and diagnostic export stay in this service. See [runtime logging](docs/runtime-logging.md).
 - **Swift style**: Swift 5 language mode with the Swift 6 toolchain; actors serialize I/O; small focused types; match the compact style of the file you are in. Comments state constraints the code cannot show, never the history of a change.
 - **Localization**: every user-facing string is `L10n.tr("English source text", args…)` with indexed placeholders `{0}`, `{1}`. Add the key to all ten catalogs in `Sources/SwitchCore/Localizations/` (`en`, `zh-Hans`, `zh-Hant`, `ja`, `ko`, `es`, `fr`, `de`, `pt-BR`, `ru`), keeping JSON insertion order and two-space indentation. Use dotted keys (`quota.session`) when one English word needs different translations in different places. Simplified Chinese uses mainland terms (数据, 文件, 支持, 信息, 操作, 退出登录, 钥匙串); the check rejects common Taiwanese ones. No CJK text in Swift, Python or shell sources. Run `scripts/check-localization.py`.
 - **Usage-limit names follow Claude's own usage screen**, through `L10n.quotaTitle` and `L10n.quotaShortTitle`:
