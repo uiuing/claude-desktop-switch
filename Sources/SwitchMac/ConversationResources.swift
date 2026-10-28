@@ -180,8 +180,10 @@ enum ConversationResources {
             let transcript = project.appendingPathComponent(cli + ".jsonl")
             let companions = try SafeFiles.strictChildren(project).filter { ownedComponent($0.lastPathComponent, ids: [cli]) }
             for file in companions { result.files[file.path] = try ConversationHistory.fingerprint(file) }
-            try verifySubagents(transcript, project: project, cli: cli, snapshots: &result.files)
             let record = try SafeFiles.json(SafeFiles.child(session.recordRelativePath, of: environment.desktop), limit: 2 * 1024 * 1024)
+            let histories = try ConversationHistory.dependencies(transcript, project: project, cli: cli,
+                priorSessionIDs: ConversationHistory.priorSessionIDs(record))
+            result.files.merge(histories.files) { _, current in current }
             var directories = [record["cwd"].string, record["worktreePath"].string].compactMap { $0 }
             var granted = Set<String>()
             for update in record["sessionPermissionUpdates"].array ?? [] {
@@ -236,26 +238,6 @@ enum ConversationResources {
 
     private static var invalidHistory: SwitchError {
         .malformed(L10n.tr("The conversation history could not be verified. Its original data is unchanged."))
-    }
-
-    private static func verifySubagents(_ history: URL, project: URL, cli: String,
-                                       snapshots: inout [String: FileExpectation]) throws {
-        var pending = [history], seen = Set<String>()
-        while let file = pending.popLast() {
-            let scan = try ConversationHistory.scan(file)
-            snapshots[file.path] = .sha256(scan.digest)
-            for agent in scan.agents {
-                guard seen.insert(agent).inserted else { continue }
-                guard seen.count <= 512 else { throw tooLarge }
-                let nested = project.appendingPathComponent(cli + "/subagents/agent-" + agent + ".jsonl")
-                let flat = project.appendingPathComponent("agent-" + agent + ".jsonl")
-                try SafeFiles.validateAncestors(nested); try SafeFiles.validateAncestors(flat)
-                let file = FileManager.default.fileExists(atPath: nested.path) ? nested : flat
-                pending.append(file)
-                let metadata = file.deletingPathExtension().appendingPathExtension("meta.json")
-                if FileManager.default.fileExists(atPath: metadata.path) { snapshots[metadata.path] = try ConversationHistory.fingerprint(metadata) }
-            }
-        }
     }
 
     static func validate(_ snapshots: Retained) throws {

@@ -466,6 +466,7 @@
   "This conversation's local history is missing or ambiguous. Nothing was transferred.": "This conversation's local history is missing or ambiguous. Nothing was transferred.",
   "A conversation folder is unavailable. Restore access before switching accounts.": "A conversation folder is unavailable. Restore access before switching accounts.",
   "The conversation history could not be verified. Its original data is unchanged.": "The conversation history could not be verified. Its original data is unchanged.",
+  "This conversation's subagent history is missing or ambiguous. Nothing was transferred.": "This conversation's subagent history is missing or ambiguous. Nothing was transferred.",
   "The conversation resources exceed the safe transfer limit. Nothing was omitted or transferred.": "The conversation resources exceed the safe transfer limit. Nothing was omitted or transferred.",
   "Account-bound services may require authorization again.": "Account-bound services may require authorization again.",
   "The conversation's parent or child records could not be verified. Refresh and try again.": "The conversation's parent or child records could not be verified. Refresh and try again.",

@@ -466,6 +466,7 @@
   "This conversation's local history is missing or ambiguous. Nothing was transferred.": "이 대화의 로컬 기록이 없거나 하나로 확인되지 않습니다. 전송하지 않았습니다.",
   "A conversation folder is unavailable. Restore access before switching accounts.": "대화 폴더에 접근할 수 없습니다. 접근을 복구한 후 계정을 전환하세요.",
   "The conversation history could not be verified. Its original data is unchanged.": "대화 기록을 확인할 수 없습니다. 원본 데이터는 변경되지 않았습니다.",
+  "This conversation's subagent history is missing or ambiguous. Nothing was transferred.": "이 대화의 하위 에이전트 기록이 없거나 모호합니다. 아무것도 이전되지 않았습니다.",
   "The conversation resources exceed the safe transfer limit. Nothing was omitted or transferred.": "대화 리소스가 안전한 처리 한도를 초과합니다. 데이터를 누락하거나 전송하지 않았습니다.",
   "Account-bound services may require authorization again.": "계정에 연결된 서비스는 다시 인증해야 할 수 있습니다.",
   "The conversation's parent or child records could not be verified. Refresh and try again.": "대화의 상위 및 하위 관계를 확인할 수 없습니다. 새로 고친 후 다시 시도하세요.",

@@ -168,6 +168,29 @@ final class ConversationIntegrityTests: XCTestCase {
         for (path, bytes) in f.originalRecords { XCTAssertEqual(try SafeFiles.read(f.environment.desktop.appendingPathComponent(path)), bytes) }
     }
 
+    func testPreviewRetainsAgentHistoryFromTheRecordedPreviousCLI() async throws {
+        let f = try fixture(), previous = id(80)
+        let original = f.environment.projects.appendingPathComponent("fixture/\(id(20))/subagents")
+        let historical = f.environment.projects.appendingPathComponent("fixture/\(previous)/subagents")
+        try SafeFiles.privateDirectory(historical.deletingLastPathComponent())
+        try FileManager.default.moveItem(at: original, to: historical)
+        let index = f.environment.desktop.appendingPathComponent(f.sourcePrefix + "/" + id(10) + ".json")
+        var record = try JSONSerialization.jsonObject(with: SafeFiles.read(index)) as! [String: Any]
+        record["priorCliSessionIds"] = [previous]
+        try SafeFiles.atomicWrite(JSONSerialization.data(withJSONObject: record), to: index)
+        let before = try SafeFiles.read(index)
+        let (plan, _, _) = try await prepare(f)
+        let retained = try ConversationResources.retained(sessions: XCTUnwrap(plan.transferSessions), environment: f.environment)
+        let agent = historical.appendingPathComponent("agent-fixture-agent.jsonl")
+        let metadata = historical.appendingPathComponent("agent-fixture-agent.meta.json")
+        XCTAssertNotNil(retained.files[agent.path])
+        XCTAssertNotNil(retained.files[metadata.path])
+        XCTAssertEqual(try SafeFiles.read(index), before)
+        try ConversationResources.validate(retained)
+        try SafeFiles.atomicWrite(Data("{}".utf8), to: agent)
+        XCTAssertThrowsError(try ConversationResources.validate(retained))
+    }
+
     func testConflictingResourceAndSymlinkAreNotSilentlySkipped() async throws {
         for symlink in [true, false] {
             let f = try fixture()

@@ -466,6 +466,7 @@
   "This conversation's local history is missing or ambiguous. Nothing was transferred.": "O histórico local está ausente ou é ambíguo. Nada foi transferido.",
   "A conversation folder is unavailable. Restore access before switching accounts.": "Uma pasta da conversa está indisponível. Restaure o acesso antes de trocar de conta.",
   "The conversation history could not be verified. Its original data is unchanged.": "Não foi possível verificar o histórico. Os dados originais não foram alterados.",
+  "This conversation's subagent history is missing or ambiguous. Nothing was transferred.": "O histórico de subagentes desta conversa está ausente ou é ambíguo. Nada foi transferido.",
   "The conversation resources exceed the safe transfer limit. Nothing was omitted or transferred.": "Os recursos excedem o limite seguro de transferência. Nada foi omitido ou transferido.",
   "Account-bound services may require authorization again.": "Serviços vinculados à conta podem exigir nova autorização.",
   "The conversation's parent or child records could not be verified. Refresh and try again.": "Não foi possível verificar as relações entre conversas. Atualize e tente novamente.",

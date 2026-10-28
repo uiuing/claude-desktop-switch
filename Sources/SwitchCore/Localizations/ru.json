@@ -466,6 +466,7 @@
   "This conversation's local history is missing or ambiguous. Nothing was transferred.": "Локальная история отсутствует или неоднозначна. Ничего не перенесено.",
   "A conversation folder is unavailable. Restore access before switching accounts.": "Папка диалога недоступна. Восстановите доступ перед сменой аккаунта.",
   "The conversation history could not be verified. Its original data is unchanged.": "Не удалось проверить историю. Исходные данные не изменены.",
+  "This conversation's subagent history is missing or ambiguous. Nothing was transferred.": "История субагентов этого разговора отсутствует или неоднозначна. Ничего не перенесено.",
   "The conversation resources exceed the safe transfer limit. Nothing was omitted or transferred.": "Ресурсы превышают безопасный предел переноса. Ничего не пропущено и не перенесено.",
   "Account-bound services may require authorization again.": "Сервисам, связанным с аккаунтом, может потребоваться повторная авторизация.",
   "The conversation's parent or child records could not be verified. Refresh and try again.": "Не удалось проверить связи основного и дочерних диалогов. Обновите и повторите попытку.",

@@ -36,6 +36,18 @@ struct Inspect {
                 result["presentationCheck"] = presentationCheck(environment, sessions: inventory.conversations, follows: library.follows)
                 result["recentOperations"] = SwitchDiagnostics.recentOperations(environment: environment)
             }
+            if CommandLine.arguments.contains("--history-check") {
+                let title = readLine() ?? ""
+                let selected = inventory.conversations.filter {
+                    $0.kind == .code && $0.accountID == inventory.activeAccountID && $0.title == title
+                }
+                var check = ["matchedConversations": selected.count]
+                if selected.count == 1 {
+                    let sessions = try ConversationTree(inventory.conversations).expanded(selected)
+                    check.merge(SwitchDiagnostics.inspectHistory(sessions: sessions, environment: environment)) { _, new in new }
+                }
+                result["historyCheck"] = check
+            }
             let data = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
             print(String(decoding: data, as: UTF8.self))
         } catch {

@@ -12,6 +12,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Conversation transfers can verify subagent histories retained under a recorded previous CLI session after a rewind, and report missing or ambiguous histories clearly.
 - Account switching can reuse a display snapshot with an outdated CLI binding when its complete contents belong to the same stable conversation and contain no references to the previous engine.
 - Account switching no longer reports that Claude helpers are still running when only Electron's crash reporter remains.
 - Quitting Claude no longer makes idle Code conversations appear recently active or preselects them for an account switch.

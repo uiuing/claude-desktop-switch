@@ -29,6 +29,54 @@ enum ConversationHistory {
         return (hash, agents)
     }
 
+    static func priorSessionIDs(_ record: JSONValue) throws -> [String] {
+        let value = record["priorCliSessionIds"]
+        if value == .null { return [] }
+        guard let entries = value.array else { throw invalid }
+        return try Array(Set(entries.map {
+            guard let id = $0.string, UUID(uuidString: id) != nil else { throw invalid }
+            return id.lowercased()
+        })).sorted()
+    }
+
+    /// Rewinds can retain agent transcripts under a recorded previous CLI session.
+    /// Resolve only that conversation's declared history, never unrelated project sessions.
+    static func dependencies(_ history: URL, project: URL, cli: String, priorSessionIDs: [String]) throws
+        -> (files: [String: FileExpectation], agentHistories: Int, historicalAgentHistories: Int) {
+        let owners = Set([cli] + priorSessionIDs)
+        var pending = [(history, cli)], seen = Set<URL>(), files: [String: FileExpectation] = [:], historical = 0
+        while let (file, owner) = pending.popLast() {
+            guard seen.insert(file).inserted else { continue }
+            guard seen.count <= 513 else { throw invalid }
+            let scan = try scan(file)
+            files[file.path] = .sha256(scan.digest)
+            if file != history {
+                if owner != cli { historical += 1 }
+                let metadata = file.deletingPathExtension().appendingPathExtension("meta.json")
+                if FileManager.default.fileExists(atPath: metadata.path) { files[metadata.path] = try fingerprint(metadata) }
+            }
+            for agent in scan.agents {
+                let name = "agent-" + agent + ".jsonl"
+                let nested = try SafeFiles.child(owner + "/subagents/" + name, of: project)
+                let flat = try SafeFiles.child(name, of: project)
+                if FileManager.default.fileExists(atPath: nested.path) { pending.append((nested, owner)) }
+                else if FileManager.default.fileExists(atPath: flat.path) { pending.append((flat, owner)) }
+                else {
+                    let alternatives = try owners.subtracting([owner]).sorted().compactMap { id -> (URL, String)? in
+                        let candidate = try SafeFiles.child(id + "/subagents/" + name, of: project)
+                        return FileManager.default.fileExists(atPath: candidate.path) ? (candidate, id) : nil
+                    }
+                    guard alternatives.count == 1, let candidate = alternatives.first else {
+                        RuntimeLog.validation(.conversationHistory, check: .filePath)
+                        throw SwitchError.blocked(L10n.tr("This conversation's subagent history is missing or ambiguous. Nothing was transferred."))
+                    }
+                    pending.append(candidate)
+                }
+            }
+        }
+        return (files, seen.count - 1, historical)
+    }
+
     static func fingerprint(_ url: URL) throws -> FileExpectation {
         try SafeFiles.validateAncestors(url)
         var directory: ObjCBool = false

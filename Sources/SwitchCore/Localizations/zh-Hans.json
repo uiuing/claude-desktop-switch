@@ -466,6 +466,7 @@
   "This conversation's local history is missing or ambiguous. Nothing was transferred.": "此会话的本地历史缺失或存在歧义，未进行迁移。",
   "A conversation folder is unavailable. Restore access before switching accounts.": "无法访问会话文件夹，请恢复访问后再切换账号。",
   "The conversation history could not be verified. Its original data is unchanged.": "无法验证会话历史，原始数据未更改。",
+  "This conversation's subagent history is missing or ambiguous. Nothing was transferred.": "此会话的子代理历史缺失或无法确定，未迁移任何数据。",
   "The conversation resources exceed the safe transfer limit. Nothing was omitted or transferred.": "会话资源超过安全处理上限，未遗漏或迁移任何数据。",
   "Account-bound services may require authorization again.": "与账号关联的服务可能需要重新授权。",
   "The conversation's parent or child records could not be verified. Refresh and try again.": "无法验证会话的主子关系，请刷新后重试。",

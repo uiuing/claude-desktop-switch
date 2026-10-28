@@ -4,6 +4,37 @@ import SwitchStorage
 
 /// Read-only checks for switch-inspect. Results contain no storage keys, values or identities.
 public enum SwitchDiagnostics {
+    public static func inspectHistory(sessions: [Conversation], environment: MacEnvironment) -> [String: Int] {
+        var counts = ["conversations": sessions.count, "verifiedConversations": 0, "agentHistories": 0,
+                      "historicalAgentHistories": 0, "missingOrAmbiguousMainHistories": 0,
+                      "changedConversations": 0, "unverifiedConversations": 0]
+        do {
+            let projects = try SafeFiles.strictChildren(environment.projects)
+            for session in sessions {
+                do {
+                    guard let cli = session.cliSessionID, UUID(uuidString: cli) != nil else {
+                        counts["missingOrAmbiguousMainHistories", default: 0] += 1; continue
+                    }
+                    let matches = try projects.filter {
+                        try $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true &&
+                        FileManager.default.fileExists(atPath: $0.appendingPathComponent(cli + ".jsonl").path)
+                    }
+                    guard matches.count == 1, let project = matches.first else {
+                        counts["missingOrAmbiguousMainHistories", default: 0] += 1; continue
+                    }
+                    let record = try SafeFiles.json(SafeFiles.child(session.recordRelativePath, of: environment.desktop), limit: 2 * 1024 * 1024)
+                    let result = try ConversationHistory.dependencies(project.appendingPathComponent(cli + ".jsonl"),
+                        project: project, cli: cli, priorSessionIDs: ConversationHistory.priorSessionIDs(record))
+                    counts["verifiedConversations", default: 0] += 1
+                    counts["agentHistories", default: 0] += result.agentHistories
+                    counts["historicalAgentHistories", default: 0] += result.historicalAgentHistories
+                } catch SwitchError.changed { counts["changedConversations", default: 0] += 1 }
+                catch { counts["unverifiedConversations", default: 0] += 1 }
+            }
+        } catch { counts["unverifiedConversations", default: 0] += sessions.count }
+        return counts
+    }
+
     public static func verifyPresentation(files: [String: Data], sessions: [Conversation]) throws {
         let source = files.map { ArchiveFile(path: ConversationPresentation.prefix + $0.key, data: $0.value, sha256: digest($0.value)) }
         let empty = try LevelDBSnapshot.files([:]).map {

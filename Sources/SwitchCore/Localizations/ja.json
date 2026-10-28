@@ -466,6 +466,7 @@
   "This conversation's local history is missing or ambiguous. Nothing was transferred.": "この会話のローカル履歴が見つからないか、一意に確認できません。移行は行っていません。",
   "A conversation folder is unavailable. Restore access before switching accounts.": "会話のフォルダにアクセスできません。アクセスを復旧してから切り替えてください。",
   "The conversation history could not be verified. Its original data is unchanged.": "会話の履歴を確認できません。元のデータは変更されていません。",
+  "This conversation's subagent history is missing or ambiguous. Nothing was transferred.": "この会話のサブエージェントの履歴が見つからないか、特定できません。何も移行されていません。",
   "The conversation resources exceed the safe transfer limit. Nothing was omitted or transferred.": "会話のリソースが安全な処理上限を超えています。省略や移行は行っていません。",
   "Account-bound services may require authorization again.": "アカウントに紐づくサービスは再認証が必要な場合があります。",
   "The conversation's parent or child records could not be verified. Refresh and try again.": "会話の親子関係を確認できません。更新して再試行してください。",

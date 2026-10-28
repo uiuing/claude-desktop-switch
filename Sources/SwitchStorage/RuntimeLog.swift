@@ -51,7 +51,7 @@ public actor RuntimeLog {
         case appStarted, appStopped, operationStarted, operationCompleted, failed, fileSinkFailed, rollbackStarted, rollbackCompleted, rollbackFailed
         case validationFailed, bindingReused, phaseStarted, exportStarted, exportCompleted, recoveryStarted, recoveryCompleted
     }
-    public enum Source: String, Codable, Sendable { case conversationPresentation, levelDBSnapshot }
+    public enum Source: String, Codable, Sendable { case conversationPresentation, conversationHistory, levelDBSnapshot }
     public enum Check: String, Codable, Sendable { case format, sessionIdentity, historyBinding, filePath, fileDigest, representation }
     public enum Detail: String, Codable, Sendable {
         case unauthorized, forbidden, missingScopes, invalidCredentials, ambiguousCredentials, identityMismatch, offline, server, invalidResponse, keychain
